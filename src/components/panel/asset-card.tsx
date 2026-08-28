@@ -4,7 +4,9 @@ import { Sparkline } from "./sparkline";
 import { RsiGauge } from "./rsi-gauge";
 import { RangeBar } from "./range-bar";
 import { MacdPanel } from "./macd-panel";
+import { DepthBar } from "./depth-bar";
 import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
+import type { DepthSnapshot } from "@/hooks/use-order-book";
 import {
   TrendingUp,
   TrendingDown,
@@ -25,6 +27,10 @@ type Props = {
   lastTickAt?: number | null;
   /** "now" reference for computing elapsed time — passed from the page so all cards use the same tick. */
   nowMs?: number;
+  /** L2 order book depth snapshot (from order-book mini-service). */
+  depthSnapshot?: DepthSnapshot | undefined;
+  /** Whether the order-book socket is connected. */
+  depthConnected?: boolean;
 };
 
 function fmtPrice(n: number | null): string {
@@ -180,7 +186,15 @@ function MetricRow({
   );
 }
 
-export function AssetCard({ data, livePrice, tickActive, lastTickAt, nowMs }: Props) {
+export function AssetCard({
+  data,
+  livePrice,
+  tickActive,
+  lastTickAt,
+  nowMs,
+  depthSnapshot,
+  depthConnected,
+}: Props) {
   const meta = SYMBOL_META[data.symbol] ?? {
     label: data.symbol,
     pair: data.symbol,
@@ -353,12 +367,13 @@ export function AssetCard({ data, livePrice, tickActive, lastTickAt, nowMs }: Pr
         />
       </div>
 
-      {/* MACD mini-panel — histogram of last ~40 bars */}
+      {/* MACD mini-panel — histogram of last ~40 bars + crossover alerts */}
       <div className="px-5 pb-3">
         <MacdPanel
           macd={data.macd}
           series={data.series.macd_histogram}
           unavailable={nd.macd}
+          macdCross={data.macd_cross}
         />
       </div>
 
@@ -375,6 +390,15 @@ export function AssetCard({ data, livePrice, tickActive, lastTickAt, nowMs }: Pr
           ema200={data.ema200_4h}
           high24h={data.high_24h}
           low24h={data.low_24h}
+        />
+      </div>
+
+      {/* L2 Order book — bid/ask depth + spread + imbalance */}
+      <div className="px-5 pb-3">
+        <DepthBar
+          snapshot={depthSnapshot}
+          spotPrice={displayPrice}
+          connected={depthConnected === true}
         />
       </div>
 

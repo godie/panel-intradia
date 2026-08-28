@@ -9,6 +9,7 @@ import {
   useTickStream,
   clearTickPriceGlobal,
 } from "@/hooks/use-tick-stream";
+import { useOrderBook } from "@/hooks/use-order-book";
 import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff } from "lucide-react";
 
 const REFRESH_MS = 60_000;
@@ -44,6 +45,7 @@ export default function Page() {
 
   // Live tick stream — shared singleton socket.
   const tick = useTickStream();
+  const book = useOrderBook();
 
   const fetchAll = useCallback(async (manual: boolean) => {
     // Cancel any in-flight fetch.
@@ -361,6 +363,8 @@ export default function Page() {
                   tickActive={tick.connected && tick.binanceLive}
                   lastTickAt={lastTickAt}
                   nowMs={nowMs}
+                  depthSnapshot={book.snapshots[symbol]}
+                  depthConnected={book.connected && book.binanceLive}
                 />
               );
             })}

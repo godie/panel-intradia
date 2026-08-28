@@ -9,6 +9,7 @@ import {
   calculateEMA,
   calculateRSI,
   calculateMACD,
+  detectMacdCross,
   detectRecentCross,
   findSupportResistance,
   determineCrossState,
@@ -61,6 +62,10 @@ function buildAnalysis(
 
   // MACD(12, 26, 9) on 4h closes — Appel defaults.
   const macdRes = calculateMACD(closes, 12, 26, 9);
+  // MACD/signal crossover + histogram momentum flip detection.
+  const macdCross = macdRes.available
+    ? detectMacdCross(macdRes.macdLine, macdRes.signalLine, macdRes.histogram)
+    : null;
 
   // Support / resistance.
   const srRes = findSupportResistance(highs, lows, spotPrice ?? 0);
@@ -95,6 +100,7 @@ function buildAnalysis(
     high_24h: ticker == null,
     low_24h: ticker == null,
     macd: !macdRes.available,
+    macd_cross: !macdRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -125,6 +131,7 @@ function buildAnalysis(
       signal: round(macdRes.lastSignal, dec),
       histogram: round(macdRes.lastHistogram, dec),
     },
+    macd_cross: macdCross,
     structure_text: structureText,
     no_disponible,
     series: {

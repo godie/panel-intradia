@@ -14,6 +14,18 @@ export type CrossInfo = {
   window: number;
 };
 
+export type MacdCrossInfo = {
+  /** Fresh MACD/signal cross within `recentThreshold` bars (default 6). */
+  happened: boolean;
+  candles_since_cross: number | null;
+  direction: "bullish" | "bearish" | null;
+  /** Histogram sign flip within `recentThreshold` bars (momentum shift). */
+  momentum_flip: boolean;
+  momentum_flip_direction: "bullish" | "bearish" | null;
+  candles_since_flip: number | null;
+  window: number;
+};
+
 export type AnalysisResponse = {
   symbol: string;
   spot_price: number | null;
@@ -39,6 +51,8 @@ export type AnalysisResponse = {
     signal: number | null;
     histogram: number | null;
   };
+  /** MACD/signal crossover detection (recent + momentum flip). */
+  macd_cross: MacdCrossInfo | null;
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -54,6 +68,7 @@ export type AnalysisResponse = {
     high_24h: boolean;
     low_24h: boolean;
     macd: boolean;
+    macd_cross: boolean;
   };
   series: {
     closes: number[];

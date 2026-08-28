@@ -433,3 +433,115 @@ export function calculateMACD(
     available: lastMacd != null,
   };
 }
+
+/**
+ * Detect the most recent MACD/signal crossover.
+ *
+ * A "bullish" MACD cross = MACD line crosses above the signal line.
+ * A "bearish" MACD cross = MACD line crosses below the signal line.
+ *
+ * Walks backwards from the latest valid bar looking for the index where the
+ * sign of (macd - signal) flips. Scans the last `window` bars (default 20).
+ *
+ * `happened` is true when the cross is within `recentThreshold` bars
+ * (default 6) — this is the "fresh cross" signal the UI flashes.
+ *
+ * Also detects **histogram sign flip** (momentum shift) — when the histogram
+ * itself crosses zero, which is a leading indicator of a MACD cross.
+ */
+export type MacdCrossInfo = {
+  /** Fresh MACD/signal cross within `recentThreshold` bars. */
+  happened: boolean;
+  candles_since_cross: number | null;
+  direction: "bullish" | "bearish" | null;
+  /** Histogram sign flip within `recentThreshold` bars (momentum shift). */
+  momentum_flip: boolean;
+  momentum_flip_direction: "bullish" | "bearish" | null;
+  candles_since_flip: number | null;
+  window: number;
+};
+
+export function detectMacdCross(
+  macdLine: (number | null)[],
+  signalLine: (number | null)[],
+  histogram: (number | null)[],
+  opts: { window?: number; recentThreshold?: number } = {},
+): MacdCrossInfo {
+  const window = opts.window ?? 20;
+  const recentThreshold = opts.recentThreshold ?? 6;
+  const n = macdLine.length;
+
+  const validAt = (i: number) => {
+    const m = macdLine[i];
+    const s = signalLine[i];
+    return m != null && s != null && Number.isFinite(m) && Number.isFinite(s);
+  };
+
+  // Find the last index where both MACD and signal are defined.
+  let lastValid = -1;
+  for (let i = n - 1; i >= 0; i--) {
+    if (validAt(i)) {
+      lastValid = i;
+      break;
+    }
+  }
+
+  const base: MacdCrossInfo = {
+    happened: false,
+    candles_since_cross: null,
+    direction: null,
+    momentum_flip: false,
+    momentum_flip_direction: null,
+    candles_since_flip: null,
+    window,
+  };
+  if (lastValid < 1) return base;
+
+  const scanStart = Math.max(1, lastValid - window + 1);
+
+  // 1. MACD/signal crossover detection.
+  let crossIdx = -1;
+  let crossDir: "bullish" | "bearish" | null = null;
+  for (let i = lastValid; i > scanStart; i--) {
+    if (!validAt(i) || !validAt(i - 1)) continue;
+    const diffNow = (macdLine[i] as number) - (signalLine[i] as number);
+    const diffPrev = (macdLine[i - 1] as number) - (signalLine[i - 1] as number);
+    if (diffNow === 0 || diffPrev === 0) continue;
+    if ((diffNow > 0) !== (diffPrev > 0)) {
+      crossIdx = i;
+      crossDir = diffNow > 0 ? "bullish" : "bearish";
+      break;
+    }
+  }
+
+  // 2. Histogram momentum flip (sign change of histogram, leading signal).
+  let flipIdx = -1;
+  let flipDir: "bullish" | "bearish" | null = null;
+  for (let i = lastValid; i > scanStart; i--) {
+    const hNow = histogram[i];
+    const hPrev = histogram[i - 1];
+    if (hNow == null || hPrev == null) continue;
+    if (!Number.isFinite(hNow) || !Number.isFinite(hPrev)) continue;
+    if (hNow === 0 || hPrev === 0) continue;
+    if ((hNow > 0) !== (hPrev > 0)) {
+      flipIdx = i;
+      flipDir = hNow > 0 ? "bullish" : "bearish";
+      break;
+    }
+  }
+
+  const candlesSinceCross = crossIdx === -1 ? null : lastValid - crossIdx + 1;
+  const candlesSinceFlip = flipIdx === -1 ? null : lastValid - flipIdx + 1;
+
+  return {
+    happened:
+      candlesSinceCross != null && candlesSinceCross <= recentThreshold,
+    candles_since_cross: candlesSinceCross,
+    direction: crossDir,
+    momentum_flip:
+      candlesSinceFlip != null && candlesSinceFlip <= recentThreshold,
+    momentum_flip_direction: flipDir,
+    candles_since_flip: candlesSinceFlip,
+    window,
+  };
+}

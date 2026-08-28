@@ -7,8 +7,10 @@ import { io, type Socket } from "socket.io-client";
  * use-tick-stream — subscribe to real-time price ticks from the ws-tick
  * mini-service (socket.io on port 3003, behind the Caddy gateway).
  *
- * Connection string MUST go through the gateway — the path is "/" and the
- * port is encoded as a `XTransformPort` query param so Caddy can route it.
+ * Connection string MUST go through the gateway — the path is "/socket.io/"
+ * (the default socket.io path; the previous "/" collided with the /health
+ * endpoint of the mini-service) and the port is encoded as a
+ * `XTransformPort` query param so Caddy can route it.
  * NEVER connect to `http://localhost:3003` directly (sandbox rule).
  *
  * The URL is auto-detected at runtime via `buildSocketUrl()`:
@@ -16,6 +18,12 @@ import { io, type Socket } from "socket.io-client";
  *    relative URL (`/?XTransformPort=3003`) so the same origin is reused.
  *  - Otherwise (e.g. Next.js dev port 3000), explicitly point the socket
  *    at the gateway (`http://hostname:81/?XTransformPort=3003`).
+ *
+ * The socket.io client `path` option is set to "/socket.io/" so the
+ * resulting request URLs become
+ *   `http://hostname:81/socket.io/?...&XTransformPort=3003` which Caddy
+ * forwards to localhost:3003 and the mini-service handles at its socket.io
+ * endpoint.
  *
  * Events from the server:
  *  - `tick`         { symbol, price, time }    — one price update per symbol
@@ -119,6 +127,7 @@ function buildSocketUrl(): string {
 function ensureSocket(): Socket {
   if (socket) return socket;
   const sock = io(buildSocketUrl(), {
+    path: "/socket.io/",
     transports: ["websocket"],
     reconnection: true,
     reconnectionAttempts: Infinity,

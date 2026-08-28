@@ -201,6 +201,21 @@
   animation: price-flash 0.7s ease-out;
 }
 
+/* MACD histogram bar flash — pulses the last bar when momentum flips. */
+@keyframes macd-flash {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  25%,
+  75% {
+    filter: brightness(2) drop-shadow(0 0 8px currentColor);
+  }
+}
+.animate-macd-flash {
+  animation: macd-flash 1.4s ease-in-out 2;
+}
+
 /* Shimmer for skeleton loading rows. */
 @keyframes shimmer {
   0% {
@@ -226,6 +241,7 @@
   .animate-ticker,
   .animate-card-enter,
   .animate-price-flash,
+  .animate-macd-flash,
   .live-dot,
   .shimmer {
     animation: none !important;

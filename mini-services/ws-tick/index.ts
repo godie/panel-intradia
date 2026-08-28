@@ -11,7 +11,9 @@
  *    → emits JSON {stream, data:{s,p,T}} where s=symbol, p=price, T=trade time
  *  - We parse + throttle (max 1 emit / 800ms per symbol) to avoid flooding
  *    the browser with hundreds of BTC trades per second.
- *  - socket.io server on port 3003, path "/" (required by Caddy gateway).
+ *  - socket.io server on port 3003, path "/socket.io/" (default — required
+ *    so the custom /health endpoint on the same httpServer is reachable;
+ *    a path of "/" would have socket.io intercept every request).
  *
  * Resilience:
  *  - Binance WS auto-reconnects with backoff (exponential 1s→30s).
@@ -60,7 +62,7 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
 });
 
 const io = new Server(httpServer, {
-  path: "/",
+  path: "/socket.io/",
   cors: { origin: "*", methods: ["GET", "POST"] },
   pingTimeout: 60000,
   pingInterval: 25000,
