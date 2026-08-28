@@ -6,6 +6,14 @@
 
 export type CrossState = "ALCISTA" | "BAJISTA" | "COMPRIMIDO";
 
+export type CrossInfo = {
+  /** Fresh cross within `recentThreshold` candles (default 10). */
+  happened: boolean;
+  candles_since_cross: number | null;
+  direction: "bullish" | "bearish" | null;
+  window: number;
+};
+
 export type AnalysisResponse = {
   symbol: string;
   spot_price: number | null;
@@ -13,8 +21,18 @@ export type AnalysisResponse = {
   ema55_4h: number | null;
   ema200_4h: number | null;
   cross_state: CrossState | null;
+  cross_info: CrossInfo | null;
   resistance: number | null;
   support: number | null;
+  /** RSI(14) on 4h closes — Wilder smoothing. */
+  rsi_14_4h: number | null;
+  /** 24h quote volume in USD (from ticker). */
+  volume_24h_usd: number | null;
+  /** 24h trade count (from ticker). */
+  trades_24h: number | null;
+  /** 24h high / low (from ticker). */
+  high_24h: number | null;
+  low_24h: number | null;
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -22,13 +40,19 @@ export type AnalysisResponse = {
     ema55_4h: boolean;
     ema200_4h: boolean;
     cross_state: boolean;
+    cross_info: boolean;
     resistance: boolean;
     support: boolean;
+    rsi_14_4h: boolean;
+    volume_24h_usd: boolean;
+    high_24h: boolean;
+    low_24h: boolean;
   };
   series: {
     closes: number[];
     ema55: (number | null)[];
     ema200: (number | null)[];
+    rsi: (number | null)[];
   };
   updated_at: string;
 };

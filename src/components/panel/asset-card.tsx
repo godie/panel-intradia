@@ -1,8 +1,17 @@
 "use client";
 
 import { Sparkline } from "./sparkline";
+import { RsiGauge } from "./rsi-gauge";
+import { RangeBar } from "./range-bar";
 import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
-import { TrendingUp, TrendingDown, Minimize2, Activity } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Minimize2,
+  Activity,
+  Zap,
+  BarChart3,
+} from "lucide-react";
 
 type Props = {
   data: AnalysisResponse;
@@ -11,7 +20,10 @@ type Props = {
 function fmtPrice(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "Dato no disponible";
   if (n >= 1000)
-    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return n.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
   if (n >= 1) return n.toFixed(2);
   return n.toFixed(4);
 }
@@ -20,6 +32,14 @@ function fmtPct(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "Dato no disponible";
   const sign = n >= 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
+}
+
+function fmtVolume(usd: number | null): string {
+  if (usd == null || !Number.isFinite(usd)) return "—";
+  if (usd >= 1e9) return `$${(usd / 1e9).toFixed(2)}B`;
+  if (usd >= 1e6) return `$${(usd / 1e6).toFixed(1)}M`;
+  if (usd >= 1e3) return `$${(usd / 1e3).toFixed(0)}K`;
+  return `$${usd.toFixed(0)}`;
 }
 
 const STATE_STYLES: Record<
@@ -31,6 +51,7 @@ const STATE_STYLES: Record<
     border: string;
     icon: typeof TrendingUp;
     glow: string;
+    accent: string;
   }
 > = {
   ALCISTA: {
@@ -40,6 +61,7 @@ const STATE_STYLES: Record<
     border: "border-[#5fbf8f]/30",
     icon: TrendingUp,
     glow: "shadow-[0_0_24px_-8px_rgba(95,191,143,0.5)]",
+    accent: "#5fbf8f",
   },
   BAJISTA: {
     label: "Bajista",
@@ -48,6 +70,7 @@ const STATE_STYLES: Record<
     border: "border-[#e2604f]/30",
     icon: TrendingDown,
     glow: "shadow-[0_0_24px_-8px_rgba(226,96,79,0.5)]",
+    accent: "#e2604f",
   },
   COMPRIMIDO: {
     label: "Comprimido",
@@ -56,8 +79,29 @@ const STATE_STYLES: Record<
     border: "border-[#e8b04b]/30",
     icon: Minimize2,
     glow: "shadow-[0_0_24px_-8px_rgba(232,176,75,0.5)]",
+    accent: "#e8b04b",
   },
 };
+
+/**
+ * PriceFlash — wraps the spot price and briefly flashes when the value
+ * changes, mimicking a trading terminal's tick indicator.
+ *
+ * Implementation: the `key` prop is bound to the value so React remounts
+ * the span on every change, which retriggers the CSS `price-flash`
+ * animation. No state, no refs, no effect — side-effect-free.
+ */
+function PriceFlash({ value }: { value: number | null }) {
+  return (
+    <span
+      key={value ?? "none"}
+      className="tnum text-foreground animate-price-flash"
+      aria-live="polite"
+    >
+      ${fmtPrice(value)}
+    </span>
+  );
+}
 
 function MetricRow({
   label,
@@ -120,9 +164,13 @@ export function AssetCard({ data }: Props) {
   const change = data.change_24h_pct;
   const changePositive = (change ?? 0) >= 0;
 
+  const crossInfo = data.cross_info;
+  const recentCross = crossInfo?.happened === true;
+  const crossDir = crossInfo?.direction;
+
   return (
     <article
-      className={`group relative flex flex-col overflow-hidden rounded-xl border bg-card/80 backdrop-blur-sm transition-all hover:bg-card ${
+      className={`group relative flex flex-col overflow-hidden rounded-xl border bg-card/80 backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-card animate-card-enter ${
         stateStyle ? `${stateStyle.border} ${stateStyle.glow}` : "border-white/8"
       }`}
       aria-label={`Tarjeta de análisis para ${meta.pair}`}
@@ -132,11 +180,26 @@ export function AssetCard({ data }: Props) {
         className="h-0.5 w-full"
         style={{
           background: stateStyle
-            ? `linear-gradient(90deg, transparent, currentColor, transparent)`
+            ? `linear-gradient(90deg, transparent, ${stateStyle.accent}, transparent)`
             : "linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)",
         }}
         aria-hidden
       />
+
+      {/* Recent-cross banner */}
+      {recentCross && crossDir && (
+        <div
+          className={`flex items-center justify-center gap-1.5 py-1 text-[10px] font-bold uppercase tracking-widest ${
+            crossDir === "bullish"
+              ? "bg-[#5fbf8f]/15 text-[#5fbf8f]"
+              : "bg-[#e2604f]/15 text-[#e2604f]"
+          }`}
+        >
+          <Zap className="h-3 w-3 animate-pulse" aria-hidden />
+          Cruce {crossDir === "bullish" ? "alcista" : "bajista"} · hace{" "}
+          {crossInfo?.candles_since_cross} vela(s)
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between gap-3 p-5 pb-3">
@@ -172,11 +235,15 @@ export function AssetCard({ data }: Props) {
               Precio spot · USD
             </div>
             <div
-              className={`tnum mt-0.5 text-3xl font-semibold leading-none ${
-                nd.spot_price ? "text-muted-foreground/60 italic text-xl" : "text-foreground"
+              className={`mt-0.5 text-3xl font-semibold leading-none ${
+                nd.spot_price ? "italic text-muted-foreground/60 text-xl" : ""
               }`}
             >
-              {nd.spot_price ? "Dato no disponible" : `$${fmtPrice(data.spot_price)}`}
+              {nd.spot_price ? (
+                <span className="text-muted-foreground/60">Dato no disponible</span>
+              ) : (
+                <PriceFlash value={data.spot_price} />
+              )}
             </div>
           </div>
           <div className="mb-0.5 ml-auto text-right">
@@ -186,7 +253,7 @@ export function AssetCard({ data }: Props) {
             <div
               className={`tnum mt-0.5 text-sm font-medium ${
                 nd.change_24h_pct
-                  ? "text-muted-foreground/60 italic"
+                  ? "italic text-muted-foreground/60"
                   : changePositive
                     ? "text-[#5fbf8f]"
                     : "text-[#e2604f]"
@@ -196,6 +263,28 @@ export function AssetCard({ data }: Props) {
             </div>
           </div>
         </div>
+
+        {/* 24h high/low/volume mini-strip */}
+        {!nd.high_24h && !nd.low_24h && (
+          <div className="mt-2.5 flex items-center justify-between rounded-md border border-white/5 bg-black/15 px-3 py-1.5 text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground/60">L</span>
+              <span className="tnum text-[#e2604f]/90">
+                ${fmtPrice(data.low_24h)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <BarChart3 className="h-3 w-3" aria-hidden />
+              <span className="tnum">{fmtVolume(data.volume_24h_usd)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground/60">H</span>
+              <span className="tnum text-[#5fbf8f]/90">
+                ${fmtPrice(data.high_24h)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Sparkline */}
@@ -207,6 +296,22 @@ export function AssetCard({ data }: Props) {
           spot={data.spot_price}
           crossState={data.cross_state}
           height={150}
+        />
+      </div>
+
+      {/* Range bar — position of price within S/R with EMA markers */}
+      <div className="px-5 pb-3">
+        <div className="mb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+          Posición en el rango · S/R
+        </div>
+        <RangeBar
+          spot={data.spot_price}
+          support={data.support}
+          resistance={data.resistance}
+          ema55={data.ema55_4h}
+          ema200={data.ema200_4h}
+          high24h={data.high_24h}
+          low24h={data.low_24h}
         />
       </div>
 
@@ -235,6 +340,12 @@ export function AssetCard({ data }: Props) {
           value={`$${fmtPrice(data.support)}`}
           unavailable={nd.support}
           color="#5fbf8f"
+        />
+        {/* RSI gauge (own row, richer) */}
+        <RsiGauge
+          rsi={data.rsi_14_4h}
+          unavailable={nd.rsi_14_4h}
+          series={data.series.rsi}
         />
       </div>
 

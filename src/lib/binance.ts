@@ -30,6 +30,7 @@ export type Ticker24h = {
   lowPrice: number;
   volume: number;
   quoteVolume: number;
+  trades: number;
 };
 
 export class BinanceError extends Error {
@@ -140,5 +141,6 @@ export async function fetchTicker24h(symbol: string): Promise<Ticker24h> {
     lowPrice: Number(raw.lowPrice),
     volume: Number(raw.volume),
     quoteVolume: Number(raw.quoteVolume),
+    trades: Number(raw.count ?? 0),
   };
 }

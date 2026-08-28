@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AssetCard } from "@/components/panel/asset-card";
 import { TickerTape } from "@/components/panel/ticker-tape";
+import { MarketSummary } from "@/components/panel/market-summary";
 import { SYMBOLS, SYMBOL_META, type AnalysisResponse } from "@/lib/types";
 import { RefreshCw, Radio, AlertTriangle, Clock } from "lucide-react";
 
@@ -205,6 +206,15 @@ export default function Page() {
         )}
       </header>
 
+      {/* Market summary strip — aggregate sentiment across all 3 pairs */}
+      {tickerItems.some((i) => i != null) && (
+        <div className="border-b border-white/5 bg-black/15">
+          <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+            <MarketSummary items={tickerItems} />
+          </div>
+        </div>
+      )}
+
       {/* Main grid */}
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -271,18 +281,24 @@ export default function Page() {
             Metodolog&iacute;a
           </h2>
           <p>
-            Las EMA se calculan sobre cierres de 4h (semilla SMA, k = 2/(N+1)).
-            Soporte y resistencia provienen de pivotes de m&aacute;ximos/m&iacute;nimos
-            en las &uacute;ltimas 80 velas con ventana sim&eacute;trica de ±3. El
-            estado del cruce es <span className="text-[#5fbf8f]">ALCISTA</span> si
-            EMA55 &gt; EMA200, <span className="text-[#e2604f]">BAJISTA</span> si
-            EMA55 &lt; EMA200, y{" "}
-            <span className="text-[#e8b04b]">COMPRIMIDO</span> cuando la
-            diferencia relativa es menor al 0.15%. Los datos provienen de la API
-            p&uacute;blica de Binance (BTCUSDT/ETHUSDT/XRPUSDT como proxy de USD),
-            con cach&eacute; de servidor de 60 segundos. Los campos que no pueden
-            calcularse se marcan expl&iacute;citamente como &ldquo;Dato no
-            disponible&rdquo;.
+            Las <span className="text-[#e8b04b]">EMA 55</span> y{" "}
+            <span className="text-[#4fa8d8]">EMA 200</span> se calculan sobre
+            cierres de 4h (semilla SMA, k = 2/(N+1)). Soporte y resistencia
+            provienen de pivotes de m&aacute;ximos/m&iacute;nimos en las &uacute;ltimas
+            80 velas con ventana sim&eacute;trica de &plusmn;3. El estado del cruce
+            es <span className="text-[#5fbf8f]">ALCISTA</span> si EMA55 &gt; EMA200,{" "}
+            <span className="text-[#e2604f]">BAJISTA</span> si EMA55 &lt; EMA200, y{" "}
+            <span className="text-[#e8b04b]">COMPRIMIDO</span> cuando la diferencia
+            relativa es menor al 0.15%. El{" "}
+            <span className="text-foreground/80">RSI(14)</span> usa el suavizado de
+            Wilder; zonas &gt;70 = sobrecomprado, &lt;30 = sobrevendido. La
+            detecci&oacute;n de cruce reciente escanea las &uacute;ltimas 30 velas
+            buscando flips de signo en EMA55 &minus; EMA200 y marca como
+            &ldquo;recente&rdquo; si ocurri&oacute; dentro de 10 velas. Los datos
+            provienen de la API p&uacute;blica de Binance
+            (BTCUSDT/ETHUSDT/XRPUSDT como proxy de USD), con cach&eacute; de
+            servidor de 60 segundos. Los campos que no pueden calcularse se marcan
+            expl&iacute;citamente como &ldquo;Dato no disponible&rdquo;.
           </p>
         </section>
       </main>

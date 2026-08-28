@@ -172,3 +172,62 @@
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* Card entrance animation — subtle fade-up when content mounts/refreshes. */
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-card-enter {
+  animation: card-enter 0.4s ease-out both;
+}
+
+/* Price tick flash — brief glow when a price updates, keyed on value change. */
+@keyframes price-flash {
+  0% {
+    filter: brightness(1.6) drop-shadow(0 0 6px currentColor);
+  }
+  100% {
+    filter: brightness(1) drop-shadow(0 0 0 currentColor);
+  }
+}
+.animate-price-flash {
+  animation: price-flash 0.7s ease-out;
+}
+
+/* Shimmer for skeleton loading rows. */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite;
+}
+
+/* Reduced motion — respect user preference. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker,
+  .animate-card-enter,
+  .animate-price-flash,
+  .live-dot,
+  .shimmer {
+    animation: none !important;
+  }
+}

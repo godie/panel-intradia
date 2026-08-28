@@ -7,11 +7,14 @@ import {
 } from "@/lib/binance";
 import {
   calculateEMA,
+  calculateRSI,
+  detectRecentCross,
   findSupportResistance,
   determineCrossState,
 } from "@/lib/indicators";
 import { buildStructureText } from "@/lib/structure";
 import { getCached, setCached } from "@/lib/cache";
+import type { AnalysisResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,41 +23,6 @@ export const dynamic = "force-dynamic";
 const ALLOWED_SYMBOLS = new Set(["BTCUSDT", "ETHUSDT", "XRPUSDT"]);
 
 const CACHE_TTL_MS = 60_000;
-
-/**
- * Analysis payload — matches the contract from the spec exactly, plus a
- * `series` field the frontend needs to draw the sparkline. Every optional
- * numeric field is also mirrored in `no_disponible` so the UI can render
- * "Dato no disponible" instead of a fabricated number.
- */
-export type AnalysisResponse = {
-  symbol: string;
-  spot_price: number | null;
-  change_24h_pct: number | null;
-  ema55_4h: number | null;
-  ema200_4h: number | null;
-  cross_state: "ALCISTA" | "BAJISTA" | "COMPRIMIDO" | null;
-  resistance: number | null;
-  support: number | null;
-  structure_text: string;
-  no_disponible: {
-    spot_price: boolean;
-    change_24h_pct: boolean;
-    ema55_4h: boolean;
-    ema200_4h: boolean;
-    cross_state: boolean;
-    resistance: boolean;
-    support: boolean;
-  };
-  /** Recent close prices + EMA series for the sparkline (last SPARK_POINTS). */
-  series: {
-    closes: number[];
-    ema55: (number | null)[];
-    ema200: (number | null)[];
-  };
-  updated_at: string;
-};
-
 const SPARK_POINTS = 120;
 
 function round(n: number | null, decimals: number): number | null {
@@ -87,11 +55,15 @@ function buildAnalysis(
   const ema55Res = calculateEMA(closes, 55);
   const ema200Res = calculateEMA(closes, 200);
 
+  // RSI(14) on 4h closes.
+  const rsiRes = calculateRSI(closes, 14);
+
   // Support / resistance.
   const srRes = findSupportResistance(highs, lows, spotPrice ?? 0);
 
-  // Cross state.
+  // Cross state + recent cross detection.
   const crossRes = determineCrossState(ema55Res.last, ema200Res.last);
+  const crossInfo = detectRecentCross(ema55Res.series, ema200Res.series);
 
   // Structure text.
   const structureText = buildStructureText({
@@ -111,8 +83,13 @@ function buildAnalysis(
     ema55_4h: !ema55Res.available,
     ema200_4h: !ema200Res.available,
     cross_state: !crossRes.available,
+    cross_info: !ema55Res.available || !ema200Res.available,
     resistance: srRes.resistance == null,
     support: srRes.support == null,
+    rsi_14_4h: !rsiRes.available,
+    volume_24h_usd: ticker == null,
+    high_24h: ticker == null,
+    low_24h: ticker == null,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -120,6 +97,7 @@ function buildAnalysis(
   const seriesCloses = closes.slice(startIdx);
   const seriesEma55 = ema55Res.series.slice(startIdx);
   const seriesEma200 = ema200Res.series.slice(startIdx);
+  const seriesRsi = rsiRes.series.slice(startIdx);
 
   return {
     symbol,
@@ -128,14 +106,21 @@ function buildAnalysis(
     ema55_4h: round(ema55Res.last, dec),
     ema200_4h: round(ema200Res.last, dec),
     cross_state: crossRes.state,
+    cross_info: crossInfo,
     resistance: round(srRes.resistance, dec),
     support: round(srRes.support, dec),
+    rsi_14_4h: round(rsiRes.last, 2),
+    volume_24h_usd: ticker?.quoteVolume ?? null,
+    trades_24h: ticker?.trades ?? null,
+    high_24h: round(ticker?.highPrice ?? null, dec),
+    low_24h: round(ticker?.lowPrice ?? null, dec),
     structure_text: structureText,
     no_disponible,
     series: {
       closes: seriesCloses,
       ema55: seriesEma55,
       ema200: seriesEma200,
+      rsi: seriesRsi,
     },
     updated_at: new Date().toISOString(),
   };

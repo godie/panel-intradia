@@ -174,7 +174,34 @@ export function Sparkline({
       ctx.beginPath();
       ctx.arc(x(lastIdx), py, 3, 0, Math.PI * 2);
       ctx.fill();
+
+      // Spot price label on the right edge.
+      const label = spot >= 1000
+        ? spot.toLocaleString("en-US", { maximumFractionDigits: 0 })
+        : spot >= 1
+          ? spot.toFixed(2)
+          : spot.toFixed(4);
+      ctx.font = "10px ui-monospace, monospace";
+      const tw = ctx.measureText(label).width + 6;
+      const lx = cssW - padR - tw;
+      const ly = Math.max(padT + 6, Math.min(py - 6, cssH - padB - 10));
+      ctx.fillStyle = "rgba(10,13,18,0.85)";
+      ctx.fillRect(lx, ly - 8, tw, 14);
+      ctx.fillStyle = COLORS.price;
+      ctx.textAlign = "left";
+      ctx.fillText(label, lx + 3, ly + 2);
     }
+
+    // Min/max price labels on the left axis.
+    ctx.font = "9px ui-monospace, monospace";
+    ctx.fillStyle = "rgba(139,150,165,0.6)";
+    ctx.textAlign = "left";
+    const maxLabel =
+      max >= 1000 ? max.toLocaleString("en-US", { maximumFractionDigits: 0 }) : max.toFixed(2);
+    const minLabel =
+      min >= 1000 ? min.toLocaleString("en-US", { maximumFractionDigits: 0 }) : min.toFixed(2);
+    ctx.fillText(maxLabel, padL + 2, padT + 8);
+    ctx.fillText(minLabel, padL + 2, cssH - padB - 2);
   }, [closes, ema55, ema200, spot, crossState, height]);
 
   return (

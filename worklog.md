@@ -125,3 +125,130 @@ El cron job cada 15 minutos debe:
    (RSI/MACD, alertas de cruce, websocket tick, más pares, modo claro
    opcional, exportar snapshot, historial de cruces).
 4. Actualizar este worklog.
+
+---
+Task ID: round-2
+Agent: cron webDevReview (webDevReview)
+Task: QA continua + añadir features (RSI, visualizador S/R, resumen de mercado) + mejorar styling.
+
+Work Log:
+- Leído worklog previo: proyecto estable, sin bugs, VLM 9/10 en ronda 1.
+- QA con agent-browser: página carga sin errores de runtime/console, 3 tarjetas
+  renderizan con datos reales de Binance, botón refresco funcional, footer
+  sticky confirmado (sticksToBottom=true en viewport 2400px), responsive móvil
+  (1 columna a 390px). Dev log sin errores.
+- Decisión: estabilidad confirmada → añadir nuevas features de alto impacto.
+- Backend (`src/lib/indicators.ts`):
+  - Añadido `calculateRSI(closes, 14)` — RSI de Wilder con suavizado estándar,
+    semilla = SMA de primeros 14 cambios, recurrencia
+    `avgGain_t = (avgGain_{t-1}*(period-1) + gain_t)/period`. Edge cases:
+    avgLoss=0 → RSI=100, avgGain=0 → RSI=0.
+  - Añadido `detectRecentCross(ema55Series, ema200Series)` — escanea últimas
+    30 velas buscando flip de signo en (ema55-ema200), devuelve
+    `{happened, candles_since_cross, direction}`. `happened=true` si el cruce
+    fue dentro de 10 velas.
+  - Añadido campo `trades` al Ticker24h (mapeado de `count` de Binance).
+- Backend (`src/lib/types.ts`): ampliado `AnalysisResponse` con `rsi_14_4h`,
+  `cross_info`, `volume_24h_usd`, `trades_24h`, `high_24h`, `low_24h`, y sus
+  flags en `no_disponible`. Añadido `series.rsi` para el mini-sparkline del RSI.
+- Backend (`src/app/api/analysis/route.ts`): integrado el cálculo de RSI +
+  cross_info + campos de ticker en `buildAnalysis`. Eliminado el tipo local
+  duplicado, ahora importa de `@/lib/types`.
+- Frontend — nuevos componentes:
+  - `range-bar.tsx` — barra horizontal que muestra la posición del precio spot
+    dentro del rango soporte/resistencia, con marcadores verticales para
+    EMA55, EMA200 y banda del rango 24h (low→high). El dot del spot es
+    verde/ámbar/rojo según su posición en el rango (bottom/mid/top third).
+    Glowing dot con transición CSS de 500ms.
+  - `rsi-gauge.tsx` — gauge compacto con track de 3 zonas (oversold <30 verde,
+    neutral 30-70 gris, overbought >70 rojo), needle vertical con glow, valor
+    numérico + label (Sobrecomprado/Neutral/Sobrevendido), escala 0-30-50-70-100,
+    y mini-sparkline SVG del historial RSI (últimos 40 puntos) con líneas de
+    referencia en 30/70.
+  - `market-summary.tsx` — tira agregada bajo el header con: pill de sentimiento
+    global (Riesgo Alcista/Bajista/Mixto basado en conteo de estados), breakdown
+    ALCISTA X/3 + BAJISTA X/3 + COMPRIMIDO X/3, Δ24h promedio, RSI promedio, y
+    badges de alerta "⚡ N cruce alcista/bajista reciente" cuando aplica.
+- Frontend — `asset-card.tsx` integrado:
+  - `PriceFlash` — wrapper del precio con flash de brightness (key-based CSS
+    animation, sin state/ref/effect — cumple lint react-hooks/refs).
+  - Strip de 24h high/low/volumen debajo del precio (L $X · $vol · H $Y).
+  - RangeBar con label "POSICIÓN EN EL RANGO · S/R".
+  - RsiGauge como fila enriquecida en la sección de métricas.
+  - Banner de "Cruce alcista/bajista · hace N vela(s)" cuando
+    cross_info.happened=true, con icono Zap pulsante.
+  - Animación `animate-card-enter` (fade-up 0.4s) en el article.
+  - Hover refinado: `-translate-y-0.5` + glow state-colored.
+- Frontend — `sparkline.tsx` mejorado:
+  - Etiqueta del precio spot en el borde derecho (fondo semi-transparente).
+  - Etiquetas de min/max en el eje Y izquierdo.
+- Frontend — `page.tsx`: insertado `MarketSummary` entre header y main grid.
+  Actualizada la nota de metodología para documentar RSI y detección de cruces.
+- CSS (`globals.css`): añadidas animaciones `card-enter`, `price-flash`,
+  `shimmer`, y media query `prefers-reduced-motion` que las desactiva todas.
+- Lint: 2 iteraciones para resolver `react-hooks/refs` (primer intento con
+  useRef-during-render fue rechazado; solución final: key-based CSS animation
+  pura sin ref). Lint final limpio.
+- Verificación agent-browser: 3 tarjetas renderizan con RSI (BTC 44.2 Neutral),
+  RangeBar (rango 69,316–81,947 con marcadores S/R/55/200), MarketSummary
+  ("MERCADO: RIESGO ALCISTA · ALCISTA 3/3 · BAJISTA 0/3"), strip 24h
+  (L $76,888 · $1.54B · H $81,478). Sin errores console/runtime.
+- Verificación VLM desktop: "9/10 Institutional Grade UI, rivals TradingView
+  Terminal/Bloomberg, S/R range bar is a standout UX addition, zero bugs
+  detected". Recomendación: añadir tooltips en hover para precisión.
+- Verificación VLM mobile (390px): "single-column works, no overflow, RSI gauge
+  and S/R range bar usable, market summary readable. Well-optimized for mobile."
+- Footer sticky re-confirmado (sticksToBottom=true en viewport 2400px).
+
+Stage Summary:
+- **Estado:** v2 entregada y verificada. La app pasó de "tracker" a "quantitative
+  analysis tool" (cita VLM). 4 nuevas features backend + 3 nuevos componentes
+  frontend + pulido de styling, todo sin romper el contrato JSON original
+  (campos nuevos son aditivos).
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (+calculateRSI, +detectRecentCross, +CrossInfo type)
+  - `src/lib/types.ts` (AnalysisResponse ampliado)
+  - `src/lib/binance.ts` (+trades en Ticker24h)
+  - `src/app/api/analysis/route.ts` (integración nuevos cálculos)
+  - `src/components/panel/range-bar.tsx` (nuevo)
+  - `src/components/panel/rsi-gauge.tsx` (nuevo)
+  - `src/components/panel/market-summary.tsx` (nuevo)
+  - `src/components/panel/asset-card.tsx` (PriceFlash + integraciones)
+  - `src/components/panel/sparkline.tsx` (etiquetas eje)
+  - `src/app/page.tsx` (MarketSummary + metodología actualizada)
+  - `src/app/globals.css` (3 animaciones + reduced-motion)
+- **Contrato JSON ampliado** (campos nuevos, retrocompatible):
+  `rsi_14_4h`, `cross_info {happened, candles_since_cross, direction, window}`,
+  `volume_24h_usd`, `trades_24h`, `high_24h`, `low_24h`, `series.rsi[]`.
+
+## Unresolved Issues / Risks / Next-Phase Priorities (round 2)
+
+1. **Tooltips en hover** (sugerencia VLM): añadir tooltips nativos o via
+   Radix Tooltip en el RangeBar y RsiGauge para mostrar timestamps/valores
+   exactos. Prioridad media.
+2. **Persistencia de cruces históricos**: actualmente `detectRecentCross`
+   solo ve la última vela de datos; sería útil persistir un log de cruces
+   (cuándo ocurrieron, dirección) en SQLite via Prisma para mostrar un
+   historial. Prioridad media.
+3. **MACD**: complemento natural de RSI/EMA. Añadir MACD line + histograma
+   al sparkline o como mini-panel. Prioridad media.
+4. **Websocket tick-a-tick**: el precio refresca cada 60s; un mini-service
+   socket.io (puerto 3003) conectado a Binance WS daría ticks en tiempo real
+   manteniendo el análisis de EMA cada 60s. Prioridad alta para próxima ronda.
+5. **Más pares**: SOL, BNB, ADA ampliarían el panel. Solo requiere añadir
+   al ALLOWED_SYMBOLS set + SYMBOL_META. Prioridad baja.
+6. **Modo claro opcional**: el tema es oscuro forzado; un toggle sería
+   accesible pero requeriría re-trabajar la paleta. Prioridad baja.
+7. **Exportar snapshot**: botón para descargar el estado actual como
+   JSON/PNG para archivar decisiones. Prioridad baja.
+8. **Tests**: las funciones puras (calculateRSI, detectRecentCross,
+   findSupportResistance) son fácilmente testeables con Vitest. Prioridad
+   media para robustez.
+
+## Recommended Next Step (round 3)
+
+Priorizar **websocket tick-a-tick** (item 4) — es la mejora de mayor impacto
+percibido: el precio parpadeando en tiempo real transforma la experiencia.
+Mantener el análisis EMA/RSI/S-R a 60s (no necesita más frecuencia). Si el
+esfuerzo es alto, fallback a **MACD** (item 3) que es puramente backend +
+frontend aditivo sin nuevo servicio.
