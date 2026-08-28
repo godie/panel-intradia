@@ -301,3 +301,135 @@ export function detectRecentCross(
     window,
   };
 }
+
+export type MACDResult = {
+  macdLine: (number | null)[];
+  signalLine: (number | null)[];
+  histogram: (number | null)[];
+  lastMacd: number | null;
+  lastSignal: number | null;
+  lastHistogram: number | null;
+  available: boolean;
+};
+
+/**
+ * calculateMACD — Moving Average Convergence Divergence.
+ *
+ *  - MACD line   = EMA(fast) - EMA(slow)
+ *  - Signal line = EMA(signal) of the MACD line
+ *  - Histogram   = MACD line - Signal line
+ *
+ * The standard params are fast=12, slow=26, signal=9 (Gerald Appel defaults).
+ *
+ * Because the EMA helper returns `null` for the first `period-1` entries,
+ * the MACD line is `null` until both EMAs are defined (i.e. index >= slow-1).
+ * The signal line is `null` until the MACD line has `signal` valid entries
+ * (so index >= slow-1 + signal-1 = slow+signal-2). The histogram follows the
+ * signal line's availability.
+ *
+ * Returns `available: false` when there are fewer than `slow + signal` closes
+ * — that's the minimum needed for the signal line to produce at least one
+ * value.
+ */
+export function calculateMACD(
+  closes: number[],
+  fast = 12,
+  slow = 26,
+  signal = 9,
+): MACDResult {
+  const n = closes.length;
+  const empty: MACDResult = {
+    macdLine: Array(n).fill(null),
+    signalLine: Array(n).fill(null),
+    histogram: Array(n).fill(null),
+    lastMacd: null,
+    lastSignal: null,
+    lastHistogram: null,
+    available: false,
+  };
+  if (
+    n < slow + signal ||
+    fast <= 0 ||
+    slow <= 0 ||
+    signal <= 0 ||
+    fast >= slow
+  ) {
+    return empty;
+  }
+
+  // EMA(fast) and EMA(slow) over the full closes array.
+  const emaFast = calculateEMA(closes, fast);
+  const emaSlow = calculateEMA(closes, slow);
+
+  const macdLine: (number | null)[] = Array(n).fill(null);
+  // Build the MACD line wherever both EMAs are defined.
+  for (let i = 0; i < n; i++) {
+    const f = emaFast.series[i];
+    const s = emaSlow.series[i];
+    if (f != null && s != null && Number.isFinite(f) && Number.isFinite(s)) {
+      macdLine[i] = f - s;
+    }
+  }
+
+  // The signal line is an EMA of the MACD line, but `calculateEMA`
+  // expects a number[] and uses SMA seeding. We feed it only the contiguous
+  // non-null MACD values (which start at index slow-1) so the SMA seed and
+  // recurrence align correctly. We then map the result back onto the full
+  // timeline starting at the index where the signal first becomes valid.
+  const firstMacdIdx = macdLine.findIndex((v) => v != null);
+  const signalLine: (number | null)[] = Array(n).fill(null);
+  let lastSignalVal: number | null = null;
+  if (firstMacdIdx >= 0) {
+    const macdSlice = macdLine
+      .slice(firstMacdIdx)
+      .map((v) => (v == null ? 0 : v)) as number[];
+    // If we have at least `signal` MACD values, the EMA can be computed.
+    if (macdSlice.length >= signal) {
+      const sig = calculateEMA(macdSlice, signal);
+      for (let i = 0; i < sig.series.length; i++) {
+        const v = sig.series[i];
+        if (v != null && Number.isFinite(v)) {
+          signalLine[firstMacdIdx + i] = v;
+        }
+      }
+      lastSignalVal = sig.last;
+    }
+  }
+
+  // Histogram = MACD - Signal wherever both are defined.
+  const histogram: (number | null)[] = Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const m = macdLine[i];
+    const s = signalLine[i];
+    if (m != null && s != null && Number.isFinite(m) && Number.isFinite(s)) {
+      histogram[i] = m - s;
+    }
+  }
+
+  // Find last valid MACD value (skip trailing nulls).
+  let lastMacd: number | null = null;
+  for (let i = n - 1; i >= 0; i--) {
+    if (macdLine[i] != null) {
+      lastMacd = macdLine[i];
+      break;
+    }
+  }
+
+  let lastHistogram: number | null = null;
+  for (let i = n - 1; i >= 0; i--) {
+    if (histogram[i] != null) {
+      lastHistogram = histogram[i];
+      break;
+    }
+  }
+
+  return {
+    macdLine,
+    signalLine,
+    histogram,
+    lastMacd,
+    lastSignal: lastSignalVal,
+    lastHistogram,
+    available: lastMacd != null,
+  };
+}

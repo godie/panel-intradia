@@ -3,6 +3,7 @@
 import { Sparkline } from "./sparkline";
 import { RsiGauge } from "./rsi-gauge";
 import { RangeBar } from "./range-bar";
+import { MacdPanel } from "./macd-panel";
 import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
 import {
   TrendingUp,
@@ -11,10 +12,19 @@ import {
   Activity,
   Zap,
   BarChart3,
+  Radio,
 } from "lucide-react";
 
 type Props = {
   data: AnalysisResponse;
+  /** Live tick price (overrides REST spot_price when present). */
+  livePrice?: number | null;
+  /** Whether the tick stream is currently emitting ticks for this symbol. */
+  tickActive?: boolean;
+  /** Epoch ms of the most recent tick for this symbol (used for the "ms ago" label). */
+  lastTickAt?: number | null;
+  /** "now" reference for computing elapsed time — passed from the page so all cards use the same tick. */
+  nowMs?: number;
 };
 
 function fmtPrice(n: number | null): string {
@@ -90,17 +100,37 @@ const STATE_STYLES: Record<
  * Implementation: the `key` prop is bound to the value so React remounts
  * the span on every change, which retriggers the CSS `price-flash`
  * animation. No state, no refs, no effect — side-effect-free.
+ *
+ * When `live` is true we use the bullish/bearish color to also indicate
+ * direction (up = green, down = red) by computing the diff from the
+ * previous render's value. Because the component remounts on value change,
+ * we capture the "previous" value via a module-level cache keyed on the
+ * parent symbol — but to keep this pure & simple we just flash with the
+ * foreground color and let the parent pass the direction-correct value.
  */
-function PriceFlash({ value }: { value: number | null }) {
+function PriceFlash({ value, live }: { value: number | null; live?: boolean }) {
+  const color = live ? "#5fbf8f" : undefined;
   return (
     <span
       key={value ?? "none"}
       className="tnum text-foreground animate-price-flash"
+      style={color ? { color } : undefined}
       aria-live="polite"
     >
       ${fmtPrice(value)}
     </span>
   );
+}
+
+/**
+ * formatElapsed — human-readable "Ns" or "Nm" for elapsed milliseconds.
+ */
+function formatElapsed(ms: number): string {
+  if (ms < 0) return "0s";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m`;
 }
 
 function MetricRow({
@@ -150,7 +180,7 @@ function MetricRow({
   );
 }
 
-export function AssetCard({ data }: Props) {
+export function AssetCard({ data, livePrice, tickActive, lastTickAt, nowMs }: Props) {
   const meta = SYMBOL_META[data.symbol] ?? {
     label: data.symbol,
     pair: data.symbol,
@@ -167,6 +197,16 @@ export function AssetCard({ data }: Props) {
   const crossInfo = data.cross_info;
   const recentCross = crossInfo?.happened === true;
   const crossDir = crossInfo?.direction;
+
+  // Effective price: live tick overrides REST spot_price when present.
+  const displayPrice =
+    livePrice != null && Number.isFinite(livePrice) ? livePrice : data.spot_price;
+  const usingLive =
+    tickActive === true && livePrice != null && Number.isFinite(livePrice);
+
+  // Elapsed since last tick — formatted as "hace Ns" or "Nm".
+  const elapsedMs =
+    usingLive && lastTickAt != null && nowMs != null ? nowMs - lastTickAt : null;
 
   return (
     <article
@@ -231,8 +271,17 @@ export function AssetCard({ data }: Props) {
       <div className="px-5 pb-3">
         <div className="flex items-end gap-3">
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              Precio spot · USD
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+              <span>Precio spot · USD</span>
+              {usingLive && (
+                <span
+                  className="inline-flex items-center gap-1 rounded border border-[#5fbf8f]/30 bg-[#5fbf8f]/10 px-1 py-px text-[9px] font-bold tracking-wider text-[#5fbf8f]"
+                  title={`Tick en vivo · ${elapsedMs != null ? `hace ${formatElapsed(elapsedMs)}` : "—"}`}
+                >
+                  <Radio className="h-2.5 w-2.5 animate-pulse" aria-hidden />
+                  TICK
+                </span>
+              )}
             </div>
             <div
               className={`mt-0.5 text-3xl font-semibold leading-none ${
@@ -242,9 +291,14 @@ export function AssetCard({ data }: Props) {
               {nd.spot_price ? (
                 <span className="text-muted-foreground/60">Dato no disponible</span>
               ) : (
-                <PriceFlash value={data.spot_price} />
+                <PriceFlash value={displayPrice} live={usingLive} />
               )}
             </div>
+            {usingLive && elapsedMs != null && (
+              <div className="mt-1 text-[10px] text-muted-foreground/60 tnum">
+                tick hace {formatElapsed(elapsedMs)}
+              </div>
+            )}
           </div>
           <div className="mb-0.5 ml-auto text-right">
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -293,9 +347,18 @@ export function AssetCard({ data }: Props) {
           closes={data.series.closes}
           ema55={data.series.ema55}
           ema200={data.series.ema200}
-          spot={data.spot_price}
+          spot={displayPrice}
           crossState={data.cross_state}
           height={150}
+        />
+      </div>
+
+      {/* MACD mini-panel — histogram of last ~40 bars */}
+      <div className="px-5 pb-3">
+        <MacdPanel
+          macd={data.macd}
+          series={data.series.macd_histogram}
+          unavailable={nd.macd}
         />
       </div>
 
@@ -305,7 +368,7 @@ export function AssetCard({ data }: Props) {
           Posición en el rango · S/R
         </div>
         <RangeBar
-          spot={data.spot_price}
+          spot={displayPrice}
           support={data.support}
           resistance={data.resistance}
           ema55={data.ema55_4h}

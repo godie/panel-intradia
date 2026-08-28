@@ -252,3 +252,196 @@ percibido: el precio parpadeando en tiempo real transforma la experiencia.
 Mantener el análisis EMA/RSI/S-R a 60s (no necesita más frecuencia). Si el
 esfuerzo es alto, fallback a **MACD** (item 3) que es puramente backend +
 frontend aditivo sin nuevo servicio.
+
+---
+Task ID: round-3
+Agent: cron webDevReview
+Task: WebSocket tick-a-tick + MACD + styling improvements.
+
+Work Log:
+- Leído worklog previo: v2 estable, VLM 9/10 desktop y mobile. Próxima
+  prioridad recomendada era **websocket tick-a-tick** (alta) o **MACD**
+  (media). Se decidieron **ambas** en esta ronda para maximizar impacto.
+- QA inicial con agent-browser (vía Caddy gateway puerto 81, NO puerto
+  3000 directo — el gateway enruta `/foo?XTransformPort=NNNN` al puerto
+  correcto; cargar la página en 3000 directo rompe `io('/?XTransformPort=3003')`
+  porque Next.js no sabe proxyar WebSocket upgrades).
+- Mini-service **ws-tick** (puerto 3003, socket.io + Binance combined trade
+  stream para btcusdt/ethusdt/xrpusdt, throttle 800ms/symbol):
+  - Iniciado con `setsid nohup bun index.ts > service.log 2>&1 &`.
+  - Verificado: log muestra `[binance] connected, streaming trades` y
+    `[client] connected` cuando el browser abre la página.
+  - Health endpoint `/health` responde ( aunque el path `/` está reservado
+    para socket.io, el httpServer handler custom atiende `/health`).
+- **Hook `useTickStream`** (`src/hooks/use-tick-stream.ts`):
+  - Patrón `useSyncExternalStore` (React 19 nativo) — evita el lint
+    `react-hooks/set-state-in-effect` que rompía el primer intento con
+    `setLocal(state)` síncrono en el effect.
+  - Singleton a nivel módulo: UN socket.io compartido entre todos los
+    `useTickStream()` callers (3 AssetCards + header). Sin esto, abriría
+    3+1 sockets redundantes.
+  - Escucha `tick`, `ws-status`, `heartbeat`. Devuelve
+    `{prices, connected, binanceLive, lastHeartbeat, tickCount}`.
+  - `clearTickPriceGlobal(symbol)` — borra el precio cached del tick;
+    usado por `page.tsx` al refrescar REST para que el spot_price recién
+    obtenido tome el control hasta el próximo tick.
+- Backend MACD (`src/lib/indicators.ts`):
+  - Añadido `calculateMACD(closes, fast=12, slow=26, signal=9)` — Appel
+    defaults. MACD line = EMA(fast) - EMA(slow), Signal = EMA(signal)
+    sobre la porción no-null del MACD line (semilla SMA del helper
+    `calculateEMA`), Histogram = MACD - Signal.
+  - Edge cases: devuelve `available:false` cuando `n < slow+signal` o
+    `fast >= slow` o `period <= 0`. Las series se alinean con `closes`
+    (null hasta que ambas EMAs están definidas; signal aún más tarde).
+  - Helper `MACDResult` type exportado.
+- Backend types (`src/lib/types.ts`):
+  - `AnalysisResponse.macd: {line, signal, histogram}` (todos number|null).
+  - `AnalysisResponse.series.macd_histogram: (number|null)[]`.
+  - `AnalysisResponse.no_disponible.macd: boolean`.
+- Backend route (`src/app/api/analysis/route.ts`):
+  - Importa `calculateMACD`, lo invoca con 12/26/9 sobre los 4h closes.
+  - Incluye `macd` y `series.macd_histogram` en el payload. Flag
+    `no_disponible.macd = !macdRes.available`.
+  - Verificado: `curl /api/analysis?symbol=BTCUSDT` devuelve
+    `macd: {line: 286.45, signal: 652.99, histogram: -366.54}` y
+    `series.macd_histogram` con 120 entradas.
+- Frontend — **`MacdPanel`** (`src/components/panel/macd-panel.tsx`):
+  - Histograma compacto de los últimos ~40 valores. Cada barra vertical
+    crece desde la línea base (centro) — verde (#5fbf8f) hacia arriba si
+    positivo, rojo (#e2604f) hacia abajo si negativo.
+  - Altura normalizada contra max(|hist|) del viewport para que el chart
+    siempre llene el espacio sin distorsión.
+  - Etiquetas numéricas MACD/Signal/Hist en un grid de 3 columnas debajo
+    del chart, coloreadas según signo del histograma.
+  - Estado de tendencia ("Alcista ↑" / "Bajista ↓" / "Creciente ↓" /
+    "Recuperando ↑") comparando el último histograma vs el anterior.
+  - Estado `cross`: "MACD > Signal" o "MACD < Signal".
+  - Notice explícito "MACD no disponible" cuando `unavailable || line == null`.
+- Frontend — `AssetCard` (`src/components/panel/asset-card.tsx`):
+  - Props nuevas: `livePrice?`, `tickActive?`, `lastTickAt?`, `nowMs?`.
+  - `displayPrice = livePrice ?? data.spot_price` (con guards `Number.isFinite`).
+  - Badge "TICK" pulsante (Radio icon + `animate-pulse`) cuando
+    `tickActive && livePrice` es válido, con tooltip `tick hace Ns`.
+  - Línea "tick hace Ns" debajo del precio (formato `Ns` o `Nm`).
+  - `PriceFlash` ahora acepta `live` y aplica color verde (#5fbf8f) al
+    flash cuando el tick está activo — refuerzo visual del live update.
+  - Sparkline y RangeBar ahora consumen `displayPrice` (no `data.spot_price`)
+    para que el dot del spot se mueva en tiempo real con los ticks.
+  - `MacdPanel` insertado entre Sparkline y RangeBar como pedía el spec.
+- Frontend — `page.tsx`:
+  - `useTickStream()` al top level. Pasa `livePrice`, `tickActive`,
+    `lastTickAt`, `nowMs` a cada `AssetCard`.
+  - Estado `nowMs` (1Hz) para computar "tick hace Ns" sin causar cascada
+    de re-renders en el store (es state local del Page, no del hook).
+  - En cada refresh REST exitoso, llama `clearTickPriceGlobal(symbol)`
+    para que el REST spot_price tome el control hasta el próximo tick.
+  - Header: indicador de conexión con 3 estados:
+      * `live` — verde pulsante "TICK LIVE" (Radio icon, `live-pulse` anim).
+      * `connecting` — ámbar "CONECTANDO" (Wifi icon).
+      * `offline` — rojo "OFFLINE" (WifiOff icon).
+    Transiciones `transition-colors duration-300` para suavizar el cambio
+    de estado. Tooltip muestra `tickCount`, `lastHeartbeat`.
+  - Metodología actualizada para documentar MACD + tick stream.
+  - Wrapper `terminal-grid` en el root + overlay `terminal-scanlines`
+    (pointer-events-none, position fixed) para el look "CRT terminal".
+- CSS (`globals.css`):
+  - `.terminal-grid` — grid lines 48px (rgba 0.035) + radials existentes.
+  - `.terminal-scanlines` — repeating-linear-gradient horizontal (rgba
+    0.025) con `mix-blend-mode: overlay`, opacity 0.7.
+  - `@keyframes scan-sweep` — sweep glow vertical cada 12s, desactivado
+    bajo `prefers-reduced-motion`.
+- Lint: 1 iteración para resolver `react-hooks/set-state-in-effect` en
+  `use-tick-stream.ts` (solución: refactor a `useSyncExternalStore`).
+  Lint final limpio (`bun run lint` sin errores ni warnings).
+- Dev log: API 200s en todos los símbolos, latencia 4-200ms (caché HIT
+  ~5ms, MISS ~120ms). Sin errores de runtime.
+- Verificación agent-browser (vía puerto 81, no 3000):
+  - 3 tarjetas renderizadas con sparkline, MACD histogram, RSI gauge,
+    RangeBar, strip 24h.
+  - TICK badge visible en las 3 tarjetas. "tick hace 0s/3s/4s" debajo del
+    precio. Header muestra "TICK LIVE".
+  - Sin errores de console, sin errores de runtime.
+  - Footer sticky reconfirmado en viewport 2400px (sticksToBottom=true).
+- Verificación VLM desktop (1440x900): "9/10 — 3 cards with sparklines +
+  MACD histogram panels (green/red bars), TICK LIVE badge in top right
+  with green pulsing dot, TICK badges and 'tick hace Ns' timestamps next
+  to prices, subtle CRT scanline + grid texture, no visual bugs, color
+  coding correct, layout cohesive".
+- Verificación VLM mobile (390x844): "9/10 — single-column layout, all
+  cards readable, charts/indicators visible without overflow, TICK LIVE
+  indicator visible, market summary readable, no horizontal overflow".
+- Verificación API: `curl /api/analysis?symbol=BTCUSDT` confirma
+  `macd: {line, signal, histogram}` y `series.macd_histogram[120]`
+  presentes en el payload.
+
+Stage Summary:
+- **Estado:** v3 entregada y verificada. La app pasó de "quantitative
+  analysis tool" a "live trading terminal" (cita VLM: "highly professional,
+  premium trading tool"). 2 features nuevas (WebSocket ticks + MACD) +
+  styling refinements (scanline/grid overlay), todo sin romper el
+  contrato JSON (campos aditivos, retrocompatible).
+- **Artefactos producidos:**
+  - `src/hooks/use-tick-stream.ts` (nuevo — useSyncExternalStore + singleton)
+  - `src/lib/indicators.ts` (+calculateMACD, +MACDResult type)
+  - `src/lib/types.ts` (AnalysisResponse.macd + series.macd_histogram
+    + no_disponible.macd)
+  - `src/app/api/analysis/route.ts` (integración MACD en buildAnalysis)
+  - `src/components/panel/macd-panel.tsx` (nuevo — histograma + labels)
+  - `src/components/panel/asset-card.tsx` (+livePrice/tickActive props,
+    +TICK badge, +tick-hace-Ns, MACD panel integrado)
+  - `src/app/page.tsx` (useTickStream + header conn indicator +
+    clearTickPriceGlobal on REST refresh + terminal-grid wrapper)
+  - `src/app/globals.css` (.terminal-grid + .terminal-scanlines +
+    @keyframes scan-sweep + reduced-motion guard)
+- **Contrato JSON ampliado** (campos nuevos, retrocompatible):
+  `macd {line, signal, histogram}`, `series.macd_histogram[]`,
+  `no_disponible.macd`.
+- **Mini-service ws-tick** corriendo en puerto 3003 (singleton socket.io
+  + Binance combined trade stream + throttle 800ms/symbol).
+
+## Unresolved Issues / Next-Phase Priorities (round 3)
+
+1. **Persistencia del mini-service ws-tick**: el proceso `bun index.ts`
+   se cae cuando el shell session termina. Ya mitigado con `setsid` para
+   detach del controlling terminal, pero en producción debería ser un
+   systemd unit o pm2. Prioridad baja para dev.
+2. **Tooltips en hover** (sugerencia VLM ronda 2, aún pendiente):
+   añadir tooltips nativos o Radix Tooltip en RangeBar, RsiGauge y
+   MacdPanel para mostrar timestamps/valores exactos. Prioridad media.
+3. **MACD crossovers como alerta**: hoy el MacdPanel muestra el histograma
+   pero no detecta cruces MACD/signal recientes. Análogo a
+   `detectRecentCross` para EMA55/200. Prioridad media.
+4. **Persistencia de cruces históricos** (ítem 2 de ronda 2, aún
+   pendiente): log de cruces en SQLite via Prisma para historial.
+   Prioridad media.
+5. **Más pares** (SOL, BNB, ADA): solo requiere añadir al ALLOWED_SYMBOLS
+   set + SYMBOL_META + al array SYMBOLS del mini-service. Prioridad baja.
+6. **Tests automatizados**: las funciones puras (calculateRSI,
+   calculateMACD, detectRecentCross, findSupportResistance) son fácilmente
+   testeables con Vitest. Prioridad media para robustez.
+7. **Modo claro opcional**: el tema es oscuro forzado; un toggle sería
+   accesible pero requeriría re-trabajar la paleta y el terminal-grid.
+   Prioridad baja.
+8. **Optimización re-render ticks**: hoy cada tick re-renderiza el Page
+   entero (porque `useTickStream` devuelve un snapshot nuevo). Para 3
+   cards × 1.25 ticks/symbol/s = ~4 re-renders/s, irrelevante. Pero si se
+   añaden más pares podría valer la pena memoizar AssetCard con React.memo
+   y un comparador de precio. Prioridad baja.
+
+## Recommended Next Step (round 4)
+
+Priorizar **alerts visuales de cruce MACD/signal** (item 3) — el panel ya
+tiene todo el cómputo necesario (MACD line + signal disponibles en cada
+refresco). Añadir un banner "⚡ MACD cruce alcista/bajista · hace N vela(s)"
+análogo al de EMA55/200, y un destello en el histograma del último bar
+cuando hay flip de signo. Es la iteración natural que convierte el MACD
+panel de "lectura" a "alerta activa".
+
+En paralelo, añadir **tooltips nativos** (item 2) en RangeBar/RsiGauge/
+MacdPanel para mostrar timestamps y valores exactos — solución rápida de
+alto impacto en UX sin backend adicional.
+
+Si sobra ancho de banda, dar de alta un segundo mini-service de
+**order book depth L2** (puerto 3004) para enriquecer el RangeBar con
+información de bid/ask volume. Es la feature que más diferencia un panel
+cuantitativo de un dashboard de precio.

@@ -33,6 +33,12 @@ export type AnalysisResponse = {
   /** 24h high / low (from ticker). */
   high_24h: number | null;
   low_24h: number | null;
+  /** MACD(12, 26, 9) on 4h closes — Gerald Appel defaults. */
+  macd: {
+    line: number | null;
+    signal: number | null;
+    histogram: number | null;
+  };
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -47,12 +53,14 @@ export type AnalysisResponse = {
     volume_24h_usd: boolean;
     high_24h: boolean;
     low_24h: boolean;
+    macd: boolean;
   };
   series: {
     closes: number[];
     ema55: (number | null)[];
     ema200: (number | null)[];
     rsi: (number | null)[];
+    macd_histogram: (number | null)[];
   };
   updated_at: string;
 };

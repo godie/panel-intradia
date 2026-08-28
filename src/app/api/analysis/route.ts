@@ -8,6 +8,7 @@ import {
 import {
   calculateEMA,
   calculateRSI,
+  calculateMACD,
   detectRecentCross,
   findSupportResistance,
   determineCrossState,
@@ -58,6 +59,9 @@ function buildAnalysis(
   // RSI(14) on 4h closes.
   const rsiRes = calculateRSI(closes, 14);
 
+  // MACD(12, 26, 9) on 4h closes — Appel defaults.
+  const macdRes = calculateMACD(closes, 12, 26, 9);
+
   // Support / resistance.
   const srRes = findSupportResistance(highs, lows, spotPrice ?? 0);
 
@@ -90,6 +94,7 @@ function buildAnalysis(
     volume_24h_usd: ticker == null,
     high_24h: ticker == null,
     low_24h: ticker == null,
+    macd: !macdRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -98,6 +103,7 @@ function buildAnalysis(
   const seriesEma55 = ema55Res.series.slice(startIdx);
   const seriesEma200 = ema200Res.series.slice(startIdx);
   const seriesRsi = rsiRes.series.slice(startIdx);
+  const seriesMacdHist = macdRes.histogram.slice(startIdx);
 
   return {
     symbol,
@@ -114,6 +120,11 @@ function buildAnalysis(
     trades_24h: ticker?.trades ?? null,
     high_24h: round(ticker?.highPrice ?? null, dec),
     low_24h: round(ticker?.lowPrice ?? null, dec),
+    macd: {
+      line: round(macdRes.lastMacd, dec),
+      signal: round(macdRes.lastSignal, dec),
+      histogram: round(macdRes.lastHistogram, dec),
+    },
     structure_text: structureText,
     no_disponible,
     series: {
@@ -121,6 +132,7 @@ function buildAnalysis(
       ema55: seriesEma55,
       ema200: seriesEma200,
       rsi: seriesRsi,
+      macd_histogram: seriesMacdHist,
     },
     updated_at: new Date().toISOString(),
   };

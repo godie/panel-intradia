@@ -231,3 +231,75 @@
     animation: none !important;
   }
 }
+
+/*
+ * Terminal grid + scanline overlay — purely decorative, applied via
+ * `.terminal-grid` on the dashboard root and `.terminal-scanlines` on a
+ * fixed overlay div. The grid adds a faint cross-hatch reminiscent of a
+ * trading screen; the scanlines add the CRT horizontal-line shimmer.
+ */
+.terminal-grid {
+  background-image:
+    /* grid lines — kept subtle so they read as background texture, not chart paper */
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    /* radial accents preserved from base */
+    radial-gradient(circle at 20% 0%, rgba(79, 168, 216, 0.05), transparent 45%),
+    radial-gradient(circle at 80% 100%, rgba(95, 191, 143, 0.04), transparent 45%);
+  background-size:
+    48px 48px,
+    48px 48px,
+    100% 100%,
+    100% 100%;
+  background-attachment: fixed;
+}
+
+.terminal-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.025) 0px,
+    rgba(255, 255, 255, 0.025) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  mix-blend-mode: overlay;
+  opacity: 0.7;
+}
+
+/* Subtle moving glow sweep — gives the dashboard a "live" feel without
+   being distracting. Disabled under reduced-motion. */
+@keyframes scan-sweep {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.4;
+  }
+  90% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
+}
+.terminal-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(79, 168, 216, 0.04),
+    transparent
+  );
+  height: 40vh;
+  animation: scan-sweep 12s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-scanlines::after {
+    animation: none !important;
+  }
+}
