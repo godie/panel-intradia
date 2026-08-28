@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Trading-terminal semantic colors */
+  --color-bull: #5fbf8f;
+  --color-bear: #e2604f;
+  --color-amber: #e8b04b;
+  --color-cold: #4fa8d8;
+  --color-bull-muted: rgba(95, 191, 143, 0.14);
+  --color-bear-muted: rgba(226, 96, 79, 0.14);
+  --color-amber-muted: rgba(232, 176, 75, 0.14);
+  --color-cold-muted: rgba(79, 168, 216, 0.14);
+}
+
+/*
+ * Trading terminal dark theme — forced dark, no light variant.
+ * Background near-black (#0A0D12), subtle elevated surfaces.
+ */
+:root {
+  --radius: 0.5rem;
+  --background: #0a0d12;
+  --foreground: #e6edf3;
+  --card: #11151c;
+  --card-foreground: #e6edf3;
+  --popover: #11151c;
+  --popover-foreground: #e6edf3;
+  --primary: #4fa8d8;
+  --primary-foreground: #0a0d12;
+  --secondary: #161b24;
+  --secondary-foreground: #e6edf3;
+  --muted: #161b24;
+  --muted-foreground: #8b96a5;
+  --accent: #1a2230;
+  --accent-foreground: #e6edf3;
+  --destructive: #e2604f;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #4fa8d8;
+  --chart-1: #5fbf8f;
+  --chart-2: #e2604f;
+  --chart-3: #e8b04b;
+  --chart-4: #4fa8d8;
+  --chart-5: #b48cff;
+  --sidebar: #11151c;
+  --sidebar-foreground: #e6edf3;
+  --sidebar-primary: #4fa8d8;
+  --sidebar-primary-foreground: #0a0d12;
+  --sidebar-accent: #1a2230;
+  --sidebar-accent-foreground: #e6edf3;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #4fa8d8;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    @apply bg-background text-foreground;
+  }
+  body {
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    background-color: var(--background);
+    /* Subtle grid backdrop reminiscent of a trading screen */
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(79, 168, 216, 0.05), transparent 45%),
+      radial-gradient(circle at 80% 100%, rgba(95, 191, 143, 0.04), transparent 45%);
+    background-attachment: fixed;
+  }
+}
+
+/* Tabular numbers everywhere a price lives — prevents jitter on refresh. */
+.tnum {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* Marquee ticker tape animation. */
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+.animate-ticker {
+  animation: ticker-scroll 38s linear infinite;
+}
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+
+/* Soft pulse for the LIVE dot. */
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(95, 191, 143, 0.5);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 6px rgba(95, 191, 143, 0);
+  }
+}
+.live-dot {
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+
+/* Custom scrollbar for the structure text + any scroll areas. */
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Focus ring for accessibility — visible on the refresh button & cards. */
+:focus-visible {
+  outline: 2px solid var(--color-cold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
