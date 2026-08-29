@@ -86,6 +86,10 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // Filter state: "all" | "ema" | "macd" | "momentum" for type,
+  // "all" | "bullish" | "bearish" for direction.
+  const [typeFilter, setTypeFilter] = useState<"all" | CrossEventType>("all");
+  const [dirFilter, setDirFilter] = useState<"all" | CrossDirection>("all");
 
   useEffect(() => {
     let aborted = false;
@@ -116,9 +120,16 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
     };
   }, [pollMs]);
 
-  const events = data?.events ?? [];
+  const allEvents = data?.events ?? [];
   const stats = data?.stats ?? {};
   const totalAll = Object.values(stats).reduce((s, v) => s + v.total, 0);
+
+  // Apply filters.
+  const events = allEvents.filter((ev) => {
+    if (typeFilter !== "all" && ev.type !== typeFilter) return false;
+    if (dirFilter !== "all" && ev.direction !== dirFilter) return false;
+    return true;
+  });
 
   return (
     <section className="rounded-xl border border-white/5 bg-card/40 backdrop-blur-sm">
@@ -174,6 +185,51 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
           id="cross-history-body"
           className="border-t border-white/5 px-5 pb-5 pt-3"
         >
+          {/* Filter controls */}
+          {allEvents.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {/* Type filter tabs */}
+              <div className="flex items-center gap-1 rounded-lg border border-white/8 bg-black/20 p-0.5">
+                <FilterButton
+                  active={typeFilter === "all"}
+                  onClick={() => setTypeFilter("all")}
+                  label="Todos"
+                />
+                {(Object.keys(TYPE_META) as CrossEventType[]).map((t) => (
+                  <FilterButton
+                    key={t}
+                    active={typeFilter === t}
+                    onClick={() => setTypeFilter(t)}
+                    label={TYPE_META[t].short}
+                    color={TYPE_META[t].color}
+                  />
+                ))}
+              </div>
+              {/* Direction filter */}
+              <div className="flex items-center gap-1 rounded-lg border border-white/8 bg-black/20 p-0.5">
+                <FilterButton
+                  active={dirFilter === "all"}
+                  onClick={() => setDirFilter("all")}
+                  label="Dir."
+                />
+                <FilterButton
+                  active={dirFilter === "bullish"}
+                  onClick={() => setDirFilter("bullish")}
+                  label="↑ Alcista"
+                  color="#5fbf8f"
+                />
+                <FilterButton
+                  active={dirFilter === "bearish"}
+                  onClick={() => setDirFilter("bearish")}
+                  label="↓ Bajista"
+                  color="#e2604f"
+                />
+              </div>
+              <span className="tnum ml-auto text-[10px] text-muted-foreground/60">
+                {events.length}/{allEvents.length} eventos
+              </span>
+            </div>
+          )}
           {loading && (
             <div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -255,6 +311,39 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
         </div>
       )}
     </section>
+  );
+}
+
+/** Small filter tab button — active state uses the accent color. */
+function FilterButton({
+  active,
+  onClick,
+  label,
+  color,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  color?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-2 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+        active
+          ? "bg-white/10 text-foreground"
+          : "text-muted-foreground hover:text-foreground/80"
+      }`}
+      style={
+        active && color
+          ? { color, background: `${color}1a`, boxShadow: `inset 0 0 0 1px ${color}40` }
+          : undefined
+      }
+      aria-pressed={active}
+    >
+      {label}
+    </button>
   );
 }
 

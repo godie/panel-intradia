@@ -959,3 +959,144 @@ Si sobra ancho de banda, **correlación entre pares** en Market Overview
 (item 5) — un mini heatmap o matrix de correlación BTC/ETH/XRP/SOL/BNB
 basado en los cambios 24h. Feature diferenciadora para un panel
 cuantitativo.
+
+---
+Task ID: round-7
+Agent: cron webDevReview
+Task: Vitest tests + cross-history filters + Pearson correlation matrix.
+
+Work Log:
+- Leído worklog previo: v6 estable con collapsible sections + Market Overview
+  + live cross-alert toasts. Próxima prioridad: tests Vitest para detectMacdCross,
+  cross-history filters, correlación entre pares.
+- QA inicial con agent-browser: 6 cards renderizadas (5 pares + overview),
+  TICK LIVE activo, sin errores. Servicios ws-tick (3003) y order-book (3004)
+  corriendo con 5 símbolos. Prisma log fix aplicado (no más query spam).
+  Estabilidad confirmada → proceder con las 3 features recomendadas.
+- Tests — Vitest setup:
+  - Instalado vitest@4.1.11 como devDependency.
+  - Creado `vitest.config.ts` con environment: "node", include: "src/lib/**/*.test.ts",
+    alias "@" → src, reporters: ["verbose"].
+  - Añadidos scripts "test" (vitest run) y "test:watch" (vitest) en package.json.
+- Tests — `src/lib/indicators.test.ts` (29 tests, todos passing):
+  - `calculateEMA`: 3 tests (unavailable con series cortas, SMA seed, recurrencia
+    estándar con verificación de lagging).
+  - `calculateRSI`: 5 tests (unavailable, uptrend→100, downtrend→0, alternating→~50,
+    clamp [0,100]).
+  - `determineCrossState`: 4 tests (ALCISTA, BAJISTA, COMPRIMIDO <0.15%,
+    unavailable con nulls).
+  - `detectRecentCross`: 5 tests (bullish cross, bearish cross, fuera de
+    threshold, sin flip, series cortas).
+  - `detectMacdCross`: 8 tests (fresh bullish, fresh bearish, fuera de
+    threshold, sin cross (MACD>signal), sin cross (MACD<signal), momentum flip
+    sin cross, series vacías, null-heavy, cross+flip simultáneo).
+  - `calculateMACD`: 3 tests (unavailable con pocos closes, produce
+    line/signal/histogram, rechaza fast>=slow).
+  - Iteraciones: 7 tests fallaron en primer intento por off-by-one en
+    expectaciones de candles_since_cross (la función computa lastValid-crossIdx+1,
+    no lastValid-crossIdx) y un assertion de EMA que no respetaba el lagging.
+    Corregidos las expectaciones para matchear el comportamiento correcto.
+  - Cobertura: todas las funciones puras de indicators.ts están testeadas.
+- Frontend — Cross-history filters (`src/components/panel/cross-history.tsx`):
+  - Estado: `typeFilter` ("all"|"ema"|"macd"|"momentum") y `dirFilter`
+    ("all"|"bullish"|"bearish").
+  - Filter UI: 2 grupos de FilterButton tabs en una fila, solo visibles cuando
+    hay eventos. Cada grupo en un container con border.
+    - Tipo: Todos | EMA | MACD | MOM (con color del tipo)
+    - Dirección: Dir. | ↑ Alcista | ↓ Bajista (verde/rojo)
+  - Contador "N/M eventos" a la derecha (eventos filtrados / totales).
+  - FilterButton helper: button con aria-pressed, color accent cuando active
+    (background + inset box-shadow del color del tipo).
+  - Filtrado client-side (no re-fetch), instantáneo.
+- Backend — `/api/correlation` (nuevo):
+  - GET /api/correlation — fetch 500 klines 4h para los 5 símbolos en paralelo,
+    convierte a returns porcentuales, computa Pearson r entre cada par.
+  - Devuelve `{symbols[], matrix[][], window, updated_at}` — matriz 5x5 simétrica.
+  - Caché 120s (correlation es compute-heavy: 5 fetches de Binance).
+  - Helper `pearson(a, b)` — coeficiente de correlación de Pearson estándar.
+    Retorna null si varianza cero o series cortas.
+  - Helper `toReturns(closes)` — returns porcentuales close-to-close.
+  - Verificado: BTC-ETH=0.864 (mayor), BTC-XRP=0.74, SOL-BNB=0.79. Matriz
+    simétrica, diagonal=1.0.
+- Frontend — `src/components/panel/correlation-matrix.tsx` (nuevo):
+  - Heatmap tabular con labels de símbolo en filas + columnas.
+  - Cada celda: color background por valor (verde positivo / rojo negativo,
+    intensidad ∝ |r|), valor numérico en mono font, tooltip con par + valor.
+  - Diagonal (i==j) con inset border para distinguirla.
+  - Color legend abajo: "−1.0 (inverso)" ← gradient → "+1.0 (idéntico)".
+  - Fetches /api/correlation cada 120s, loading state con spinner.
+  - cellColor helper: mapea [-1,1] a rgba verde/rojo con alpha 0.08-0.40.
+  - Overflow-x-auto scroll-thin para mobile (matriz puede ser ancha).
+- Frontend — `market-overview.tsx` integración:
+  - `<CorrelationMatrix />` añadido después del mini bar chart, antes del footer.
+  - La card de overview ahora tiene: breadth gauge + top/worst performer +
+    biggest mover/avg RSI + bar chart + correlation matrix + footer text.
+- Lint: 0 iteraciones. `bun run lint` limpio.
+- Tests: 29/29 passing (0.19s).
+- Verificación API: `curl /api/correlation` devuelve matriz 5x5 con valores
+  realistas (BTC-ETH 0.864, BTC-XRP 0.74, etc.). Caché HIT en segunda llamada.
+- Verificación agent-browser:
+  - 6 cards renderizadas. Overview card contiene "CORRELACIÓN (PEARSON)",
+    "4h · 500 velas (~83 días)", matriz 5x5 con valores (BTC-ETH 0.86).
+  - Sin errores console/runtime.
+- Verificación VLM desktop: "Correlation matrix clearly visible, color coding
+  correct (green positive, red negative, diagonal solid green), values
+  readable, no overflow, high polish, production-ready. Adds significant
+  professional value."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 3913 = footerBottom (empujado naturalmente).
+
+Stage Summary:
+- **Estado:** v7 entregada y verificada. 3 features nuevas (Vitest tests +
+  cross-history filters + Pearson correlation matrix). 29 tests pasando,
+  cobertura de todas las funciones puras de indicators.ts.
+- **Artefactos producidos:**
+  - `vitest.config.ts` (nuevo — config de tests)
+  - `package.json` (+ scripts test, test:watch)
+  - `src/lib/indicators.test.ts` (nuevo — 29 tests, 8 para detectMacdCross)
+  - `src/components/panel/cross-history.tsx` (+ FilterButton + type/dir filters)
+  - `src/app/api/correlation/route.ts` (nuevo — Pearson 5x5, 120s cache)
+  - `src/components/panel/correlation-matrix.tsx` (nuevo — heatmap)
+  - `src/components/panel/market-overview.tsx` (+ CorrelationMatrix integration)
+- **Tests:** 29/29 passing en 0.19s. Cobertura: calculateEMA, calculateRSI,
+  determineCrossState, detectRecentCross, detectMacdCross, calculateMACD.
+- **Correlación real:** BTC-ETH 0.864 (mayor), BTC-XRP 0.74 (menor BTC).
+  Matriz simétrica, diagonal 1.0. Caché 120s.
+
+## Unresolved Issues / Next-Phase Priorities (round 7)
+
+1. **Cobertura de tests**: actualmente solo indicators.ts está testeado.
+   Podría añadirse tests para `findSupportResistance` y `buildStructureText`
+   (también son funciones puras). Prioridad media.
+2. **Cross-history filter persistence**: los filtros se resetean al
+   recargar. Podría persistirse en URL query params o localStorage.
+   Prioridad baja.
+3. **Correlation matrix interactividad**: hover highlight de fila/columna,
+   click para ver el scatter plot del par seleccionado. Prioridad baja.
+4. **Correlation timeframe selector**: actualmente fijo en 4h/500 velas.
+   Podría añadirse un selector (1h, 4h, 1d) y/o ventana (100/500/1000 velas).
+   Prioridad media.
+5. **Collapsible sections state persistence** (item 4 de round 6, aún
+   pendiente): persistir estado de collapse en localStorage. Prioridad baja.
+6. **Toast dedup across reloads** (item 6 de round 6, aún pendiente):
+   sessionStorage para el Set de IDs vistos. Prioridad baja.
+7. **Market Overview correlation insight text**: además de la matriz,
+   un texto automático ("BTC y ETH altamente correlacionados (0.86) —
+   diversificación limitada entre los dos"). Prioridad baja.
+
+## Recommended Next Step (round 8)
+
+Priorizar **correlation timeframe selector** (item 4) — añadir un dropdown
+en la CorrelationMatrix para elegir timeframe (1h, 4h, 1d) y ventana (100,
+500, 1000 velas). El backend ya soporta los params, solo hay que pasarlos.
+Esto da al trader control sobre la escala temporal del análisis de
+correlación, que es la pregunta #1 en gestión de cartera crypto.
+
+En paralelo, **tests para findSupportResistance** (item 1) — es la función
+más compleja sin testear (pivotes ±3, fallbacks a extremos). Tests con
+fixtures sintéticos cubriendo: pivotes claros, sin pivotes (fallback),
+precio fuera del rango, series cortas. Prioridad media.
+
+Si sobra ancho de banda, **hover interactivity en la correlation matrix**
+(item 3) — highlight de fila+columna al hacer hover en una celda, click
+para abrir un modal con el scatter plot del par. Feature diferenciadora.

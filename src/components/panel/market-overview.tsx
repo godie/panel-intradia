@@ -1,6 +1,7 @@
 "use client";
 
 import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
+import { CorrelationMatrix } from "./correlation-matrix";
 import { TrendingUp, TrendingDown, Minimize2, Globe, Award } from "lucide-react";
 
 type Props = {
@@ -273,6 +274,11 @@ export function MarketOverview({ items }: Props) {
             );
           })}
         </div>
+      </div>
+
+      {/* Correlation matrix — Pearson between all pairs */}
+      <div className="px-5 pb-3">
+        <CorrelationMatrix />
       </div>
 
       {/* Footer */}
