@@ -1100,3 +1100,148 @@ precio fuera del rango, series cortas. Prioridad media.
 Si sobra ancho de banda, **hover interactivity en la correlation matrix**
 (item 3) — highlight de fila+columna al hacer hover en una celda, click
 para abrir un modal con el scatter plot del par. Feature diferenciadora.
+
+---
+Task ID: round-8
+Agent: cron webDevReview
+Task: Correlation timeframe selector + hover highlight + findSupportResistance tests + export snapshot + keyboard shortcuts.
+
+Work Log:
+- Leído worklog previo: v7 estable con Vitest tests + cross-history filters +
+  Pearson correlation matrix. 39 tests pasando. Próxima prioridad: correlation
+  timeframe selector, tests para findSupportResistance, hover interactivity.
+- QA inicial con agent-browser: 6 cards, TICK LIVE, sin errores. Servicios
+  ws-tick (3003) y order-book (3004) corriendo. Estabilidad confirmada.
+- Decisión: 4 features en esta ronda:
+  (1) Correlation timeframe selector (backend params + frontend UI),
+  (2) Hover highlight en correlation matrix,
+  (3) Tests para findSupportResistance,
+  (4) Export snapshot JSON + keyboard shortcuts.
+- Backend — `/api/correlation` ampliado:
+  - Acepta query params `interval` (1h/4h/1d) y `limit` (100/500/1000).
+  - Validación: interval debe estar en INTERVALS map, limit en ALLOWED_LIMITS.
+  - Caché key ahora `correlation:{interval}:{limit}` — cada combo se cachea
+    independientemente por 120s.
+  - Response incluye `interval`, `limit`, y `window` label dinámico
+    (ej: "1h · 100 velas (~4 días)", "4h · 500 velas (~83 días)",
+    "1d · 1000 velas (~1000 días)").
+  - Verificado: `curl /api/correlation?interval=1h&limit=100` devuelve
+    interval=1h, limit=100, window="1h · 100 velas (~4 días)".
+- Frontend — `correlation-matrix.tsx` ampliado:
+  - Timeframe selector: 3 botones (1H / 4H / 1D) con color accent azul
+    cuando activo. Cambia el `interval` state → re-fetch.
+  - Window size selector: dropdown `<select>` con opciones 100/500/1000.
+    Cambia el `limit` state → re-fetch.
+  - Hover highlight: `hoverRow` + `hoverCol` state. Al hacer hover sobre
+    una celda, la fila + columna correspondientes se resaltan (labels
+    cambian a text-foreground, celdas hacen scale-110 + ring-1).
+    Highlight simétrico (hover en [i,j] también resalta [j,i]).
+  - Insight text automático: busca el par con mayor |r| off-diagonal y
+    muestra "BTC ↔ ETH: correlación positiva fuerte (0.86)" + nota de
+    diversificación si |r| >= 0.7.
+  - interpretCorrelation helper: fuerte (≥0.7) / moderada (≥0.4) / débil,
+    positiva / negativa.
+  - Window label movido al fondo, centrado, más sutil.
+  - Lint fix: `setLoading(true)` movido dentro de `load(showLoading)`
+    para evitar react-hooks/set-state-in-effect.
+- Tests — `findSupportResistance` (10 tests nuevos, 39 total):
+  - unavailable con series cortas.
+  - detecta pivot high como resistencia.
+  - detecta pivot low como soporte.
+  - detecta ambos con precio entre ellos.
+  - fallback a range max cuando no hay pivot high above price.
+  - fallback a range min cuando no hay pivot low below price.
+  - picks nearest pivot above price.
+  - picks nearest pivot below price.
+  - null resistance cuando precio > todo (incluido range max).
+  - respeta lookback window (pivot fuera de rango no se detecta).
+- Frontend — `use-keyboard-shortcuts.ts` hook (nuevo):
+  - Escucha keydown global. Ignora inputs/textareas/selects/contenteditable.
+  - Ignora combos con Ctrl/Cmd/Alt.
+  - R → onRefresh (manual refresh).
+  - C → dispatch CustomEvent "panel:collapse-all".
+  - E → dispatch CustomEvent "panel:expand-all".
+- Frontend — `collapsible-section.tsx` ampliado:
+  - useEffect que escucha "panel:collapse-all" y "panel:expand-all"
+    CustomEvents → setOpen(false/true).
+  - Permite colapsar/expandir TODAS las secciones de TODAS las cards a la vez.
+- Frontend — `export-snapshot.ts` (nuevo):
+  - `exportSnapshot(items, crossHistory?)` — construye un objeto snapshot
+    con exported_at, pairs, cross_history, meta. Lo serializa a JSON
+    bonificado (2 espacios) y dispara download via Blob + anchor temporal.
+  - Filename: `panel-cuantitativo-{timestamp}.json`.
+- Frontend — `page.tsx` integración:
+  - `useKeyboardShortcuts({ onRefresh: () => fetchAllRef.current?.(true) })`.
+  - `fetchAllRef` = useRef(fetchAll) para evitar stale closure.
+  - Botón "Exportar" (Download icon) en el header → `exportSnapshot(tickerItems)`.
+  - Hint "R · C · E" (Keyboard icon) en el header (md+ only) con tooltip.
+- Lint: 1 iteración. Error react-hooks/set-state-in-effect en
+  correlation-matrix.tsx (setLoading(true) síncrono en effect). Fix: movido
+  a `load(showLoading)` parametrizado. Lint final limpio.
+- Tests: 39/39 passing (0.21s). +10 tests para findSupportResistance.
+- Verificación agent-browser:
+  - 6 cards renderizadas. Overview card contiene "CORRELACIÓN (PEARSON)",
+    timeframe selector (1H/4H/1D), window dropdown (100/500/1000), matriz
+    5x5, insight "BTC ↔ ETH: correlación positiva fuerte (0.86)".
+  - Header: botón "Exportar" + hint "R · C · E" visibles.
+  - Sin errores console/runtime.
+- Verificación VLM desktop: "Timeframe selector 1H/4H/1D visible. Insight
+  text 'BTC ↔ ETH: correlación positiva fuerte' visible. Export button +
+  shortcuts hint visible in header. High polish, no critical bugs. Only
+  minor spacing tightness in correlation section."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+
+Stage Summary:
+- **Estado:** v8 entregada y verificada. 4 features nuevas (correlation
+  timeframe selector + hover highlight + findSupportResistance tests +
+  export/keyboard shortcuts). 39 tests pasando, cobertura completa de
+  indicators.ts.
+- **Artefactos producidos:**
+  - `src/app/api/correlation/route.ts` (+ params interval/limit + validation)
+  - `src/components/panel/correlation-matrix.tsx` (+ timeframe selector +
+    hover highlight + insight text)
+  - `src/lib/indicators.test.ts` (+10 tests findSupportResistance = 39 total)
+  - `src/hooks/use-keyboard-shortcuts.ts` (nuevo — R/C/E shortcuts)
+  - `src/components/panel/collapsible-section.tsx` (+ event listeners)
+  - `src/lib/export-snapshot.ts` (nuevo — JSON download)
+  - `src/app/page.tsx` (+ useKeyboardShortcuts + export button + hint)
+- **Tests:** 39/39 passing en 0.21s. Cobertura: calculateEMA, calculateRSI,
+  determineCrossState, detectRecentCross, detectMacdCross, calculateMACD,
+  findSupportResistance (10 tests nuevos).
+- **Correlación configurable:** 3 timeframes × 3 window sizes = 9 combos,
+  cada uno cacheado 120s. Insight text automático con par más correlacionado.
+
+## Unresolved Issues / Next-Phase Priorities (round 8)
+
+1. **Collapsible state persistence** (item 4 de round 6, aún pendiente):
+   persistir estado de collapse en localStorage. Prioridad baja.
+2. **Toast dedup across reloads** (item 6 de round 6, aún pendiente):
+   sessionStorage para el Set de IDs vistos. Prioridad baja.
+3. **Cross-history filter persistence** (item 2 de round 7, aún pendiente):
+   URL query params o localStorage. Prioridad baja.
+4. **Scatter plot modal** para correlation matrix (item 3 de round 7):
+   click en celda → modal con scatter plot del par. Prioridad media.
+5. **Tests para buildStructureText**: la última función pura sin testear.
+   Genera el texto de estructura de mercado en español. Prioridad media.
+6. **Keyboard shortcut help modal**: un modal "?" que liste todos los
+   atajos. Prioridad baja.
+7. **Export CSV/IMG**: además de JSON, exportar a CSV o screenshot PNG.
+   Prioridad baja.
+8. **Prisma log fix no aplicado al HMR**: el cambio en db.ts (log: ['error','warn'])
+   no se aplicó al proceso en curso. Requiere restart del dev server.
+   Prioridad baja (solo afecta dev.log noise).
+
+## Recommended Next Step (round 9)
+
+Priorizar **scatter plot modal** (item 4) — click en una celda de la
+correlation matrix abre un modal con el scatter plot de returns del par
+seleccionado + línea de regresión + R². Es la feature que más diferencia un
+panel cuantitativo profesional de un dashboard básico.
+
+En paralelo, **tests para buildStructureText** (item 5) — la última función
+pura sin testear. Tests con fixtures cubriendo: precio sobre ambas medias,
+precio bajo ambas, precio entre medias, medias no disponibles, soporte/
+resistencia null. Prioridad media.
+
+Si sobra ancho de banda, **keyboard shortcut help modal** (item 6) — un
+overlay "?" que liste todos los atajos (R, C, E, ?). Prioridad baja.

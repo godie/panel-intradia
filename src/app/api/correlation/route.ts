@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { fetchKlines } from "@/lib/binance";
 import { getCached, setCached } from "@/lib/cache";
 
@@ -7,6 +7,15 @@ export const dynamic = "force-dynamic";
 
 const SYMBOLS = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT", "BNBUSDT"];
 const CACHE_TTL_MS = 120_000; // 2 min — correlation doesn't need to be as fresh
+
+/** Allowed intervals with human-readable labels for the UI. */
+const INTERVALS: Record<string, { label: string; daysPerCandle: number }> = {
+  "1h": { label: "1h", daysPerCandle: 1 / 24 },
+  "4h": { label: "4h", daysPerCandle: 1 / 6 },
+  "1d": { label: "1d", daysPerCandle: 1 },
+};
+
+const ALLOWED_LIMITS = new Set([100, 500, 1000]);
 
 /**
  * Compute Pearson correlation coefficient between two arrays of equal length.
@@ -48,18 +57,37 @@ function toReturns(closes: number[]): number[] {
 }
 
 /**
- * GET /api/correlation
+ * GET /api/correlation?interval=4h&limit=500
  *
  * Returns a Pearson correlation matrix between all supported symbols, based
- * on 4h close-to-close percentage returns over the last 500 candles. A
- * symmetric matrix of {symbols[], matrix[][]} where matrix[i][j] is the
- * correlation between symbols[i] and symbols[j] (1.0 on the diagonal).
+ * on close-to-close percentage returns over the last `limit` candles of the
+ * given `interval`. A symmetric matrix of {symbols[], matrix[][]} where
+ * matrix[i][j] is the correlation between symbols[i] and symbols[j] (1.0
+ * on the diagonal).
  *
- * Cached for 120s — correlation is compute-heavy (5 Binance fetches) and
- * doesn't need sub-minute freshness.
+ * Params:
+ *  - interval: "1h" | "4h" | "1d" (default "4h")
+ *  - limit: 100 | 500 | 1000 (default 500)
+ *
+ * Cached for 120s per (interval+limit) combo — correlation is compute-heavy
+ * (5 Binance fetches) and doesn't need sub-minute freshness.
  */
-export async function GET() {
-  const cacheKey = "correlation:all";
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const interval = searchParams.get("interval") ?? "4h";
+  const limitRaw = Number(searchParams.get("limit") ?? "500");
+
+  // Validate interval.
+  if (!INTERVALS[interval]) {
+    return NextResponse.json(
+      { error: `Interval inválido. Permitidos: ${Object.keys(INTERVALS).join(", ")}` },
+      { status: 400 },
+    );
+  }
+  // Validate limit.
+  const limit = ALLOWED_LIMITS.has(limitRaw) ? limitRaw : 500;
+
+  const cacheKey = `correlation:${interval}:${limit}`;
   const cached = getCached(cacheKey);
   if (cached) {
     return NextResponse.json(cached, {
@@ -72,7 +100,7 @@ export async function GET() {
     const results = await Promise.all(
       SYMBOLS.map(async (s) => {
         try {
-          const klines = await fetchKlines(s, "4h", 500);
+          const klines = await fetchKlines(s, interval, limit);
           return { symbol: s, returns: toReturns(klines.map((k) => k.close)) };
         } catch {
           return { symbol: s, returns: [] };
@@ -90,10 +118,16 @@ export async function GET() {
       }),
     );
 
+    const meta = INTERVALS[interval];
+    const approxDays = Math.round(limit * meta.daysPerCandle);
+    const window = `${meta.label} · ${limit} velas (~${approxDays} días)`;
+
     const payload = {
       symbols: SYMBOLS,
       matrix,
-      window: "4h · 500 velas (~83 días)",
+      interval,
+      limit,
+      window,
       updated_at: new Date().toISOString(),
     };
     setCached(cacheKey, payload, CACHE_TTL_MS);

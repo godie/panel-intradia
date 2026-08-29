@@ -6,6 +6,7 @@ import {
   detectMacdCross,
   calculateMACD,
   determineCrossState,
+  findSupportResistance,
 } from "./indicators";
 
 describe("calculateEMA", () => {
@@ -278,5 +279,124 @@ describe("calculateMACD", () => {
   it("rejects invalid params (fast >= slow)", () => {
     const r = calculateMACD(Array(100).fill(100), 26, 12, 9); // fast > slow
     expect(r.available).toBe(false);
+  });
+});
+
+describe("findSupportResistance", () => {
+  it("returns unavailable with too few candles", () => {
+    const r = findSupportResistance([100], [99], 100, { window: 3, lookback: 80 });
+    expect(r.available).toBe(false);
+    expect(r.support).toBeNull();
+    expect(r.resistance).toBeNull();
+  });
+
+  it("detects a clear pivot high as resistance", () => {
+    // Build highs with a clear spike at index 10 (surrounded by lower highs).
+    const n = 30;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(95);
+    highs[10] = 120; // pivot high
+    const price = 105;
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 30 });
+    expect(r.available).toBe(true);
+    expect(r.resistance).toBe(120);
+  });
+
+  it("detects a clear pivot low as support", () => {
+    const n = 30;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(95);
+    lows[10] = 80; // pivot low
+    const price = 95;
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 30 });
+    expect(r.available).toBe(true);
+    expect(r.support).toBe(80);
+  });
+
+  it("detects both support and resistance with price between them", () => {
+    const n = 30;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(95);
+    highs[5] = 115; // resistance pivot
+    lows[15] = 85; // support pivot
+    const price = 100;
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 30 });
+    expect(r.available).toBe(true);
+    expect(r.resistance).toBe(115);
+    expect(r.support).toBe(85);
+  });
+
+  it("falls back to range max when no pivot high above price", () => {
+    // All highs equal → no pivot, fallback to max (which equals the flat high).
+    const n = 30;
+    const highs = Array(n).fill(110);
+    const lows = Array(n).fill(95);
+    const price = 100;
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 30 });
+    expect(r.available).toBe(true);
+    // No pivot high found, fallback to max of range = 110 > price.
+    expect(r.resistance).toBe(110);
+  });
+
+  it("falls back to range min when no pivot low below price", () => {
+    const n = 30;
+    const highs = Array(n).fill(110);
+    const lows = Array(n).fill(90);
+    const price = 100;
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 30 });
+    expect(r.available).toBe(true);
+    expect(r.support).toBe(90);
+  });
+
+  it("picks the nearest pivot above the price as resistance", () => {
+    // Two pivot highs: one at 130 (index 5), one at 120 (index 20).
+    // Price = 110 → nearest above is 120.
+    const n = 30;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(95);
+    highs[5] = 130;
+    highs[20] = 120;
+    const price = 110;
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 30 });
+    expect(r.resistance).toBe(120);
+  });
+
+  it("picks the nearest pivot below the price as support", () => {
+    // Two pivot lows: one at 80 (index 5), one at 90 (index 20).
+    // Price = 95 → nearest below is 90.
+    const n = 30;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(95);
+    lows[5] = 80;
+    lows[20] = 90;
+    const price = 95;
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 30 });
+    expect(r.support).toBe(90);
+  });
+
+  it("returns null resistance when price is above all pivots and range max", () => {
+    const n = 30;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(95);
+    const price = 200; // above everything
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 30 });
+    // Fallback max = 100, but 100 < price → resistance stays null.
+    expect(r.resistance).toBeNull();
+    // Support should still be found (pivots below).
+    expect(r.support).not.toBeNull();
+  });
+
+  it("respects the lookback window", () => {
+    // Pivot at index 5 with lookback=20 → only the last 20 candles are scanned,
+    // so a pivot at index 5 (more than 20 bars from the end of a 30-bar array)
+    // is NOT in the scan range.
+    const n = 30;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(95);
+    highs[5] = 130; // outside lookback window
+    const price = 105;
+    const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 20 });
+    // Pivot at index 5 is NOT scanned (lookback=20 means start=10).
+    expect(r.resistance).not.toBe(130);
   });
 });

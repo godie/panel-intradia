@@ -13,7 +13,9 @@ import {
 } from "@/hooks/use-tick-stream";
 import { useOrderBook } from "@/hooks/use-order-book";
 import { useCrossAlerts } from "@/hooks/use-cross-alerts";
-import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff } from "lucide-react";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { exportSnapshot } from "@/lib/export-snapshot";
+import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff, Download, Keyboard } from "lucide-react";
 
 const REFRESH_MS = 60_000;
 type Cell = { loading: boolean; error: string | null; data: AnalysisResponse | null };
@@ -48,6 +50,7 @@ export default function Page() {
   const tick = useTickStream();
   const book = useOrderBook();
   useCrossAlerts();
+  useKeyboardShortcuts({ onRefresh: () => fetchAllRef.current?.(true) });
 
   const fetchAll = useCallback(async (manual: boolean) => {
     // Cancel any in-flight fetch.
@@ -113,6 +116,11 @@ export default function Page() {
     }
     if (manual) setRefreshing(false);
   }, []);
+
+  // Keep a ref to fetchAll so the keyboard shortcuts hook can call it without
+  // stale closure issues.
+  const fetchAllRef = useRef(fetchAll);
+  fetchAllRef.current = fetchAll;
 
   // Initial fetch.
   useEffect(() => {
@@ -261,6 +269,25 @@ export default function Page() {
                 />
                 {refreshing ? "Actualizando…" : "Actualizar ahora"}
               </button>
+
+              <button
+                type="button"
+                onClick={() => exportSnapshot(tickerItems)}
+                className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-foreground/70 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
+                aria-label="Exportar snapshot JSON"
+                title="Exportar análisis actual como JSON"
+              >
+                <Download className="h-3.5 w-3.5" aria-hidden />
+                <span className="hidden sm:inline">Exportar</span>
+              </button>
+
+              <span
+                className="hidden items-center gap-1 rounded-md border border-white/8 bg-black/20 px-2.5 py-1.5 text-[10px] text-muted-foreground/50 md:inline-flex"
+                title="Atajos: R=refrescar, C=colapsar todo, E=expandir todo"
+              >
+                <Keyboard className="h-3 w-3" aria-hidden />
+                R · C · E
+              </span>
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
 type Props = {
@@ -24,8 +24,9 @@ type Props = {
  * The trigger is a full-width button with a chevron that rotates 180° when
  * open. Keyboard accessible (native button, focus-visible ring).
  *
- * On desktop (md+) the section is always open by default and the trigger is
- * still usable — the user can collapse it to focus on the chart.
+ * Listens for global "panel:collapse-all" and "panel:expand-all" CustomEvents
+ * (dispatched by the useKeyboardShortcuts hook on C / E keypress) so the user
+ * can collapse/expand ALL sections across ALL cards at once.
  */
 export function CollapsibleSection({
   label,
@@ -35,6 +36,17 @@ export function CollapsibleSection({
   accent = "#8b96a5",
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    const onCollapse = () => setOpen(false);
+    const onExpand = () => setOpen(true);
+    window.addEventListener("panel:collapse-all", onCollapse);
+    window.addEventListener("panel:expand-all", onExpand);
+    return () => {
+      window.removeEventListener("panel:collapse-all", onCollapse);
+      window.removeEventListener("panel:expand-all", onExpand);
+    };
+  }, []);
 
   return (
     <div className="px-5 pb-3">
