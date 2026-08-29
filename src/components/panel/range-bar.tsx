@@ -59,16 +59,55 @@ export function RangeBar({
   const spotColor =
     spotPct < 33 ? "#5fbf8f" : spotPct > 67 ? "#e2604f" : "#e8b04b";
 
-  type Tick = { pct: number; color: string; label: string; dashed?: boolean };
+  type Tick = {
+    pct: number;
+    color: string;
+    label: string;
+    fullLabel: string;
+    price: number | null;
+  };
   const ticks: Tick[] = [];
   if (support != null)
-    ticks.push({ pct: pct(support), color: "#5fbf8f", label: "S" });
+    ticks.push({
+      pct: pct(support),
+      color: "#5fbf8f",
+      label: "S",
+      fullLabel: "Soporte",
+      price: support,
+    });
   if (resistance != null)
-    ticks.push({ pct: pct(resistance), color: "#e2604f", label: "R" });
+    ticks.push({
+      pct: pct(resistance),
+      color: "#e2604f",
+      label: "R",
+      fullLabel: "Resistencia",
+      price: resistance,
+    });
   if (ema55 != null)
-    ticks.push({ pct: pct(ema55), color: "#e8b04b", label: "55" });
+    ticks.push({
+      pct: pct(ema55),
+      color: "#e8b04b",
+      label: "55",
+      fullLabel: "EMA 55 (4h)",
+      price: ema55,
+    });
   if (ema200 != null)
-    ticks.push({ pct: pct(ema200), color: "#4fa8d8", label: "200" });
+    ticks.push({
+      pct: pct(ema200),
+      color: "#4fa8d8",
+      label: "200",
+      fullLabel: "EMA 200 (4h)",
+      price: ema200,
+    });
+
+  const fmtP = (n: number | null) =>
+    n == null
+      ? "—"
+      : n >= 1000
+        ? n.toLocaleString("en-US", { maximumFractionDigits: 2 })
+        : n >= 1
+          ? n.toFixed(2)
+          : n.toFixed(4);
 
   return (
     <div className="space-y-1.5">
@@ -79,12 +118,12 @@ export function RangeBar({
         {/* 24h range band (low→high) — subtle filled zone */}
         {high24h != null && low24h != null && (
           <div
-            className="absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/[0.06]"
+            className="absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full bg-white/[0.06] transition-[width,left] duration-500"
             style={{
               left: `${pct(low24h)}%`,
               width: `${pct(high24h) - pct(low24h)}%`,
             }}
-            title={`Rango 24h: ${low24h} – ${high24h}`}
+            title={`Rango 24h: ${fmtP(low24h)} – ${fmtP(high24h)}`}
           />
         )}
         {/* Mid line */}
@@ -93,9 +132,9 @@ export function RangeBar({
         {ticks.map((t, i) => (
           <div
             key={i}
-            className="absolute top-1/2 h-3.5 w-px -translate-y-1/2"
+            className="absolute top-1/2 h-3.5 w-px -translate-y-1/2 cursor-help transition-[left] duration-500"
             style={{ left: `${t.pct}%`, background: t.color }}
-            title={`${t.label}: ${t.pct.toFixed(1)}%`}
+            title={`${t.fullLabel}: $${fmtP(t.price)} (${t.pct.toFixed(1)}% del rango)`}
           >
             <span
               className="absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-medium leading-none"
@@ -118,9 +157,9 @@ export function RangeBar({
       </div>
       {/* Scale labels */}
       <div className="flex justify-between text-[10px] text-muted-foreground/70 tnum">
-        <span>{min >= 1000 ? min.toLocaleString("en-US", { maximumFractionDigits: 0 }) : min.toFixed(min >= 1 ? 2 : 4)}</span>
+        <span>${fmtP(min)}</span>
         <span className="text-muted-foreground/50">rango S/R</span>
-        <span>{max >= 1000 ? max.toLocaleString("en-US", { maximumFractionDigits: 0 }) : max.toFixed(max >= 1 ? 2 : 4)}</span>
+        <span>${fmtP(max)}</span>
       </div>
     </div>
   );

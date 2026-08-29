@@ -30,3 +30,27 @@ model Post {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+/// Records every detected EMA55/200 and MACD/signal crossover, persisted
+/// on each /api/analysis refresh so the dashboard can render a history
+/// timeline per symbol. Only NEW crosses are inserted (dedup by
+/// symbol + type + detectedAt bucket).
+model CrossEvent {
+  id         String   @id @default(cuid())
+  /// Uppercase symbol, e.g. "BTCUSDT".
+  symbol     String
+  /// "ema" for EMA55/200 crosses, "macd" for MACD/signal crosses,
+  /// "momentum" for histogram sign flips.
+  type       String
+  /// "bullish" or "bearish".
+  direction  String
+  /// Price at the moment of detection.
+  price      Float
+  /// Candle index (from the latest) at which the cross was detected.
+  candlesAgo Int
+  /// Epoch ms when the backend detected the cross.
+  detectedAt DateTime @default(now())
+
+  @@index([symbol, type, detectedAt])
+  @@index([detectedAt])
+}

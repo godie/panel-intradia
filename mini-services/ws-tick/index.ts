@@ -26,7 +26,7 @@ import { Server } from "socket.io";
 import { WebSocket } from "ws";
 
 const PORT = 3003;
-const SYMBOLS = ["btcusdt", "ethusdt", "xrpusdt"] as const;
+const SYMBOLS = ["btcusdt", "ethusdt", "xrpusdt", "solusdt", "bnbusdt"] as const;
 const BINANCE_WS_URL =
   "wss://stream.binance.com:9443/stream?streams=" +
   SYMBOLS.map((s) => `${s}@trade`).join("/");

@@ -16,13 +16,20 @@ import {
 } from "@/lib/indicators";
 import { buildStructureText } from "@/lib/structure";
 import { getCached, setCached } from "@/lib/cache";
+import { recordCrossIfNew } from "@/lib/cross-history";
 import type { AnalysisResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Whitelisted symbols — anything else is a 400. */
-const ALLOWED_SYMBOLS = new Set(["BTCUSDT", "ETHUSDT", "XRPUSDT"]);
+const ALLOWED_SYMBOLS = new Set([
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "BNBUSDT",
+]);
 
 const CACHE_TTL_MS = 60_000;
 const SPARK_POINTS = 120;
@@ -145,6 +152,61 @@ function buildAnalysis(
   };
 }
 
+/**
+ * persistCrosses — record any fresh EMA/MACD/momentum crosses from the
+ * analysis payload to SQLite. Only crosses flagged as `happened` (within the
+ * recent threshold) are recorded; dedup by symbol+type+direction within a
+ * 6h window for EMA/MACD and 2h for momentum. Non-blocking by design.
+ */
+async function persistCrosses(payload: AnalysisResponse): Promise<void> {
+  const price = payload.spot_price ?? 0;
+  const tasks: Promise<void>[] = [];
+
+  // EMA55/200 cross.
+  if (payload.cross_info?.happened === true && payload.cross_info.direction) {
+    tasks.push(
+      recordCrossIfNew({
+        symbol: payload.symbol,
+        type: "ema",
+        direction: payload.cross_info.direction,
+        price,
+        candlesAgo: payload.cross_info.candles_since_cross ?? 0,
+      }),
+    );
+  }
+
+  // MACD/signal cross.
+  if (payload.macd_cross?.happened === true && payload.macd_cross.direction) {
+    tasks.push(
+      recordCrossIfNew({
+        symbol: payload.symbol,
+        type: "macd",
+        direction: payload.macd_cross.direction,
+        price,
+        candlesAgo: payload.macd_cross.candles_since_cross ?? 0,
+      }),
+    );
+  }
+
+  // MACD histogram momentum flip.
+  if (
+    payload.macd_cross?.momentum_flip === true &&
+    payload.macd_cross.momentum_flip_direction
+  ) {
+    tasks.push(
+      recordCrossIfNew({
+        symbol: payload.symbol,
+        type: "momentum",
+        direction: payload.macd_cross.momentum_flip_direction,
+        price,
+        candlesAgo: payload.macd_cross.candles_since_flip ?? 0,
+      }),
+    );
+  }
+
+  if (tasks.length > 0) await Promise.all(tasks);
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const symbol = (searchParams.get("symbol") ?? "").toUpperCase().trim();
@@ -184,6 +246,12 @@ export async function GET(req: NextRequest) {
 
     const payload = buildAnalysis(symbol, klines, ticker);
     setCached(cacheKey, payload, CACHE_TTL_MS);
+
+    // Persist any fresh crosses to SQLite (fire-and-forget, non-blocking).
+    // Dedup is handled inside recordCrossIfNew — only NEW crosses are stored.
+    persistCrosses(payload).catch((e) => {
+      console.error("[analysis] persist crosses error:", e);
+    });
 
     return NextResponse.json(payload, {
       headers: { "x-cache": "MISS", "cache-control": "no-store" },

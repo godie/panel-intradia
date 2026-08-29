@@ -661,3 +661,156 @@ impacto en UX sin backend adicional.
 Si sobra ancho de banda, **persistencia de cruces en SQLite** (item 5)
 para mostrar un historial de "últimos N cruces MACD/EMA" por símbolo —
 cierra el loop de "alerta activa" → "historial verificable".
+
+---
+Task ID: round-5
+Agent: cron webDevReview
+Task: SQLite cross-history persistence + CrossHistory timeline + SOL/BNB pairs + enhanced tooltips.
+
+Work Log:
+- Leído worklog previo: v4 estable con L2 order book + MACD crossover detection.
+  Próxima prioridad recomendada: tests para detectMacdCross, tooltips nativos,
+  persistencia de cruces en SQLite.
+- QA inicial con agent-browser: página carga sin errores, TICK LIVE activo,
+  3 tarjetas con todas las features (Order Book, MACD, RSI, RangeBar).
+  Servicios ws-tick (3003) y order-book (3004) corriendo y conectados a Binance.
+  Dev log limpio. Estabilidad confirmada → proceder con round 5.
+- Decisión: implementar las 3 features de mayor impacto:
+  (1) Persistencia SQLite de cruces + timeline UI,
+  (2) Añadir SOL y BNB como pares (quick win, más cobertura),
+  (3) Tooltips nativos enriquecidos en RangeBar.
+- Backend — Prisma schema (`prisma/schema.prisma`):
+  - Nuevo modelo `CrossEvent` con campos: id, symbol, type (ema/macd/momentum),
+    direction (bullish/bearish), price, candlesAgo, detectedAt.
+  - Índices en (symbol, type, detectedAt) y (detectedAt) para queries rápidas.
+  - `bun run db:push` ejecutado — schema sincronizado a SQLite, Prisma Client
+    regenerado.
+- Backend — `src/lib/cross-history.ts` (nuevo):
+  - `recordCrossIfNew(input)` — inserta un CrossEvent solo si no existe uno
+    idéntico (symbol + type + direction) en los últimos 6h (EMA/MACD) o 2h
+    (momentum). Dedup evita duplicados en cada refresh de 60s.
+  - `getCrossHistory(symbol?, limit=50)` — devuelve los cruces más recientes
+    ordenados newest-first.
+  - `getCrossStats(sinceDays=7)` — conteo agregado por símbolo y tipo para
+    el badge del header.
+  - Errores de DB son swallowed (logged to stderr) — nunca rompen el API.
+- Backend — `/api/analysis` route:
+  - Añadida función `persistCrosses(payload)` que invoca `recordCrossIfNew`
+    para EMA cross, MACD cross, y momentum flip cuando `happened=true`.
+  - Fire-and-forget (non-blocking): `persistCrosses(payload).catch(...)` —
+    no añade latencia al response.
+  - Import `recordCrossIfNew` añadido.
+- Backend — `/api/cross-history` route (nuevo):
+  - `GET /api/cross-history?symbol=X&limit=N` devuelve `{events, stats, count}`.
+  - Limit clampado a 1-200 (default 50).
+- Backend — SOL + BNB pairs:
+  - `ALLOWED_SYMBOLS` ampliado a 5 símbolos (BTC, ETH, XRP, SOL, BNB).
+  - `SYMBOL_META` ampliado con SOLUSDT (Solana) y BNBUSDT (BNB).
+  - `SYMBOLS` actualizado a 5 elementos. `ALL_SYMBOLS` añadido por referencia.
+  - Mini-services ws-tick + order-book actualizados para suscribirse a los
+    5 streams de Binance (btcusdt/ethusdt/xrpusdt/solusdt/bnbusdt).
+  - Verificado: `curl /api/analysis?symbol=SOLUSDT` devuelve spot=104.17,
+    ema55=96.68, macd.line=2.45. BNB spot=691.42, ema55=685.25.
+- Frontend — `src/components/panel/cross-history.tsx` (nuevo):
+  - Componente collapsible (Radix-free, button + aria-expanded) que muestra
+    el timeline de los últimos 30 cruces persistidos.
+  - Header con icono History + conteo total ("N cruces en los últimos 7 días")
+    + badges por símbolo con conteo (visible en sm+).
+  - Cada evento muestra: tipo (EMA/MACD/MOM con color + icono), símbolo,
+    dirección (bull/bear icon + color), precio al detectar, vela, tiempo
+    relativo ("hace Nm/Nh/Nd").
+  - Auto-refresh cada 60s. Empty state: "Sin cruces registrados todavía".
+  - Scroll vertical con max-h-80 + custom scrollbar.
+- Frontend — `src/app/page.tsx`:
+  - Import `CrossHistory` añadido. Insertado entre el grid de cards y la
+    nota de metodología.
+  - `cells` state ahora inicializado dinámicamente desde `SYMBOLS`
+    (Object.fromEntries) — soporta los 5 símbolos.
+- Frontend — `src/components/panel/range-bar.tsx` (tooltips enriquecidos):
+  - Cada tick marker ahora tiene tooltip nativo con nombre completo + precio
+    exacto + % del rango (ej: "EMA 55 (4h): $76,380 (42.1% del rango)").
+  - `cursor-help` en markers para indicar interactividad.
+  - Transición CSS `transition-[left] duration-500` en markers y banda 24h
+    para animar suavemente cuando el precio se actualiza.
+  - Helper `fmtP` extraído para formato consistente de precios en labels.
+  - Scale labels con prefijo "$".
+- Lint: 0 iteraciones. `bun run lint` limpio desde el primer intento.
+- Verificación agent-browser:
+  - 5 tarjetas renderizadas: BTC, ETH, XRP, SOL, BNB. TICK LIVE en header.
+  - SOL card muestra banner "⚡ CRUCE MACD BAJISTA · HACE 3 VELA(S)" —
+    primera vez que el banner de cruce MACD aparece en producción.
+  - CrossHistory section visible debajo de las cards.
+  - Sin errores de console/runtime.
+- Verificación API cross-history: `curl /api/cross-history?limit=10` devuelve
+  count=2 con SOLUSDT momentum bearish + SOLUSDT macd bearish (detectados
+  a las 00:01:06 UTC). Pipeline completo: detección → persistencia → API → UI.
+- Verificación VLM desktop (1440x900): "5 cards visible (BTC, ETH, XRP, SOL,
+  BNB), Historial de Cruces section visible, MACD crossover banner on SOL,
+  no visual bugs, highly professional and dense. SOL banner effectively
+  highlights the new alert feature, history section integrates cleanly."
+  Nota: row 2 tiene 2 cards (SOL, BNB) dejando espacio vacío a la derecha —
+  esperado con 5 cards en grid de 3 columnas.
+- Verificación mobile (390x844): 5 cards en 1 columna (358px), sin overflow.
+- Verificación footer: contenido > viewport (3302px), footer empujado
+  naturalmente al final del documento, visible tras scroll.
+
+Stage Summary:
+- **Estado:** v5 entregada y verificada. 3 features nuevas (SQLite cross
+  persistence + CrossHistory timeline + SOL/BNB pairs) + tooltips
+  enriquecidos en RangeBar. Pipeline completo "detección → persistencia →
+  historial verificable" cerrado.
+- **Artefactos producidos:**
+  - `prisma/schema.prisma` (+ modelo CrossEvent con índices)
+  - `src/lib/cross-history.ts` (nuevo — recordCrossIfNew + getCrossHistory
+    + getCrossStats)
+  - `src/app/api/analysis/route.ts` (+ persistCrosses fire-and-forget)
+  - `src/app/api/cross-history/route.ts` (nuevo — GET history + stats)
+  - `src/components/panel/cross-history.tsx` (nuevo — timeline collapsible)
+  - `src/components/panel/range-bar.tsx` (tooltips enriquecidos + fmtP)
+  - `src/app/page.tsx` (+ CrossHistory + cells dinámico)
+  - `src/lib/types.ts` (+ SOLUSDT, BNBUSDT en SYMBOL_META; SYMBOLS=5)
+  - `mini-services/ws-tick/index.ts` (+ solusdt, bnbusdt streams)
+  - `mini-services/order-book/index.ts` (+ solusdt, bnbusdt streams)
+- **Contrato JSON ampliado** (campos nuevos, retrocompatible):
+  Ninguno nuevo en /api/analysis. Nuevo endpoint /api/cross-history.
+- **Persistencia SQLite:** CrossEvent table con 2 eventos ya registrados
+  (SOL MACD bearish + momentum bearish). Dedup de 6h/2h evita duplicados.
+- **Mini-services actualizados** para 5 símbolos. REQUIERE RESTART de ambos
+  servicios para que las nuevas suscripciones a solusdt/bnbusdt entren en
+  vigor (los servicios corrientes aún tienen 3 símbolos).
+
+## Unresolved Issues / Next-Phase Priorities (round 5)
+
+1. **Restart mini-services**: los servicios ws-tick y order-book corren con
+   3 símbolos. Hay que restartarlos para que suscriban a los 5 streams.
+   Prioridad alta (sin restart, SOL/BNB no tendrán ticks ni order book).
+2. **Row 2 con 2 cards deja espacio vacío**: con 5 cards en grid de 3
+   columnas, la segunda fila tiene 2 cards. Opciones: (a) añadir un 6º par,
+   (b) grid auto-fill, (c) dejar el 6º slot para una card de "market
+   overview" agregada. Prioridad baja.
+3. **Collapsible sections en mobile** (item 3 de round 4, aún pendiente):
+  card muy alta en mobile. Secciones colapsables para Order Book y MACD.
+   Prioridad media.
+4. **Tests automatizados** (item 6 de round 4, aún pendiente): Vitest para
+  detectMacdCross, calculateRSI, findSupportResistance. Prioridad media.
+5. **Cross history filters**: añadir filtro por tipo (ema/macd/momentum) y
+  por dirección en el CrossHistory component. Prioridad baja.
+6. **Cross history chart**: además del timeline, un mini-chart de barras
+  mostrando frecuencia de cruces por día/símbolo. Prioridad baja.
+7. **Prisma query log**: `db.ts` tiene `log: ['query']` que es muy verboso
+  en dev.log. Cambiar a `log: ['error', 'warn']` para producción. Prioridad
+  baja.
+
+## Recommended Next Step (round 6)
+
+Priorizar **restart de mini-services** (item 1) — es necesario para que
+SOL y BNB tengan ticks y order book en vivo. Ejecutar el double-fork pattern
+documentado en round 4 para ambos servicios.
+
+En paralelo, **collapsible sections en mobile** (item 3) usando Radix
+Collapsible para compactar Order Book y MACD en tarjetas colapsables,
+mejorando la experiencia mobile (card actual es ~1600px en mobile).
+
+Si sobra ancho de banda, **tests Vitest para detectMacdCross** (item 4)
+con fixtures sintéticos cubriendo los 4 casos (no cross, bullish, bearish,
+momentum flip) — daría confianza para futuras iteraciones.

@@ -89,6 +89,22 @@ export const SYMBOL_META: Record<
   BTCUSDT: { label: "Bitcoin", pair: "BTC / USD", asset: "BTC", quote: "USD" },
   ETHUSDT: { label: "Ethereum", pair: "ETH / USD", asset: "ETH", quote: "USD" },
   XRPUSDT: { label: "Ripple", pair: "XRP / USD", asset: "XRP", quote: "USD" },
+  SOLUSDT: { label: "Solana", pair: "SOL / USD", asset: "SOL", quote: "USD" },
+  BNBUSDT: { label: "BNB", pair: "BNB / USD", asset: "BNB", quote: "USD" },
 };
 
-export const SYMBOLS = ["BTCUSDT", "ETHUSDT", "XRPUSDT"] as const;
+export const SYMBOLS = [
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "BNBUSDT",
+] as const;
+/** Extended set including SOL and BNB (used by the API + mini-services). */
+export const ALL_SYMBOLS = [
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "BNBUSDT",
+] as const;

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AssetCard } from "@/components/panel/asset-card";
 import { TickerTape } from "@/components/panel/ticker-tape";
 import { MarketSummary } from "@/components/panel/market-summary";
+import { CrossHistory } from "@/components/panel/cross-history";
 import { SYMBOLS, SYMBOL_META, type AnalysisResponse } from "@/lib/types";
 import {
   useTickStream,
@@ -32,11 +33,9 @@ function fmtTime(iso: string | null): string {
 }
 
 export default function Page() {
-  const [cells, setCells] = useState<Record<string, Cell>>({
-    BTCUSDT: { ...initialCell },
-    ETHUSDT: { ...initialCell },
-    XRPUSDT: { ...initialCell },
-  });
+  const [cells, setCells] = useState<Record<string, Cell>>(
+    Object.fromEntries(SYMBOLS.map((s) => [s, { ...initialCell }])),
+  );
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(REFRESH_MS / 1000);
   const [refreshing, setRefreshing] = useState(false);
@@ -368,6 +367,11 @@ export default function Page() {
                 />
               );
             })}
+          </div>
+
+          {/* Cross history timeline — persisted EMA/MACD/momentum crosses */}
+          <div className="mt-6">
+            <CrossHistory />
           </div>
 
           {/* Methodology note */}

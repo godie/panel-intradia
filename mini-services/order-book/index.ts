@@ -26,7 +26,7 @@ import { Server } from "socket.io";
 import { WebSocket } from "ws";
 
 const PORT = 3004;
-const SYMBOLS = ["btcusdt", "ethusdt", "xrpusdt"] as const;
+const SYMBOLS = ["btcusdt", "ethusdt", "xrpusdt", "solusdt", "bnbusdt"] as const;
 // depth20 = top 20 levels; @1000ms = 1 update per second.
 const BINANCE_WS_URL =
   "wss://stream.binance.com:9443/stream?streams=" +
