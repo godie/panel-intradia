@@ -82,6 +82,17 @@ function buildAnalysis(
   // Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev.
   const bbRes = calculateBollingerBands(closes, 20, 2);
 
+  // Bollinger squeeze detection — bandwidth < 3% indicates compressed volatility.
+  const SQUEEZE_THRESHOLD_PCT = 3;
+  const bollingerSqueeze = {
+    is_squeezed:
+      bbRes.available &&
+      bbRes.lastBandwidth != null &&
+      bbRes.lastBandwidth < SQUEEZE_THRESHOLD_PCT,
+    threshold_pct: SQUEEZE_THRESHOLD_PCT,
+    bandwidth: bbRes.lastBandwidth,
+  };
+
   // Support / resistance.
   const srRes = findSupportResistance(highs, lows, spotPrice ?? 0);
 
@@ -101,6 +112,25 @@ function buildAnalysis(
 
   const dec = spotPrice != null ? decimalsForPrice(spotPrice) : 2;
 
+  // ATR-based stop loss suggestion — price ∓ ATR * 1.5 (direction depends on
+  // whether the position is long or short relative to the EMA55 trend).
+  const STOP_MULTIPLIER = 1.5;
+  const stopLossSuggestion =
+    spotPrice != null && atrRes.last != null
+      ? {
+          price: round(
+            crossRes.state === "BAJISTA"
+              ? spotPrice + atrRes.last * STOP_MULTIPLIER // short stop above
+              : spotPrice - atrRes.last * STOP_MULTIPLIER, // long stop below
+            dec,
+          ),
+          atr: round(atrRes.last, dec),
+          multiplier: STOP_MULTIPLIER,
+          direction:
+            crossRes.state === "BAJISTA" ? ("short" as const) : ("long" as const),
+        }
+      : null;
+
   const no_disponible = {
     spot_price: spotPrice == null,
     change_24h_pct: change24h == null,
@@ -118,6 +148,8 @@ function buildAnalysis(
     macd_cross: !macdRes.available,
     atr_14_4h: !atrRes.available,
     bollinger: !bbRes.available,
+    bollinger_squeeze: !bbRes.available,
+    stop_loss_suggestion: spotPrice == null || !atrRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -158,6 +190,8 @@ function buildAnalysis(
       lower: round(bbRes.lastLower, dec),
       bandwidth: round(bbRes.lastBandwidth, 2),
     },
+    bollinger_squeeze: bollingerSqueeze,
+    stop_loss_suggestion: stopLossSuggestion,
     structure_text: structureText,
     no_disponible,
     series: {
@@ -221,6 +255,21 @@ async function persistCrosses(payload: AnalysisResponse): Promise<void> {
         direction: payload.macd_cross.momentum_flip_direction,
         price,
         candlesAgo: payload.macd_cross.candles_since_flip ?? 0,
+      }),
+    );
+  }
+
+  // Bollinger squeeze event — persisted with direction "neutral" since a
+  // squeeze is direction-agnostic (it signals compressed volatility, not a
+  // directional bias). Dedup window is 12h (squeezes can persist for days).
+  if (payload.bollinger_squeeze?.is_squeezed === true) {
+    tasks.push(
+      recordCrossIfNew({
+        symbol: payload.symbol,
+        type: "squeeze",
+        direction: "neutral",
+        price,
+        candlesAgo: 0,
       }),
     );
   }

@@ -256,6 +256,14 @@ export function AssetCard({
         </div>
       )}
 
+      {/* Bollinger squeeze banner — compressed volatility warning */}
+      {data.bollinger_squeeze?.is_squeezed === true && (
+        <div className="flex items-center justify-center gap-1.5 bg-[#b48cff]/15 py-1 text-[10px] font-bold uppercase tracking-widest text-[#b48cff]">
+          <Activity className="h-3 w-3 animate-pulse" aria-hidden />
+          Squeeze · volatilidad comprimida ({data.bollinger_squeeze.bandwidth?.toFixed(2)}%)
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-3 p-5 pb-3">
         <div className="min-w-0">
@@ -483,6 +491,22 @@ export function AssetCard({
         <p className="text-xs leading-relaxed text-foreground/80">
           {data.structure_text}
         </p>
+
+        {/* ATR-based stop loss suggestion */}
+        {data.stop_loss_suggestion && (
+          <div className="mt-2.5 flex items-center gap-2 rounded-md border border-[#b48cff]/20 bg-[#b48cff]/5 px-2.5 py-1.5">
+            <span className="text-[9px] uppercase tracking-wider text-[#b48cff]">
+              Stop ATR
+            </span>
+            <span className="tnum text-[11px] font-medium text-foreground/90">
+              ${fmtPrice(data.stop_loss_suggestion.price)}
+            </span>
+            <span className="text-[9px] text-muted-foreground">
+              ({data.stop_loss_suggestion.direction === "long" ? "largo" : "corto"} · {data.stop_loss_suggestion.multiplier}× ATR)
+            </span>
+          </div>
+        )}
+
         <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground/60">
           <span className="tnum">
             {new Date(data.updated_at).toLocaleTimeString("es-ES", {

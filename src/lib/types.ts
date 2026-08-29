@@ -62,6 +62,20 @@ export type AnalysisResponse = {
     lower: number | null;
     bandwidth: number | null; // (upper - lower) / middle * 100
   };
+  /** Bollinger squeeze detection — true when bandwidth < threshold (default 3%). */
+  bollinger_squeeze: {
+    is_squeezed: boolean;
+    threshold_pct: number;
+    bandwidth: number | null;
+  };
+  /** ATR-based stop loss suggestion — price - ATR * multiplier. */
+  stop_loss_suggestion: {
+    price: number | null;
+    atr: number | null;
+    multiplier: number;
+    /** "long" stop (below price) or "short" stop (above price). */
+    direction: "long" | "short";
+  } | null;
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -80,6 +94,8 @@ export type AnalysisResponse = {
     macd_cross: boolean;
     atr_14_4h: boolean;
     bollinger: boolean;
+    bollinger_squeeze: boolean;
+    stop_loss_suggestion: boolean;
   };
   series: {
     closes: number[];

@@ -14,9 +14,10 @@ import { db } from "./db";
 
 const DEDUP_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours for EMA/MACD crosses
 const MOMENTUM_DEDUP_MS = 2 * 60 * 60 * 1000; // 2 hours for momentum flips
+const SQUEEZE_DEDUP_MS = 12 * 60 * 60 * 1000; // 12 hours for squeeze events
 
-export type CrossEventType = "ema" | "macd" | "momentum";
-export type CrossDirection = "bullish" | "bearish";
+export type CrossEventType = "ema" | "macd" | "momentum" | "squeeze";
+export type CrossDirection = "bullish" | "bearish" | "neutral";
 
 type RecordInput = {
   symbol: string;
@@ -36,7 +37,11 @@ type RecordInput = {
 export async function recordCrossIfNew(input: RecordInput): Promise<void> {
   try {
     const windowMs =
-      input.type === "momentum" ? MOMENTUM_DEDUP_MS : DEDUP_WINDOW_MS;
+      input.type === "momentum"
+        ? MOMENTUM_DEDUP_MS
+        : input.type === "squeeze"
+          ? SQUEEZE_DEDUP_MS
+          : DEDUP_WINDOW_MS;
     const since = new Date(Date.now() - windowMs);
     const existing = await db.crossEvent.findFirst({
       where: {

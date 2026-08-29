@@ -1539,3 +1539,140 @@ usando el ATR ya calculado. Quick win de alto valor práctico para traders.
 Si sobra ancho de banda, **toast dedup via sessionStorage** (item 1) —
 persistir el Set de IDs vistos entre recargas para evitar re-disparar
 toasts de cruces ya notificados.
+
+---
+Task ID: round-11
+Agent: cron webDevReview
+Task: Bollinger squeeze alert + ATR stop loss suggestion + toast dedup sessionStorage.
+
+Work Log:
+- Leído worklog previo: v10 estable con ATR + Bollinger Bands + collapsible
+  persistence. 64 tests pasando. Próxima prioridad: Bollinger squeeze alert,
+  ATR-based stop loss, toast dedup sessionStorage.
+- QA inicial con agent-browser: 6 cards, TICK LIVE, sin errores. Servicios
+  ws-tick (3003, uptime ~2974s) y order-book (3004) corriendo. Lint limpio,
+  64 tests pasando. Estabilidad confirmada.
+- BUG CRÍTICO encontrado y arreglado: al añadir el stop_loss_suggestion,
+  referencié `crossRes.state` antes de su declaración (temporal dead zone).
+  Síntoma: todos los /api/analysis devolvían 502 "Cannot access 'crossRes'
+  before initialization". Fix: moví el cálculo de stopLossSuggestion DESPUÉS
+  de crossRes + dec. Verificado: API vuelve a 200 con squeeze + stop_loss.
+- Backend — `types.ts` ampliado:
+  - `AnalysisResponse.bollinger_squeeze: {is_squeezed, threshold_pct,
+    bandwidth}` — true cuando bandwidth < 3%.
+  - `AnalysisResponse.stop_loss_suggestion: {price, atr, multiplier,
+    direction: "long"|"short"} | null`.
+  - `no_disponible.bollinger_squeeze` + `no_disponible.stop_loss_suggestion`.
+- Backend — `/api/analysis` route:
+  - Squeeze detection: `bollingerSqueeze = {is_squeezed: bbRes.lastBandwidth
+    < 3, threshold_pct: 3, bandwidth: bbRes.lastBandwidth}`.
+  - Stop loss: `stopLossSuggestion = {price: spotPrice - ATR*1.5 (long) o
+    spotPrice + ATR*1.5 (short), atr, multiplier: 1.5, direction}`.
+    Direction depende de crossRes.state: BAJISTA → short stop above, sino
+    long stop below.
+  - Persistencia squeeze: `recordCrossIfNew({type: "squeeze", direction:
+    "neutral"})` cuando is_squeezed=true. Dedup 12h (squeezes persisten días).
+  - Verificado: BTC squeeze=false (bandwidth 4.07%), stop_loss={price:
+    76175.34, atr: 1031.11, direction: "long", multiplier: 1.5}.
+- Backend — `cross-history.ts` ampliado:
+  - `CrossEventType` ahora incluye "squeeze".
+  - `CrossDirection` ahora incluye "neutral" (para squeeze, que es
+    direction-agnostic).
+  - `SQUEEZE_DEDUP_MS = 12h` — las compresiones de volatilidad pueden
+    persistir por días, dedup largo para no spamear.
+  - `recordCrossIfNew` usa SQUEEZE_DEDUP_MS cuando type==="squeeze".
+- Frontend — `asset-card.tsx`:
+  - Squeeze banner: cuando `data.bollinger_squeeze?.is_squeezed === true`,
+    muestra banner púrpura "⚡ Squeeze · volatilidad comprimida (X.XX%)"
+    con icono Activity pulsante, análogo al banner de cruce MACD.
+  - Stop loss suggestion: en la sección "Estructura de mercado", un box
+    púrpura con "STOP ATR $X (largo/corto · 1.5× ATR)" después del texto
+    de estructura. Border púrpura sutil + bg púrpura 5%.
+  - Condicionales: squeeze banner solo cuando is_squeezed; stop loss solo
+    cuando data.stop_loss_suggestion existe.
+- Frontend — `use-cross-alerts.tsx` (toast dedup sessionStorage):
+  - `loadSeen()` — carga Set de IDs desde `sessionStorage["panel:seen-alerts"]`
+    al iniciar. Survive page reloads dentro de la misma sesión del browser.
+  - `saveSeen(set)` — persiste el Set (capped a últimos 200 IDs) en
+    sessionStorage. Try/catch ignora quota/privacy mode.
+  - `seenRef` ahora se inicializa desde `loadSeen()` (no vacío).
+  - En cada poll, si hay eventos nuevos, `saveSeen(seenRef.current)` los
+    persiste. Primer poll sigue seedeando sin disparar toasts.
+  - Soporte para evento "squeeze": TYPE_LABELS ahora incluye "Bollinger
+    Squeeze", fireToast usa color púrpura (#b48cff) + icono Activity para
+    squeeze, dirLabel "compresión".
+  - CrossDirection ahora incluye "neutral" en el tipo.
+- Lint: 0 iteraciones (después del fix del crossRes ordering). Limpio.
+- Tests: 64/64 passing (sin cambios — las nuevas features son backend
+  logic integrada en el route, no funciones puras nuevas).
+- Verificación API: BTC bollinger_squeeze={is_squeezed: false, bandwidth:
+  4.07%}, stop_loss_suggestion={price: 76175.34, atr: 1031.11, direction:
+  "long", multiplier: 1.5}. Sin 502s.
+- Verificación agent-browser:
+  - 6 cards renderizadas. BTC card contiene:
+    * "STOP ATR $76,173.12 (largo · 1.5× ATR)" en sección estructura.
+    * "ATR 14 · 4H $1,031.25" + "BOLLINGER BW 4.07%" en indicadores.
+    * Sparkline con Bollinger overlay.
+    * Sin squeeze banner (bandwidth 4.07% > 3% threshold — correcto).
+  - Sin errores console/runtime.
+- Verificación VLM desktop: "STOP ATR suggestion visible in all cards.
+  ATR and Bollinger BW metrics visible. Bollinger overlay visible. No
+  visual bugs. High polish, professional-grade. Squeeze banner not visible
+  because no symbol currently has bandwidth < 3% (correct behavior)."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 4202 = footerBottom (empujado naturalmente).
+
+Stage Summary:
+- **Estado:** v11 entregada y verificada. 3 features nuevas (Bollinger squeeze
+  alert + ATR stop loss + toast dedup sessionStorage) + 1 bug crítico fixed
+  (crossRes temporal dead zone). Panel ahora tiene alertas de volatilidad
+  activas + sugerencias de stop loss basadas en ATR.
+- **Artefactos producidos:**
+  - `src/lib/types.ts` (+bollinger_squeeze, +stop_loss_suggestion)
+  - `src/lib/cross-history.ts` (+squeeze type, +neutral direction, +12h dedup)
+  - `src/app/api/analysis/route.ts` (+squeeze detection, +stop loss, +squeeze
+    persistence, fix crossRes ordering)
+  - `src/components/panel/asset-card.tsx` (+squeeze banner, +stop loss box)
+  - `src/hooks/use-cross-alerts.tsx` (sessionStorage dedup, +squeeze support)
+- **Tests:** 64/64 passing (sin cambios en tests — las nuevas features son
+  integración backend, no funciones puras nuevas).
+- **Alertas activas:** EMA cross, MACD cross, momentum flip, Bollinger squeeze.
+  4 tipos de eventos persistidos en SQLite + notificados via toast.
+- **Stop loss:** ATR-based, direction-aware (long below price, short above),
+  multiplier 1.5×. Visible en la sección de estructura de cada card.
+
+## Unresolved Issues / Next-Phase Priorities (round 11)
+
+1. **Cross-history filter persistence** (item 2 de round 7, aún pendiente):
+   URL query params o localStorage para los filtros del timeline. Prioridad
+   baja.
+2. **Scatter plot enhancements**: histogramas marginales, selector de
+   timeframe dentro del modal. Prioridad baja.
+3. **Export CSV/IMG** (item 7 de round 8): además de JSON. Prioridad baja.
+4. **Prisma log fix no aplicado al HMR** (item 8 de round 8): requiere
+   restart del dev server. Prioridad baja.
+5. **VWAP / Stochastic**: más indicadores. Prioridad baja.
+6. **Stop loss multiplier selector**: permitir al usuario ajustar el
+   multiplier (1.5×, 2×, 3×) en la UI. Prioridad baja.
+7. **Squeeze breakout direction**: cuando termina un squeeze (bandwidth
+   expande sobre 3%), detectar la dirección del breakout y alertar. Prioridad
+   media.
+8. **Fibonacci retracement**: levels 23.6%, 38.2%, 50%, 61.8% sobre el
+   último swing. Feature diferenciadora. Prioridad media.
+
+## Recommended Next Step (round 12)
+
+Priorizar **Fibonacci retracement levels** (item 8) — cálculo de niveles
+23.6%, 38.2%, 50%, 61.8% sobre el último swing high→low (o low→high según
+tendencia). Es el indicador clásico que falta y se integra naturalmente en
+el RangeBar (nuevos markers Fib) + la estructura de mercado (distancia al
+Fib más cercano). Cálculo puramente backend (función pura + tests).
+
+En paralelo, **squeeze breakout detection** (item 7) — cuando el bandwidth
+pasa de <3% a >3%, detectar la dirección del candle de breakout y persistir
+como evento "squeeze_breakout" con direction bullish/bearish. Cierra el
+loop squeeze → breakout.
+
+Si sobra ancho de banda, **stop loss multiplier selector** (item 6) —
+dropdown en la card para ajustar el multiplier del stop ATR (1.5×, 2×, 3×).
+Quick win de UX.
