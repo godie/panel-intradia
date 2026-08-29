@@ -6,6 +6,7 @@ type Handlers = {
   onRefresh?: () => void;
   onCollapseAll?: () => void;
   onExpandAll?: () => void;
+  onToggleHelp?: () => void;
 };
 
 /**
@@ -16,7 +17,8 @@ type Handlers = {
  *  - C / c — collapse all collapsible sections (broadcasts a CustomEvent
  *    "panel:collapse-all" that CollapsibleSection listens for)
  *  - E / e — expand all collapsible sections (broadcasts "panel:expand-all")
- *  - ? — show a help toast with the available shortcuts (via sonner)
+ *  - ? — toggle the keyboard shortcuts help modal (calls onToggleHelp)
+ *  - Escape — handled per-component (modals close on Escape)
  *
  * Ignores keystrokes when the user is typing in an input, textarea, or
  * contenteditable element (so the dashboard doesn't refresh while the user
@@ -51,6 +53,13 @@ export function useKeyboardShortcuts(handlers: Handlers) {
           break;
         case "e":
           window.dispatchEvent(new CustomEvent("panel:expand-all"));
+          break;
+        case "?":
+          // Shift+/ produces "?" — but we also catch the "/" key with shift.
+          handlers.onToggleHelp?.();
+          break;
+        case "/":
+          if (e.shiftKey) handlers.onToggleHelp?.();
           break;
         default:
           break;

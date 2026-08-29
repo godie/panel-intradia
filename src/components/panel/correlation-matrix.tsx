@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SYMBOL_META } from "@/lib/types";
 import { Loader2 } from "lucide-react";
+import { ScatterPlotModal } from "./scatter-plot-modal";
 
 type Props = {
   pollMs?: number;
@@ -69,6 +70,11 @@ export function CorrelationMatrix({ pollMs = 120_000 }: Props) {
   const [limit, setLimit] = useState<number>(500);
   const [hoverRow, setHoverRow] = useState<number | null>(null);
   const [hoverCol, setHoverCol] = useState<number | null>(null);
+  // Scatter modal state: which pair is being viewed (null = closed).
+  const [scatterPair, setScatterPair] = useState<{
+    a: string;
+    b: string;
+  } | null>(null);
 
   useEffect(() => {
     let aborted = false;
@@ -220,10 +226,16 @@ export function CorrelationMatrix({ pollMs = 120_000 }: Props) {
                     hoverCol === i;
                   return (
                     <td key={colSym} className="p-0.5">
-                      <div
+                      <button
+                        type="button"
+                        disabled={isDiagonal}
+                        onClick={() =>
+                          !isDiagonal &&
+                          setScatterPair({ a: rowSym, b: colSym })
+                        }
                         className={`flex h-7 w-7 items-center justify-center rounded tnum text-[9px] font-medium transition-all duration-150 ${
                           isHighlighted ? "scale-110 ring-1 ring-white/30" : ""
-                        }`}
+                        } ${isDiagonal ? "cursor-default" : "cursor-pointer hover:scale-125 hover:ring-2 hover:ring-[#4fa8d8]"}`}
                         style={{
                           background: bg,
                           color: fg,
@@ -231,12 +243,19 @@ export function CorrelationMatrix({ pollMs = 120_000 }: Props) {
                             ? "inset 0 0 0 1px rgba(255,255,255,0.15)"
                             : undefined,
                         }}
-                        title={`${SYMBOL_META[rowSym]?.asset ?? rowSym} ↔ ${
-                          SYMBOL_META[colSym]?.asset ?? colSym
-                        }: ${v != null ? v.toFixed(2) : "—"}`}
+                        title={
+                          isDiagonal
+                            ? `${SYMBOL_META[rowSym]?.asset ?? rowSym} (auto-correlación = 1.0)`
+                            : `Click: scatter plot ${SYMBOL_META[rowSym]?.asset ?? rowSym} ↔ ${SYMBOL_META[colSym]?.asset ?? colSym} (r=${v != null ? v.toFixed(2) : "—"})`
+                        }
+                        aria-label={
+                          isDiagonal
+                            ? `${rowSym} diagonal`
+                            : `Ver scatter plot ${rowSym} vs ${colSym}`
+                        }
                       >
                         {v != null ? v.toFixed(2) : "—"}
-                      </div>
+                      </button>
                     </td>
                   );
                 })}
@@ -274,6 +293,18 @@ export function CorrelationMatrix({ pollMs = 120_000 }: Props) {
       <div className="text-center text-[9px] text-muted-foreground/40">
         {winLabel}
       </div>
+
+      {/* Scatter plot modal — opened by clicking a matrix cell */}
+      {scatterPair && (
+        <ScatterPlotModal
+          symbolA={scatterPair.a}
+          symbolB={scatterPair.b}
+          interval={interval}
+          limit={limit}
+          open={scatterPair != null}
+          onClose={() => setScatterPair(null)}
+        />
+      )}
     </div>
   );
 }

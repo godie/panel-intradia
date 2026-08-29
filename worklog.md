@@ -1245,3 +1245,147 @@ resistencia null. Prioridad media.
 
 Si sobra ancho de banda, **keyboard shortcut help modal** (item 6) — un
 overlay "?" que liste todos los atajos (R, C, E, ?). Prioridad baja.
+
+---
+Task ID: round-9
+Agent: cron webDevReview
+Task: Scatter plot modal + buildStructureText tests + keyboard help modal.
+
+Work Log:
+- Leído worklog previo: v8 estable con correlation timeframe selector + hover
+  highlight + findSupportResistance tests + export/keyboard shortcuts. 39
+  tests pasando. Próxima prioridad: scatter plot modal, tests para
+  buildStructureText, keyboard shortcut help modal.
+- QA inicial con agent-browser: 6 cards, TICK LIVE, sin errores. Servicios
+  ws-tick (3003, uptime ~1800s) y order-book (3004) corriendo con 5 símbolos.
+  Lint limpio, 39 tests pasando. Estabilidad confirmada.
+- Decisión: implementar las 3 features recomendadas (scatter modal + structure
+  tests + help modal).
+- Backend — `/api/returns` (nuevo):
+  - GET /api/returns?symbolA=BTCUSDT&symbolB=ETHUSDT&interval=4h&limit=500
+  - Fetch 500 klines para ambos símbolos en paralelo, convierte a returns
+    porcentuales, los alinea por índice (n = min(lenA, lenB)).
+  - Computa Pearson r, R², slope (β), intercept, means, n via helper analyze().
+  - Caché 120s, key order-independent (A,B == B,A) via sorted pair.
+  - Validación de symbolA/symbolB/interval/limit.
+  - Verificado: BTC-ETH r=0.864, R²=0.746, β=1.174, n=499. BTC explica
+    74.6% de la varianza de ETH.
+- Frontend — `scatter-plot-modal.tsx` (nuevo):
+  - Modal overlay con backdrop blur, click-outside-to-close, Escape-to-close.
+  - Canvas HiDPI con scatter plot de returns pareados:
+    * Puntos color-coded: verde (ambos ↑), rojo (ambos ↓), ámbar (divergentes).
+    * Línea de regresión dashed azul (slope*minX+intercept → slope*maxX+intercept).
+    * Grid lines + zero lines (X=0, Y=0).
+    * Axis labels (min/max % values).
+  - Stats grid 3×2: Correlación (r), R², Pendiente (β), Intercepto, Media X,
+    Observaciones.
+  - Interpretación automática: "{assetA} explica el {R²*100}% de la varianza
+    de {assetB}. Beta = {slope} (por cada 1% de movimiento en {assetA},
+    {assetB} se mueve {abs(slope)}% {dirección})."
+  - Legend: Ambos ↑ / Ambos ↓ / Divergentes / Regresión.
+  - Loading state (spinner), error state, fetch on open.
+- Frontend — `correlation-matrix.tsx` integración:
+  - Celdas ahora son <button> (no <div>) — clickable, cursor-pointer.
+  - Click en celda off-diagonal → setScatterPair({a, b}) → abre modal.
+  - Diagonal disabled (cursor-default, no click).
+  - Hover effect mejorado: scale-125 + ring-2 azul on hover (además del
+    highlight existente de fila+columna).
+  - Tooltip mejorado: "Click: scatter plot BTC ↔ ETH (r=0.86)".
+  - ScatterPlotModal renderizado al final del componente, controlado por
+    scatterPair state.
+- Tests — `src/lib/structure.test.ts` (nuevo, 13 tests):
+  - buildStructureText cubierto: spotPrice null, precio sobre ambas medias,
+    precio bajo ambas, precio entre medias, cross-state (alcista/bajista/
+    comprimido), invalidation trigger, resistencia+soporte, EMA55+EMA200 null,
+    solo EMA55, solo EMA200, termina con punto, primera letra mayúscula,
+    todos null excepto spotPrice.
+  - Total tests: 52 (39 indicators + 13 structure).
+- Frontend — `use-keyboard-shortcuts.ts` ampliado:
+  - Nuevo handler onToggleHelp.
+  - Tecla "?" (Shift+/) → onToggleHelp.
+  - Tecla "/" con shiftKey → onToggleHelp (fallback).
+- Frontend — `keyboard-help-modal.tsx` (nuevo):
+  - Modal overlay con lista de 5 atajos: R (Refrescar), C (Colapsar),
+    E (Expandir), ? (Ayuda), Esc (Cerrar modales).
+  - Cada atajo: icono coloreado + descripción + <kbd> key badge.
+  - Click-outside + Escape to close.
+  - Note: "Los atajos se ignoran cuando escribes en campos de formulario."
+- Frontend — `page.tsx` integración:
+  - Estado `helpOpen` + `onToggleHelp: () => setHelpOpen(v => !v)` en hook.
+  - Hint "R · C · E" ahora es <button> (clickable) → abre help modal.
+  - `<KeyboardHelpModal open={helpOpen} onClose={...} />` al final del page.
+- Lint: 0 iteraciones. Limpio desde el primer intento.
+- Tests: 52/52 passing (2 test files: indicators + structure).
+- Verificación API: `curl /api/returns?symbolA=BTCUSDT&symbolB=ETHUSDT` 
+  devuelve returnsA[499], returnsB[499], stats{r:0.864, rSquared:0.746,
+  slope:1.174, intercept:0.033, n:499}.
+- Verificación agent-browser:
+  - Click en celda BTC↔ETH de la correlation matrix → abre scatter modal.
+  - Modal contiene: canvas scatter plot, stats (r=0.864, R²=0.746, β=1.174),
+    interpretación "BTC explica el 74.6% de la varianza de ETH", legend.
+  - Click botón "R · C · E" → abre keyboard help modal con 5 atajos.
+  - Sin errores console/runtime.
+- Verificación VLM: "Modal visible with scatter plot. Points color-coded
+  (green/red/amber). Regression line dashed blue. Stats visible (r=0.864,
+  R²=0.746, Beta=1.174). Interpretation 'BTC explica el 74.6% de la varianza
+  de ETH'. No visual bugs. Chart axes labeled."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 3913 = footerBottom (empujado naturalmente).
+
+Stage Summary:
+- **Estado:** v9 entregada y verificada. 3 features nuevas (scatter plot modal
+  + buildStructureText tests + keyboard help modal). 52 tests pasando (39
+  indicators + 13 structure). Cobertura completa de TODAS las funciones
+  puras de lib/ (indicators.ts + structure.ts).
+- **Artefactos producidos:**
+  - `src/app/api/returns/route.ts` (nuevo — paired returns + regression stats)
+  - `src/components/panel/scatter-plot-modal.tsx` (nuevo — canvas + stats)
+  - `src/components/panel/correlation-matrix.tsx` (+ clickable cells + modal)
+  - `src/lib/structure.test.ts` (nuevo — 13 tests buildStructureText)
+  - `src/hooks/use-keyboard-shortcuts.ts` (+ onToggleHelp handler)
+  - `src/components/panel/keyboard-help-modal.tsx` (nuevo — 5 atajos)
+  - `src/app/page.tsx` (+ helpOpen state + KeyboardHelpModal)
+- **Tests:** 52/52 passing en 2 test files. Cobertura: calculateEMA,
+  calculateRSI, determineCrossState, detectRecentCross, detectMacdCross,
+  calculateMACD, findSupportResistance (indicators.ts) + buildStructureText
+  (structure.ts). TODAS las funciones puras testeadas.
+- **Scatter plot:** click en cualquier celda off-diagonal de la correlation
+  matrix → modal con scatter plot + regresión + R² + interpretación.
+  BTC explica 74.6% de ETH (β=1.17).
+
+## Unresolved Issues / Next-Phase Priorities (round 9)
+
+1. **Collapsible state persistence** (item 4 de round 6, aún pendiente):
+   persistir estado de collapse en localStorage. Prioridad baja.
+2. **Toast dedup across reloads** (item 6 de round 6, aún pendiente):
+   sessionStorage para el Set de IDs vistos. Prioridad baja.
+3. **Cross-history filter persistence** (item 2 de round 7, aún pendiente):
+   URL query params o localStorage. Prioridad baja.
+4. **Scatter plot enhancements**: añadir histogramas marginales (distribución
+   de returns de cada símbolo en los ejes), selector de timeframe dentro
+   del modal. Prioridad baja.
+5. **Export CSV/IMG** (item 7 de round 8): además de JSON, exportar a CSV
+   o screenshot PNG. Prioridad baja.
+6. **Prisma log fix no aplicado al HMR** (item 8 de round 8): requiere
+   restart del dev server. Prioridad baja.
+7. **Correlation matrix mobile UX**: en mobile la matriz 5x5 puede ser
+   estrecha. Considerar rotar labels o usar una lista de pares en vez de
+   tabla. Prioridad baja.
+8. **More indicators**: ATR (volatilidad), Bollinger Bands, VWAP,
+   Stochastic. Prioridad media para futura iteración.
+
+## Recommended Next Step (round 10)
+
+Priorizar **más indicadores técnicos** (item 8) — el panel ya tiene EMA,
+RSI, MACD, S/R, correlación. Añadir **ATR (Average True Range)** para
+volatilidad y **Bollinger Bands** para bandas de volatilidad daría una
+visión más completa. Ambos son calculations puras (fáciles de añadir a
+indicators.ts + tests) y se integran naturalmente en el AssetCard.
+
+En paralelo, **collapsible state persistence** (item 1) — persistir el
+estado de collapse/expand de cada sección en localStorage para que el
+usuario mantenga su preferencia entre recargas. Quick win de UX.
+
+Si sobra ancho de banda, **scatter plot marginal histograms** (item 4) —
+añadir mini-histogramas en los ejes X e Y del scatter plot para mostrar
+la distribución de returns de cada símbolo. Feature diferenciadora.

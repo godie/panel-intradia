@@ -15,7 +15,8 @@ import { useOrderBook } from "@/hooks/use-order-book";
 import { useCrossAlerts } from "@/hooks/use-cross-alerts";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { exportSnapshot } from "@/lib/export-snapshot";
-import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff, Download, Keyboard } from "lucide-react";
+import { KeyboardHelpModal } from "@/components/panel/keyboard-help-modal";
+import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff, Download, Keyboard, HelpCircle } from "lucide-react";
 
 const REFRESH_MS = 60_000;
 type Cell = { loading: boolean; error: string | null; data: AnalysisResponse | null };
@@ -44,13 +45,17 @@ export default function Page() {
   const [countdown, setCountdown] = useState<number>(REFRESH_MS / 1000);
   const [refreshing, setRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [helpOpen, setHelpOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   // Live tick stream — shared singleton socket.
   const tick = useTickStream();
   const book = useOrderBook();
   useCrossAlerts();
-  useKeyboardShortcuts({ onRefresh: () => fetchAllRef.current?.(true) });
+  useKeyboardShortcuts({
+    onRefresh: () => fetchAllRef.current?.(true),
+    onToggleHelp: () => setHelpOpen((v) => !v),
+  });
 
   const fetchAll = useCallback(async (manual: boolean) => {
     // Cancel any in-flight fetch.
@@ -281,13 +286,16 @@ export default function Page() {
                 <span className="hidden sm:inline">Exportar</span>
               </button>
 
-              <span
-                className="hidden items-center gap-1 rounded-md border border-white/8 bg-black/20 px-2.5 py-1.5 text-[10px] text-muted-foreground/50 md:inline-flex"
-                title="Atajos: R=refrescar, C=colapsar todo, E=expandir todo"
+              <button
+                type="button"
+                onClick={() => setHelpOpen(true)}
+                className="hidden items-center gap-1 rounded-md border border-white/8 bg-black/20 px-2.5 py-1.5 text-[10px] text-muted-foreground/50 transition-colors hover:bg-white/10 hover:text-foreground/80 focus-visible:outline-2 focus-visible:outline-[#4fa8d8] md:inline-flex"
+                title="Atajos: R=refrescar, C=colapsar todo, E=expandir todo, ?=ayuda"
+                aria-label="Mostrar ayuda de atajos de teclado"
               >
                 <Keyboard className="h-3 w-3" aria-hidden />
                 R · C · E
-              </span>
+              </button>
             </div>
           </div>
 
@@ -456,6 +464,9 @@ export default function Page() {
           </div>
         </footer>
       </div>
+
+      {/* Keyboard shortcuts help modal */}
+      <KeyboardHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
