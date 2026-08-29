@@ -8,6 +8,9 @@ type Props = {
   ema200: (number | null)[];
   spot: number | null;
   crossState: "ALCISTA" | "BAJISTA" | "COMPRIMIDO" | null;
+  /** Bollinger Bands upper/lower series for overlay (optional). */
+  bbUpper?: (number | null)[];
+  bbLower?: (number | null)[];
   /** height of the canvas in CSS pixels (width is responsive). */
   height?: number;
 };
@@ -16,6 +19,8 @@ const COLORS = {
   price: "#e6edf3",
   ema55: "#e8b04b",
   ema200: "#4fa8d8",
+  bollinger: "rgba(180,140,255,0.35)",
+  bollingerFill: "rgba(180,140,255,0.06)",
   grid: "rgba(255,255,255,0.05)",
   bullFill: "rgba(95,191,143,0.12)",
   bearFill: "rgba(226,96,79,0.12)",
@@ -35,6 +40,8 @@ export function Sparkline({
   ema200,
   spot,
   crossState,
+  bbUpper,
+  bbLower,
   height = 150,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -61,10 +68,12 @@ export function Sparkline({
     const plotW = cssW - padL - padR;
     const plotH = cssH - padT - padB;
 
-    // Compute y-range across all three series so every line is visible.
+    // Compute y-range across all series (including Bollinger) so every line is visible.
     let min = Infinity;
     let max = -Infinity;
     const allSeries: (number | null)[][] = [closes, ema55, ema200];
+    if (bbUpper) allSeries.push(bbUpper);
+    if (bbLower) allSeries.push(bbLower);
     for (const s of allSeries) {
       for (const v of s) {
         if (v != null && Number.isFinite(v)) {
@@ -120,6 +129,32 @@ export function Sparkline({
     ctx.closePath();
     ctx.fill();
 
+    // Bollinger Bands fill (between upper and lower) — subtle purple area.
+    if (bbUpper && bbLower) {
+      ctx.fillStyle = COLORS.bollingerFill;
+      ctx.beginPath();
+      let started = false;
+      // Upper band (left → right).
+      for (let i = 0; i < bbUpper.length; i++) {
+        const v = bbUpper[i];
+        if (v == null || !Number.isFinite(v)) continue;
+        if (!started) {
+          ctx.moveTo(x(i), y(v));
+          started = true;
+        } else {
+          ctx.lineTo(x(i), y(v));
+        }
+      }
+      // Lower band (right → left) to close the area.
+      for (let i = bbLower.length - 1; i >= 0; i--) {
+        const v = bbLower[i];
+        if (v == null || !Number.isFinite(v)) continue;
+        ctx.lineTo(x(i), y(v));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
     // Helper to plot a series skipping nulls.
     const plotLine = (
       series: (number | null)[],
@@ -153,6 +188,9 @@ export function Sparkline({
 
     // EMA200 (drawn first so it sits under EMA55 & price).
     plotLine(ema200, COLORS.ema200, 1.5, [5, 4]);
+    // Bollinger Bands upper/lower (thin dashed purple).
+    if (bbUpper) plotLine(bbUpper, COLORS.bollinger, 1, [2, 3]);
+    if (bbLower) plotLine(bbLower, COLORS.bollinger, 1, [2, 3]);
     // EMA55.
     plotLine(ema55, COLORS.ema55, 1.5);
     // Price last (on top).
@@ -237,6 +275,17 @@ export function Sparkline({
           />
           EMA 200
         </span>
+        {bbUpper && bbLower && (
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-0.5 w-3"
+              style={{
+                background: `repeating-linear-gradient(90deg, ${COLORS.bollinger} 0 2px, transparent 2px 4px)`,
+              }}
+            />
+            Bollinger
+          </span>
+        )}
       </div>
     </div>
   );

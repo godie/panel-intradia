@@ -9,6 +9,8 @@ import {
   calculateEMA,
   calculateRSI,
   calculateMACD,
+  calculateATR,
+  calculateBollingerBands,
   detectMacdCross,
   detectRecentCross,
   findSupportResistance,
@@ -74,6 +76,12 @@ function buildAnalysis(
     ? detectMacdCross(macdRes.macdLine, macdRes.signalLine, macdRes.histogram)
     : null;
 
+  // ATR(14) on 4h — volatility measure (Wilder's smoothing).
+  const atrRes = calculateATR(highs, lows, closes, 14);
+
+  // Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev.
+  const bbRes = calculateBollingerBands(closes, 20, 2);
+
   // Support / resistance.
   const srRes = findSupportResistance(highs, lows, spotPrice ?? 0);
 
@@ -108,6 +116,8 @@ function buildAnalysis(
     low_24h: ticker == null,
     macd: !macdRes.available,
     macd_cross: !macdRes.available,
+    atr_14_4h: !atrRes.available,
+    bollinger: !bbRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -117,6 +127,8 @@ function buildAnalysis(
   const seriesEma200 = ema200Res.series.slice(startIdx);
   const seriesRsi = rsiRes.series.slice(startIdx);
   const seriesMacdHist = macdRes.histogram.slice(startIdx);
+  const seriesBbUpper = bbRes.upper.slice(startIdx);
+  const seriesBbLower = bbRes.lower.slice(startIdx);
 
   return {
     symbol,
@@ -139,6 +151,13 @@ function buildAnalysis(
       histogram: round(macdRes.lastHistogram, dec),
     },
     macd_cross: macdCross,
+    atr_14_4h: round(atrRes.last, dec),
+    bollinger: {
+      upper: round(bbRes.lastUpper, dec),
+      middle: round(bbRes.lastMiddle, dec),
+      lower: round(bbRes.lastLower, dec),
+      bandwidth: round(bbRes.lastBandwidth, 2),
+    },
     structure_text: structureText,
     no_disponible,
     series: {
@@ -147,6 +166,8 @@ function buildAnalysis(
       ema200: seriesEma200,
       rsi: seriesRsi,
       macd_histogram: seriesMacdHist,
+      bollinger_upper: seriesBbUpper,
+      bollinger_lower: seriesBbLower,
     },
     updated_at: new Date().toISOString(),
   };

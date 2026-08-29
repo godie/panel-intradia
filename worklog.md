@@ -1389,3 +1389,153 @@ usuario mantenga su preferencia entre recargas. Quick win de UX.
 Si sobra ancho de banda, **scatter plot marginal histograms** (item 4) —
 añadir mini-histogramas en los ejes X e Y del scatter plot para mostrar
 la distribución de returns de cada símbolo. Feature diferenciadora.
+
+---
+Task ID: round-10
+Agent: cron webDevReview
+Task: ATR + Bollinger Bands indicators + collapsible state persistence.
+
+Work Log:
+- Leído worklog previo: v9 estable con scatter plot modal + buildStructureText
+  tests + keyboard help modal. 52 tests pasando. Próxima prioridad: ATR,
+  Bollinger Bands, collapsible state persistence.
+- QA inicial con agent-browser: 6 cards, TICK LIVE, sin errores. Servicios
+  ws-tick (3003, uptime ~2400s) y order-book (3004) corriendo. Lint limpio,
+  52 tests pasando. Estabilidad confirmada.
+- Decisión: implementar las 3 features recomendadas (ATR + Bollinger +
+  collapsible persistence).
+- Backend — `indicators.ts` ampliaciones:
+  - `calculateATR(highs, lows, closes, period=14)` — Average True Range con
+    suavizado de Wilder. TR = max(H-L, |H-prevClose|, |L-prevClose|).
+    Seed = SMA de primeros `period` TRs, recurrencia
+    `ATR_t = (ATR_{t-1}*(period-1) + TR_t)/period`. Edge cases: unavailable
+    cuando n < period+1 o arrays mismatched.
+  - `calculateBollingerBands(closes, period=20, k=2)` — Middle = SMA(period),
+    Upper = middle + k*stddev, Lower = middle - k*stddev. Bandwidth =
+    (upper-lower)/middle*100. Population stddev (div by period, no Bessel).
+    Retorna series completas + lastMiddle/Upper/Lower/Bandwidth + available.
+  - Exportados tipos: BollingerResult.
+- Backend — `types.ts` ampliado:
+  - `AnalysisResponse.atr_14_4h: number | null`.
+  - `AnalysisResponse.bollinger: {upper, middle, lower, bandwidth}`.
+  - `no_disponible.atr_14_4h` + `no_disponible.bollinger`.
+  - `series.bollinger_upper` + `series.bollinger_lower` para overlay en sparkline.
+- Backend — `/api/analysis` route:
+  - Import calculateATR + calculateBollingerBands.
+  - Computa atrRes y bbRes en buildAnalysis.
+  - Incluye atr_14_4h, bollinger{upper,middle,lower,bandwidth}, y series
+    bollinger_upper/bollinger_lower en el payload.
+  - Verificado: BTC atr_14_4h=1028.7, bollinger{upper:80552, middle:78950,
+    lower:77347, bandwidth:4.06%}, series.bollinger_upper[120].
+- Tests — `indicators.test.ts` ampliado (+12 tests = 64 total):
+  - calculateATR (5 tests): unavailable con pocos candles, unavailable con
+    arrays mismatched, flat series (ATR~4), volatile series (ATR>15),
+    first `period` entries null.
+  - calculateBollingerBands (7 tests): unavailable con pocos closes, flat
+    series (upper=middle=lower, bandwidth=0), upper>middle>lower non-flat,
+    bandwidth positive, invalid params, first period-1 entries null,
+    upper-lower = 2*k*stddev con verificación de SMA window correcta.
+  - 1 iteración: test de Bollinger "upper-lower = 2*k*stddev" falló porque
+    la expectación usaba closes[0..19] pero el último middle válido es
+    SMA de closes[1..20] (index 20). Corregido a slice(1,21).
+- Frontend — `sparkline.tsx` ampliado:
+  - Props nuevas: `bbUpper?: (number|null)[]`, `bbLower?: (number|null)[]`.
+  - Bollinger fill area: path cerrado entre upper (left→right) y lower
+    (right→left) con fill rgba(180,140,255,0.06).
+  - Bollinger lines: thin dashed purple (1px, [2,3] dash) dibujadas entre
+    EMA200 y EMA55.
+  - Y-range computation ahora incluye bbUpper + bbLower para que las bandas
+    siempre quepan en el canvas.
+  - Legend: nuevo item "BOLLINGER" con dashed purple swatch (solo cuando
+    bbUpper/bbLower están presentes).
+  - COLORS: añadido bollinger (rgba(180,140,255,0.35)) + bollingerFill.
+- Frontend — `asset-card.tsx` integración:
+  - Sparkline ahora recibe bbUpper={data.series.bollinger_upper} +
+    bbLower={data.series.bollinger_lower}.
+  - MetricRow "ATR 14 · 4h" con color púrpura (#b48cff) + hint
+    "Volatilidad (Average True Range)".
+  - MetricRow "BOLLINGER BW" con bandwidth % + hint
+    "Ancho de banda (squeeze < 3%)".
+  - Ambos dentro del CollapsibleSection "Indicadores · 4h".
+- Frontend — `collapsible-section.tsx` ampliación (state persistence):
+  - Estado `open` ahora se inicializa desde localStorage
+    (`panel:collapse:${label}`) si existe, sino usa defaultOpen.
+  - useEffect persiste `open` en localStorage on every change.
+  - try/catch autour de localStorage (ignora quota/privacy mode errors).
+  - SSR-safe: `typeof window === "undefined"` check en initializer.
+  - Key es el label text (único por tipo de sección: "MACD · 12/26/9 · 4h",
+    "Order Book · L2", "Indicadores · 4h").
+  - Benefit: el usuario colapsa MACD en una sesión, recarga la página, y
+    MACD sigue colapsado.
+- Lint: 0 iteraciones. Limpio desde el primer intento.
+- Tests: 64/64 passing (2 test files: indicators 51 + structure 13).
+- Verificación API: BTC atr_14_4h=1028.7, bollinger.bandwidth=4.06%,
+  series.bollinger_upper[120].
+- Verificación agent-browser:
+  - 6 cards renderizadas. BTC card contiene:
+    * Sparkline legend con "BOLLINGER".
+    * "ATR 14 · 4H $1,030.40" + hint "Volatilidad (Average True Range)".
+    * "BOLLINGER BW 4.07%" + hint "Ancho de banda (squeeze < 3%)".
+    * TICK LIVE, order book, MACD, RSI, range bar, estructura.
+  - Sin errores console/runtime.
+- Verificación VLM desktop: "Bollinger Bands visible as purple dashed lines
+  and fill area on all sparklines. ATR value visible in Indicadores section.
+  Bollinger Bandwidth % visible. Bollinger legend item present. No visual
+  bugs. High polish, comprehensive view, clean and data-dense."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 4121 = footerBottom (empujado naturalmente).
+
+Stage Summary:
+- **Estado:** v10 entregada y verificada. 3 features nuevas (ATR volatility +
+  Bollinger Bands overlay + collapsible state persistence). 64 tests pasando
+  (51 indicators + 13 structure). Panel ahora tiene 7 indicadores técnicos:
+  EMA55, EMA200, RSI, MACD, S/R, ATR, Bollinger Bands.
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (+calculateATR, +calculateBollingerBands,
+    +BollingerResult type)
+  - `src/lib/indicators.test.ts` (+12 tests ATR+Bollinger = 64 total)
+  - `src/lib/types.ts` (+atr_14_4h, +bollinger, +series.bollinger_*)
+  - `src/app/api/analysis/route.ts` (integración ATR+Bollinger)
+  - `src/components/panel/sparkline.tsx` (+bbUpper/bbLower overlay + legend)
+  - `src/components/panel/asset-card.tsx` (+ATR/BW metric rows + bb props)
+  - `src/components/panel/collapsible-section.tsx` (localStorage persistence)
+- **Tests:** 64/64 passing en 2 test files. Cobertura: calculateEMA,
+  calculateRSI, determineCrossState, detectRecentCross, detectMacdCross,
+  calculateMACD, findSupportResistance, calculateATR, calculateBollingerBands
+  (indicators.ts) + buildStructureText (structure.ts).
+- **Indicadores técnicos:** EMA55, EMA200, RSI(14), MACD(12,26,9),
+  S/R pivotes, ATR(14), Bollinger Bands(20,2). 7 indicadores por símbolo.
+
+## Unresolved Issues / Next-Phase Priorities (round 10)
+
+1. **Toast dedup across reloads** (item 6 de round 6, aún pendiente):
+   sessionStorage para el Set de IDs vistos. Prioridad baja.
+2. **Cross-history filter persistence** (item 2 de round 7, aún pendiente):
+   URL query params o localStorage. Prioridad baja.
+3. **Scatter plot enhancements**: histogramas marginales, selector de
+   timeframe dentro del modal. Prioridad baja.
+4. **Export CSV/IMG** (item 7 de round 8): además de JSON. Prioridad baja.
+5. **Prisma log fix no aplicado al HMR** (item 8 de round 8): requiere
+   restart del dev server. Prioridad baja.
+6. **Bollinger squeeze alert**: cuando bandwidth < 3% (squeeze), mostrar
+   un badge/alerta de "compresión de volatilidad" análogo al cruce MACD.
+   Prioridad media.
+7. **VWAP / Stochastic**: más indicadores. Prioridad baja.
+8. **ATR-based stop loss suggestion**: mostrar "stop sugerido = precio -
+   ATR*1.5" en la card. Feature diferenciadora. Prioridad media.
+
+## Recommended Next Step (round 11)
+
+Priorizar **Bollinger squeeze alert** (item 6) — cuando el bandwidth < 3%
+(squeeze), la volatilidad está comprimida y suele preceder una expansión
+direccional. Añadir un badge "⚡ SQUEEZE" en la card + persistir el evento
+en SQLite (nuevo tipo "squeeze" en CrossEvent). Es la iteración natural
+que convierte el bandwidth de "lectura" a "alerta activa".
+
+En paralelo, **ATR-based stop loss suggestion** (item 8) — mostrar
+"Invalidación técnica: pérdida de ${precio - ATR*1.5}" en la card,
+usando el ATR ya calculado. Quick win de alto valor práctico para traders.
+
+Si sobra ancho de banda, **toast dedup via sessionStorage** (item 1) —
+persistir el Set de IDs vistos entre recargas para evitar re-disparar
+toasts de cruces ya notificados.

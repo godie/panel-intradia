@@ -53,6 +53,15 @@ export type AnalysisResponse = {
   };
   /** MACD/signal crossover detection (recent + momentum flip). */
   macd_cross: MacdCrossInfo | null;
+  /** ATR(14) on 4h — volatility measure (Average True Range, Wilder). */
+  atr_14_4h: number | null;
+  /** Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev. */
+  bollinger: {
+    upper: number | null;
+    middle: number | null;
+    lower: number | null;
+    bandwidth: number | null; // (upper - lower) / middle * 100
+  };
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -69,6 +78,8 @@ export type AnalysisResponse = {
     low_24h: boolean;
     macd: boolean;
     macd_cross: boolean;
+    atr_14_4h: boolean;
+    bollinger: boolean;
   };
   series: {
     closes: number[];
@@ -76,6 +87,8 @@ export type AnalysisResponse = {
     ema200: (number | null)[];
     rsi: (number | null)[];
     macd_histogram: (number | null)[];
+    bollinger_upper: (number | null)[];
+    bollinger_lower: (number | null)[];
   };
   updated_at: string;
 };

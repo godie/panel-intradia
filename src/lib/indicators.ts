@@ -545,3 +545,157 @@ export function detectMacdCross(
     window,
   };
 }
+
+/**
+ * calculateATR — Average True Range (Wilder's smoothing).
+ *
+ * True Range for a candle is the greatest of:
+ *   - |high - low|
+ *   - |high - prevClose|
+ *   - |low - prevClose|
+ *
+ * ATR uses Wilder's smoothing (same as RSI): the first ATR is the SMA of the
+ * first `period` TRs, then `ATR_t = (ATR_{t-1} * (period-1) + TR_t) / period`.
+ *
+ * Returns the last ATR value + the full series (null for the first `period`
+ * entries). `available: false` when fewer than `period + 1` candles (need a
+ * previous close for the first TR).
+ */
+export function calculateATR(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14,
+): { series: (number | null)[]; last: number | null; available: boolean } {
+  const n = highs.length;
+  if (period <= 0 || n < period + 1 || lows.length !== n || closes.length !== n) {
+    return { series: Array(n).fill(null), last: null, available: false };
+  }
+
+  // Compute True Range for each candle (needs prev close).
+  const tr: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i === 0) {
+      tr.push(highs[i] - lows[i]);
+    } else {
+      const prevClose = closes[i - 1];
+      const hl = highs[i] - lows[i];
+      const hc = Math.abs(highs[i] - prevClose);
+      const lc = Math.abs(lows[i] - prevClose);
+      tr.push(Math.max(hl, hc, lc));
+    }
+  }
+
+  const series: (number | null)[] = Array(n).fill(null);
+
+  // Seed: SMA of the first `period` TR values (indices 1..period).
+  let seed = 0;
+  for (let i = 1; i <= period; i++) seed += tr[i];
+  seed /= period;
+  series[period] = seed;
+
+  // Wilder smoothing for the rest.
+  let prev = seed;
+  for (let i = period + 1; i < n; i++) {
+    const atr = (prev * (period - 1) + tr[i]) / period;
+    series[i] = atr;
+    prev = atr;
+  }
+
+  return { series, last: prev, available: true };
+}
+
+/**
+ * calculateBollingerBands — Bollinger Bands (SMA ± k * stddev).
+ *
+ * Middle band = SMA(period) of closes.
+ * Upper band = middle + k * stddev.
+ * Lower band = middle - k * stddev.
+ *
+ * Standard params: period=20, k=2 (2 standard deviations).
+ *
+ * Returns the last values + the full series for the middle/upper/lower bands
+ * (null for the first `period - 1` entries). `available: false` when fewer
+ * than `period` closes. The bandwidth (% distance between upper and lower
+ * relative to middle) is also returned for a squeeze-detection UI.
+ */
+export type BollingerResult = {
+  middle: (number | null)[];
+  upper: (number | null)[];
+  lower: (number | null)[];
+  lastMiddle: number | null;
+  lastUpper: number | null;
+  lastLower: number | null;
+  lastBandwidth: number | null; // (upper - lower) / middle * 100
+  available: boolean;
+};
+
+export function calculateBollingerBands(
+  closes: number[],
+  period = 20,
+  k = 2,
+): BollingerResult {
+  const n = closes.length;
+  const empty: BollingerResult = {
+    middle: Array(n).fill(null),
+    upper: Array(n).fill(null),
+    lower: Array(n).fill(null),
+    lastMiddle: null,
+    lastUpper: null,
+    lastLower: null,
+    lastBandwidth: null,
+    available: false,
+  };
+  if (period <= 0 || n < period || k <= 0) return empty;
+
+  const middle: (number | null)[] = Array(n).fill(null);
+  const upper: (number | null)[] = Array(n).fill(null);
+  const lower: (number | null)[] = Array(n).fill(null);
+
+  for (let i = period - 1; i < n; i++) {
+    // SMA of closes[i-period+1 .. i]
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+    const sma = sum / period;
+    middle[i] = sma;
+
+    // Standard deviation of the same window (population stddev).
+    let sqSum = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      sqSum += (closes[j] - sma) ** 2;
+    }
+    const stddev = Math.sqrt(sqSum / period);
+
+    upper[i] = sma + k * stddev;
+    lower[i] = sma - k * stddev;
+  }
+
+  // Find last valid values.
+  let lastMiddle: number | null = null;
+  let lastUpper: number | null = null;
+  let lastLower: number | null = null;
+  for (let i = n - 1; i >= 0; i--) {
+    if (middle[i] != null) {
+      lastMiddle = middle[i];
+      lastUpper = upper[i];
+      lastLower = lower[i];
+      break;
+    }
+  }
+
+  const lastBandwidth =
+    lastMiddle != null && lastUpper != null && lastLower != null && lastMiddle !== 0
+      ? ((lastUpper - lastLower) / lastMiddle) * 100
+      : null;
+
+  return {
+    middle,
+    upper,
+    lower,
+    lastMiddle,
+    lastUpper,
+    lastLower,
+    lastBandwidth,
+    available: lastMiddle != null,
+  };
+}

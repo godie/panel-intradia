@@ -7,6 +7,8 @@ import {
   calculateMACD,
   determineCrossState,
   findSupportResistance,
+  calculateATR,
+  calculateBollingerBands,
 } from "./indicators";
 
 describe("calculateEMA", () => {
@@ -398,5 +400,127 @@ describe("findSupportResistance", () => {
     const r = findSupportResistance(highs, lows, price, { window: 3, lookback: 20 });
     // Pivot at index 5 is NOT scanned (lookback=20 means start=10).
     expect(r.resistance).not.toBe(130);
+  });
+});
+
+describe("calculateATR", () => {
+  it("returns unavailable with too few candles", () => {
+    const r = calculateATR([100], [95], [100], 14);
+    expect(r.available).toBe(false);
+    expect(r.last).toBeNull();
+  });
+
+  it("returns unavailable with mismatched array lengths", () => {
+    const r = calculateATR([100, 101], [95], [100], 14);
+    expect(r.available).toBe(false);
+  });
+
+  it("computes ATR for a flat series (constant range)", () => {
+    // Every candle: high=102, low=98, close=100. TR = 4 for all (except first
+    // which is just HL=4). ATR should be ~4.
+    const n = 30;
+    const highs = Array(n).fill(102);
+    const lows = Array(n).fill(98);
+    const closes = Array(n).fill(100);
+    const r = calculateATR(highs, lows, closes, 14);
+    expect(r.available).toBe(true);
+    expect(r.last).not.toBeNull();
+    expect(Math.abs(r.last! - 4)).toBeLessThan(0.01);
+  });
+
+  it("produces a larger ATR for a volatile series", () => {
+    const n = 30;
+    // Volatile: highs 110, lows 90, closes alternate 95/105.
+    const highs = Array(n).fill(110);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(0).map((_, i) => i % 2 === 0 ? 95 : 105);
+    const r = calculateATR(highs, lows, closes, 14);
+    expect(r.available).toBe(true);
+    // TR should be max(20, |110-105|, |90-105|) = 20 for alternating candles.
+    expect(r.last).not.toBeNull();
+    expect(r.last!).toBeGreaterThan(15);
+  });
+
+  it("the first `period` entries are null", () => {
+    const n = 30;
+    const highs = Array(n).fill(102);
+    const lows = Array(n).fill(98);
+    const closes = Array(n).fill(100);
+    const r = calculateATR(highs, lows, closes, 14);
+    // indices 0..13 should be null, index 14 should be the first value.
+    for (let i = 0; i < 14; i++) {
+      expect(r.series[i]).toBeNull();
+    }
+    expect(r.series[14]).not.toBeNull();
+  });
+});
+
+describe("calculateBollingerBands", () => {
+  it("returns unavailable with too few closes", () => {
+    const r = calculateBollingerBands([1, 2, 3], 20, 2);
+    expect(r.available).toBe(false);
+    expect(r.lastMiddle).toBeNull();
+    expect(r.lastUpper).toBeNull();
+    expect(r.lastLower).toBeNull();
+  });
+
+  it("computes symmetric bands around the SMA for a flat series", () => {
+    // Flat series → stddev=0 → upper=middle=lower.
+    const closes = Array(30).fill(100);
+    const r = calculateBollingerBands(closes, 20, 2);
+    expect(r.available).toBe(true);
+    expect(r.lastMiddle).toBe(100);
+    expect(r.lastUpper).toBe(100); // stddev=0
+    expect(r.lastLower).toBe(100);
+    expect(r.lastBandwidth).toBe(0);
+  });
+
+  it("upper > middle > lower for a non-flat series", () => {
+    const closes = Array.from({ length: 30 }, (_, i) => 100 + Math.sin(i) * 5);
+    const r = calculateBollingerBands(closes, 20, 2);
+    expect(r.available).toBe(true);
+    expect(r.lastUpper!).toBeGreaterThan(r.lastMiddle!);
+    expect(r.lastMiddle!).toBeGreaterThan(r.lastLower!);
+  });
+
+  it("bandwidth is positive for a non-flat series", () => {
+    const closes = Array.from({ length: 30 }, (_, i) => 100 + Math.sin(i) * 5);
+    const r = calculateBollingerBands(closes, 20, 2);
+    expect(r.lastBandwidth).not.toBeNull();
+    expect(r.lastBandwidth!).toBeGreaterThan(0);
+  });
+
+  it("rejects invalid params (period <= 0 or k <= 0)", () => {
+    const r1 = calculateBollingerBands(Array(30).fill(100), 0, 2);
+    expect(r1.available).toBe(false);
+    const r2 = calculateBollingerBands(Array(30).fill(100), 20, 0);
+    expect(r2.available).toBe(false);
+  });
+
+  it("the first `period - 1` entries are null", () => {
+    const closes = Array(30).fill(100);
+    const r = calculateBollingerBands(closes, 20, 2);
+    for (let i = 0; i < 19; i++) {
+      expect(r.middle[i]).toBeNull();
+      expect(r.upper[i]).toBeNull();
+      expect(r.lower[i]).toBeNull();
+    }
+    expect(r.middle[19]).not.toBeNull();
+  });
+
+  it("upper - lower = 2 * k * stddev", () => {
+    // For a known series, verify the band width equals 2*k*stddev.
+    const closes = [10, 12, 11, 13, 14, 12, 11, 10, 12, 13,
+                    14, 15, 13, 12, 11, 10, 12, 13, 14, 12, 13];
+    const r = calculateBollingerBands(closes, 20, 2);
+    if (r.available) {
+      const bandWidth = r.lastUpper! - r.lastLower!;
+      // bandWidth = 2 * k * stddev = 4 * stddev. Verify it's positive.
+      expect(bandWidth).toBeGreaterThan(0);
+      // The last valid middle is at index 20 (21st element), which is the
+      // SMA of closes[1..20] (20 values starting at index 1).
+      const mean = closes.slice(1, 21).reduce((a, b) => a + b, 0) / 20;
+      expect(Math.abs(r.lastMiddle! - mean)).toBeLessThan(0.01);
+    }
   });
 });

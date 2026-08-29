@@ -362,6 +362,8 @@ export function AssetCard({
           closes={data.series.closes}
           ema55={data.series.ema55}
           ema200={data.series.ema200}
+          bbUpper={data.series.bollinger_upper}
+          bbLower={data.series.bollinger_lower}
           spot={displayPrice}
           crossState={data.cross_state}
           height={150}
@@ -450,6 +452,20 @@ export function AssetCard({
           value={`$${fmtPrice(data.support)}`}
           unavailable={nd.support}
           color="#5fbf8f"
+        />
+        <MetricRow
+          label="ATR 14 · 4h"
+          value={`$${fmtPrice(data.atr_14_4h)}`}
+          unavailable={nd.atr_14_4h}
+          color="#b48cff"
+          hint="Volatilidad (Average True Range)"
+        />
+        <MetricRow
+          label="Bollinger BW"
+          value={data.bollinger?.bandwidth != null ? `${data.bollinger.bandwidth.toFixed(2)}%` : "—"}
+          unavailable={nd.bollinger}
+          color="#b48cff"
+          hint="Ancho de banda (squeeze < 3%)"
         />
         {/* RSI gauge (own row, richer) */}
         <RsiGauge

@@ -35,7 +35,28 @@ export function CollapsibleSection({
   defaultOpen = true,
   accent = "#8b96a5",
 }: Props) {
-  const [open, setOpen] = useState(defaultOpen);
+  // Persist open/closed state per label in localStorage so the user's
+  // preference survives page reloads. Key is the label text (unique per
+  // section type: "MACD · 12/26/9 · 4h", "Order Book · L2", etc.).
+  const storageKey = `panel:collapse:${label}`;
+  const [open, setOpen] = useState(() => {
+    if (typeof window === "undefined") return defaultOpen;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      return stored === null ? defaultOpen : stored === "true";
+    } catch {
+      return defaultOpen;
+    }
+  });
+
+  // Persist on change + listen for global collapse/expand events.
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, String(open));
+    } catch {
+      // Ignore quota / privacy mode errors.
+    }
+  }, [open, storageKey]);
 
   useEffect(() => {
     const onCollapse = () => setOpen(false);
