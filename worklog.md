@@ -814,3 +814,148 @@ mejorando la experiencia mobile (card actual es ~1600px en mobile).
 Si sobra ancho de banda, **tests Vitest para detectMacdCross** (item 4)
 con fixtures sintéticos cubriendo los 4 casos (no cross, bullish, bearish,
 momentum flip) — daría confianza para futuras iteraciones.
+
+---
+Task ID: round-6
+Agent: cron webDevReview
+Task: Collapsible sections + Market Overview card + live cross-alert toasts + Prisma log fix.
+
+Work Log:
+- Leído worklog previo: v5 estable con SQLite cross-history + SOL/BNB pairs.
+  Servicios restartados en round 5, 5 símbolos streaming. Próxima prioridad:
+  collapsible sections en mobile, tests Vitest.
+- QA inicial con agent-browser: 5 cards renderizadas, TICK LIVE activo,
+  CrossHistory visible, sin errores. Servicios ws-tick (3003) y order-book
+  (3004) corriendo con 5 símbolos. Estabilidad confirmada.
+- Decisión: 3 features de alto impacto + 1 fix:
+  (1) Collapsible sections (compactar cards),
+  (2) Market Overview card (6º slot),
+  (3) Live cross-alert toasts (sonner),
+  (4) Prisma log verbosity fix.
+- Fix — Prisma log verbosity (`src/lib/db.ts`):
+  - Cambiado `log: ['query']` → `log: ['error', 'warn']`.
+  - Elimina el spam de queries SQL en dev.log (cada /api/analysis generaba
+    ~3 líneas de prisma:query). Solo errores/warnings se loguean ahora.
+- Frontend — `src/components/panel/collapsible-section.tsx` (nuevo):
+  - Componente reutilizable con header button + chevron rotatorio.
+  - Props: label, badge (ReactNode), children, defaultOpen, accent color.
+  - aria-expanded + focus-visible ring para accesibilidad.
+  - Transición CSS en el chevron (rotate-180 duration-200).
+- Frontend — `asset-card.tsx` integración de CollapsibleSection:
+  - MACD panel envuelto en CollapsibleSection con accent ámbar + badge
+    "Cruce" (Zap icon) cuando macd_cross.happened=true.
+  - Order Book envuelto en CollapsibleSection con accent azul + badge
+    "LIVE" (pulsing dot) cuando depthConnected.
+  - Metric rows (EMA55/200/S/R/RSI) envueltos en CollapsibleSection
+    "Indicadores · 4h" con accent gris.
+  - Sparkline y RangeBar se mantienen SIEMPRE visibles (no colapsables)
+    — son los elementos más importantes para glance.
+  - Estructura de mercado se mantiene al final (mt-auto, no colapsable).
+  - Beneficio mobile: card más compacta, usuario expande solo lo que
+    necesita ver.
+- Frontend — `src/components/panel/market-overview.tsx` (nuevo):
+  - 6º card en el grid (5 pares + overview = 6 cells = 2 filas completas
+    en grid de 3 columnas, sin espacio vacío).
+  - Breadth gauge: barra horizontal con segmentos verde (alcista) /
+    ámbar (comprimido) / rojo (bajista) + % de breadth.
+  - Top performer + Peor performer (cards lado a lado con border
+    coloreado).
+  - Mayor movimiento (mayor |Δ24h|) + RSI promedio (cards lado a lado).
+  - Mini bar chart de cambio 24h por par: barras divergentes desde el
+    centro (verde derecha / rojo izquierda), normalizadas al max abs.
+  - Footer con texto de sesgo agregado ("Sesgo alcista amplio — X/Y
+    pares en estructura alcista. Z muestra la mayor volatilidad.").
+  - Empty state cuando no hay datos ("Cargando visión de mercado…").
+- Frontend — live cross-alert toasts (`src/hooks/use-cross-alerts.tsx`):
+  - Hook que poll `/api/cross-history?limit=20` cada 60s.
+  - En cada poll, compara con un Set de IDs vistos (ref, no state).
+  - Fire toast (sonner) para eventos NUEVOS detectados en los últimos
+    5 minutos (RECENT_WINDOW_MS). Primer poll solo seedea el Set sin
+    disparar toasts (evita spam de eventos históricos al cargar).
+  - Toast custom: icono Zap (momentum) o TrendingUp/Down (cruce),
+    coloreado según dirección (verde alcista / rojo bajista), glow
+    shadow del color, duración 8s.
+  - Errores silenciosos (alerts son non-critical).
+- Frontend — `layout.tsx`:
+  - Añadido `<Toaster position="bottom-right">` con styling dark
+    (background #11151c, border sutil) para que los toasts de
+    useCrossAlerts se rendericen.
+- Frontend — `page.tsx`:
+  - `useCrossAlerts()` hook añadido al top level (junto a useTickStream
+    y useOrderBook).
+  - `<MarketOverview items={tickerItems} />` añadido después del map de
+    AssetCards, dentro del grid (6º slot).
+- Lint: 1 iteración. Error inicial: `use-cross-alerts.ts` tenía JSX
+  (toast con div) pero extensión .ts. Fix: renombrado a .tsx. Lint final
+  limpio.
+- Verificación agent-browser:
+  - 6 cards renderizadas: BTC, ETH, XRP, SOL, BNB, Visión de Mercado.
+  - Market Overview card: breadth gauge 100% (4 alcista), top performer
+    ETH, worst XRP, biggest mover XRP, avg RSI 44.1, mini bar chart con
+    4 pares.
+  - Collapsible sections visibles con chevron icons + badges (LIVE en
+    Order Book, Cruce en MACD de SOL).
+  - TICK LIVE en header. Sin errores console/runtime.
+- Verificación VLM desktop (1440x900): "6th Visión de Mercado card
+  visible with breadth gauge and bar chart. Collapsible section headers
+  with chevron icons visible. LIVE and Cruce badges present. High polish,
+  robust grid layout, no major overflow. New features integrated
+  successfully."
+- Verificación mobile (390x844): 6 cards en 1 columna (358px), sin overflow.
+- Verificación footer: docHeight 3913px, footer empujado naturalmente al
+  final del documento (footerBottom=3913=docHeight).
+
+Stage Summary:
+- **Estado:** v6 entregada y verificada. 3 features nuevas (collapsible
+  sections + Market Overview card + live cross-alert toasts) + 1 fix
+  (Prisma log verbosity). Grid ahora tiene 6 cards (2 filas completas,
+  sin espacio vacío). Cards más compactas gracias a collapsible sections.
+- **Artefactos producidos:**
+  - `src/lib/db.ts` (log verbosity fix)
+  - `src/components/panel/collapsible-section.tsx` (nuevo)
+  - `src/components/panel/market-overview.tsx` (nuevo)
+  - `src/hooks/use-cross-alerts.tsx` (nuevo — sonner toasts + polling)
+  - `src/components/panel/asset-card.tsx` (CollapsibleSection integration)
+  - `src/app/layout.tsx` (+ Toaster mount)
+  - `src/app/page.tsx` (+ useCrossAlerts + MarketOverview)
+- **Toasts activos:** cualquier cruce fresco (EMA/MACD/momentum detectado
+  en los últimos 5 min) dispara un toast bottom-right con icono + color
+  + detalles. Pipeline: detección → SQLite → /api/cross-history →
+  useCrossAlerts poll → sonner toast.
+- **Grid completo:** 6 cards (5 pares + overview) = 2 filas de 3 en
+  desktop, 1 columna en mobile.
+
+## Unresolved Issues / Next-Phase Priorities (round 6)
+
+1. **Prisma log fix no aplicado al proceso en curso**: el cambio en
+   `db.ts` requiere reload del módulo. El dev server lo debería captar
+   vía HMR, pero los logs viejos de prisma:query pueden seguir apareciendo
+   hasta el próximo reload completo. Prioridad baja.
+2. **Tests Vitest** (item 6 de round 5, aún pendiente): detectMacdCross,
+   calculateRSI, findSupportResistance. Prioridad media.
+3. **Cross history filters**: filtro por tipo (ema/macd/momentum) y
+   dirección en el CrossHistory component. Prioridad baja.
+4. **Collapsible sections state persistence**: actualmente cada card
+   recuerda su propio estado de collapse, pero al refrescar se resetea.
+   Podría persistirse en localStorage. Prioridad baja.
+5. **Market Overview**: añadir correlación entre pares (ej. BTC-ETH
+   correlation 0.85) o un mini heatmap. Prioridad baja.
+6. **Toast dedup across reloads**: si el usuario recarga la página,
+   eventos recientes vuelven a disparar toasts (el Set se resetea).
+   Podría usar sessionStorage para persistir el Set. Prioridad baja.
+
+## Recommended Next Step (round 7)
+
+Priorizar **tests Vitest para detectMacdCross** (item 2) — es la función
+más compleja y la menos probada. Cubrir los 4 casos (no cross, bullish
+cross, bearish cross, momentum flip) + edge cases (series cortas, null
+values). Setup rápido (~30min) y daría confianza para futuras iteraciones.
+
+En paralelo, **cross history filters** (item 3) — añadir tabs o dropdown
+para filtrar por tipo/dirección en el timeline. Mejora la UX cuando el
+historial crezca.
+
+Si sobra ancho de banda, **correlación entre pares** en Market Overview
+(item 5) — un mini heatmap o matrix de correlación BTC/ETH/XRP/SOL/BNB
+basado en los cambios 24h. Feature diferenciadora para un panel
+cuantitativo.

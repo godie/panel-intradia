@@ -5,12 +5,14 @@ import { AssetCard } from "@/components/panel/asset-card";
 import { TickerTape } from "@/components/panel/ticker-tape";
 import { MarketSummary } from "@/components/panel/market-summary";
 import { CrossHistory } from "@/components/panel/cross-history";
+import { MarketOverview } from "@/components/panel/market-overview";
 import { SYMBOLS, SYMBOL_META, type AnalysisResponse } from "@/lib/types";
 import {
   useTickStream,
   clearTickPriceGlobal,
 } from "@/hooks/use-tick-stream";
 import { useOrderBook } from "@/hooks/use-order-book";
+import { useCrossAlerts } from "@/hooks/use-cross-alerts";
 import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff } from "lucide-react";
 
 const REFRESH_MS = 60_000;
@@ -45,6 +47,7 @@ export default function Page() {
   // Live tick stream — shared singleton socket.
   const tick = useTickStream();
   const book = useOrderBook();
+  useCrossAlerts();
 
   const fetchAll = useCallback(async (manual: boolean) => {
     // Cancel any in-flight fetch.
@@ -367,6 +370,8 @@ export default function Page() {
                 />
               );
             })}
+            {/* Market overview — fills the 6th grid slot */}
+            <MarketOverview items={tickerItems} />
           </div>
 
           {/* Cross history timeline — persisted EMA/MACD/momentum crosses */}

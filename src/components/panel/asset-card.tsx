@@ -5,6 +5,7 @@ import { RsiGauge } from "./rsi-gauge";
 import { RangeBar } from "./range-bar";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
+import { CollapsibleSection } from "./collapsible-section";
 import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
 import type { DepthSnapshot } from "@/hooks/use-order-book";
 import {
@@ -368,14 +369,25 @@ export function AssetCard({
       </div>
 
       {/* MACD mini-panel — histogram of last ~40 bars + crossover alerts */}
-      <div className="px-5 pb-3">
+      <CollapsibleSection
+        label="MACD · 12/26/9 · 4h"
+        accent="#e8b04b"
+        badge={
+          data.macd_cross?.happened ? (
+            <span className="inline-flex items-center gap-0.5 rounded border border-[#5fbf8f]/30 bg-[#5fbf8f]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#5fbf8f]">
+              <Zap className="h-2.5 w-2.5" aria-hidden />
+              Cruce
+            </span>
+          ) : undefined
+        }
+      >
         <MacdPanel
           macd={data.macd}
           series={data.series.macd_histogram}
           unavailable={nd.macd}
           macdCross={data.macd_cross}
         />
-      </div>
+      </CollapsibleSection>
 
       {/* Range bar — position of price within S/R with EMA markers */}
       <div className="px-5 pb-3">
@@ -394,16 +406,27 @@ export function AssetCard({
       </div>
 
       {/* L2 Order book — bid/ask depth + spread + imbalance */}
-      <div className="px-5 pb-3">
+      <CollapsibleSection
+        label="Order Book · L2"
+        accent="#4fa8d8"
+        badge={
+          depthConnected ? (
+            <span className="inline-flex items-center gap-1 rounded border border-[#5fbf8f]/30 bg-[#5fbf8f]/10 px-1.5 py-0.5 text-[9px] font-medium uppercase text-[#5fbf8f]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#5fbf8f] live-dot" />
+              LIVE
+            </span>
+          ) : undefined
+        }
+      >
         <DepthBar
           snapshot={depthSnapshot}
           spotPrice={displayPrice}
           connected={depthConnected === true}
         />
-      </div>
+      </CollapsibleSection>
 
-      {/* Metric rows */}
-      <div className="px-5 pb-3">
+      {/* Metric rows + RSI */}
+      <CollapsibleSection label="Indicadores · 4h" accent="#8b96a5">
         <MetricRow
           label="EMA 55 · 4h"
           value={`$${fmtPrice(data.ema55_4h)}`}
@@ -434,7 +457,7 @@ export function AssetCard({
           unavailable={nd.rsi_14_4h}
           series={data.series.rsi}
         />
-      </div>
+      </CollapsibleSection>
 
       {/* Structure text */}
       <div className="mt-auto border-t border-white/5 bg-white/[0.015] p-5">
