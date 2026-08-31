@@ -76,6 +76,13 @@ export type AnalysisResponse = {
     /** "long" stop (below price) or "short" stop (above price). */
     direction: "long" | "short";
   } | null;
+  /** Fibonacci retracement levels over the last swing (100 candles). */
+  fibonacci: {
+    swing_high: number | null;
+    swing_low: number | null;
+    direction: "up" | "down" | null;
+    levels: { ratio: number; price: number; label: string }[];
+  } | null;
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -96,6 +103,7 @@ export type AnalysisResponse = {
     bollinger: boolean;
     bollinger_squeeze: boolean;
     stop_loss_suggestion: boolean;
+    fibonacci: boolean;
   };
   series: {
     closes: number[];

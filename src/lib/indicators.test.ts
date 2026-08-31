@@ -9,6 +9,7 @@ import {
   findSupportResistance,
   calculateATR,
   calculateBollingerBands,
+  calculateFibonacciRetracement,
 } from "./indicators";
 
 describe("calculateEMA", () => {
@@ -522,5 +523,102 @@ describe("calculateBollingerBands", () => {
       const mean = closes.slice(1, 21).reduce((a, b) => a + b, 0) / 20;
       expect(Math.abs(r.lastMiddle! - mean)).toBeLessThan(0.01);
     }
+  });
+});
+
+describe("calculateFibonacciRetracement", () => {
+  it("returns unavailable with too few candles", () => {
+    const r = calculateFibonacciRetracement([100], [95]);
+    expect(r.available).toBe(false);
+    expect(r.levels).toHaveLength(0);
+  });
+
+  it("returns unavailable when swing high equals swing low (zero range)", () => {
+    // All highs and lows equal → no range → unavailable.
+    const n = 20;
+    const r = calculateFibonacciRetracement(Array(n).fill(100), Array(n).fill(100));
+    expect(r.available).toBe(false);
+  });
+
+  it("detects swing high and swing low correctly", () => {
+    // Simple series: highs go 100, 110, 120, 110, 100; lows go 90, 95, 100, 95, 90.
+    const highs = [100, 110, 120, 110, 100];
+    const lows = [90, 95, 100, 95, 90];
+    const r = calculateFibonacciRetracement(highs, lows, { lookback: 10 });
+    expect(r.available).toBe(true);
+    expect(r.swingHigh).toBe(120);
+    expect(r.swingLow).toBe(90);
+  });
+
+  it("computes 5 standard retracement levels", () => {
+    const highs = [100, 110, 120, 110, 100];
+    const lows = [90, 95, 100, 95, 90];
+    const r = calculateFibonacciRetracement(highs, lows);
+    expect(r.levels).toHaveLength(5);
+    // Check ratios are the standard ones.
+    expect(r.levels.map((l) => l.ratio)).toEqual([0.236, 0.382, 0.5, 0.618, 0.786]);
+  });
+
+  it("computes correct prices for an uptrend (low after high)", () => {
+    // Swing high = 120 at index 2, swing low = 90 at index 4 (after high).
+    // Direction = "up". Range = 30.
+    // 50% retracement = 120 - 0.5 * 30 = 105.
+    const highs = [100, 110, 120, 110, 100];
+    const lows = [95, 95, 100, 92, 90]; // min 90 at index 4 (after high)
+    const r = calculateFibonacciRetracement(highs, lows);
+    expect(r.direction).toBe("up");
+    const fib50 = r.levels.find((l) => l.ratio === 0.5);
+    expect(fib50).toBeDefined();
+    expect(fib50!.price).toBe(105);
+  });
+
+  it("computes correct prices for a downtrend (high after low)", () => {
+    // Swing low = 90 at index 0, swing high = 120 at index 2 (after low).
+    // Direction = "down". Range = 30.
+    // 50% retracement = 90 + 0.5 * 30 = 105.
+    const lows = [90, 95, 100, 95, 92];
+    const highs = [100, 110, 120, 110, 100];
+    const r = calculateFibonacciRetracement(highs, lows);
+    expect(r.direction).toBe("down");
+    const fib50 = r.levels.find((l) => l.ratio === 0.5);
+    expect(fib50).toBeDefined();
+    expect(fib50!.price).toBe(105);
+  });
+
+  it("levels are ordered from shallow to deep retracement", () => {
+    // Uptrend: swing high at index 2, swing low at index 4 (after high).
+    const highs = [100, 110, 120, 110, 100];
+    const lows = [95, 95, 100, 92, 90];
+    const r = calculateFibonacciRetracement(highs, lows);
+    expect(r.direction).toBe("up");
+    // In an uptrend, shallower retracements are closer to the swing high.
+    // So 23.6% should be the highest price, 78.6% the lowest.
+    expect(r.levels[0].price).toBeGreaterThan(r.levels[4].price);
+  });
+
+  it("respects the lookback window", () => {
+    // 50 candles, but lookback=10 → only last 10 are scanned.
+    const highs = Array(50).fill(100);
+    const lows = Array(50).fill(95);
+    // Put a spike at index 5 (outside the 10-bar lookback from the end).
+    highs[5] = 200;
+    lows[5] = 50;
+    const r = calculateFibonacciRetracement(highs, lows, { lookback: 10 });
+    // The spike at index 5 is NOT in the scan range (start=40).
+    expect(r.swingHigh).not.toBe(200);
+    expect(r.swingLow).not.toBe(50);
+  });
+
+  it("includes human-readable labels", () => {
+    const highs = [100, 110, 120, 110, 100];
+    const lows = [90, 95, 100, 95, 90];
+    const r = calculateFibonacciRetracement(highs, lows);
+    expect(r.levels.map((l) => l.label)).toEqual([
+      "23.6%",
+      "38.2%",
+      "50.0%",
+      "61.8%",
+      "78.6%",
+    ]);
   });
 });

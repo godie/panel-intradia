@@ -1676,3 +1676,130 @@ loop squeeze → breakout.
 Si sobra ancho de banda, **stop loss multiplier selector** (item 6) —
 dropdown en la card para ajustar el multiplier del stop ATR (1.5×, 2×, 3×).
 Quick win de UX.
+
+---
+Task ID: round-12
+Agent: cron webDevReview
+Task: Fibonacci retracement levels + squeeze banner verification.
+
+Work Log:
+- Leído worklog previo: v11 estable con squeeze alert + ATR stop loss +
+  toast dedup sessionStorage. 64 tests pasando. Próxima prioridad: Fibonacci
+  retracement, squeeze breakout detection, stop loss multiplier selector.
+- QA inicial: 6 cards, TICK LIVE, sin errores. Servicios ws-tick (3003) y
+  order-book (3004) corriendo. Lint limpio, 64 tests pasando.
+- Backend — `indicators.ts` (+calculateFibonacciRetracement):
+  - `calculateFibonacciRetracement(highs, lows, {lookback=100})` — encuentra
+    swing high + swing low en las últimas `lookback` velas, computa 5 niveles
+    estándar: 23.6%, 38.2%, 50%, 61.8%, 78.6%.
+  - Direction: "up" si swing low es más reciente que swing high (pullback
+    bajista desde el alto), "down" si swing high es más reciente.
+  - En uptrend: levels = swingHigh - ratio * range (de high hacia low).
+  - En downtrend: levels = swingLow + ratio * range (de low hacia high).
+  - Edge cases: unavailable con <2 velas, unavailable con range=0 (high==low).
+  - Exportados tipos: FibLevel, FibonacciResult.
+- Tests — `indicators.test.ts` (+9 tests Fibonacci = 73 total):
+  - unavailable con pocos candles, unavailable con zero range, detecta swing
+    high/low, 5 niveles estándar, precios correctos uptrend (50% = 105),
+    precios correctos downtrend, orden shallow→deep, respeta lookback,
+    labels legibles.
+  - 2 tests fallaron en primer intento: los datos de test tenían el swing low
+    en índice 0 (antes del swing high), dando direction="down" en vez de
+    "up". Corregidos los fixtures para que el low esté después del high.
+- Backend — `types.ts` ampliado:
+  - `AnalysisResponse.fibonacci: {swing_high, swing_low, direction, levels[]}
+    | null`.
+  - `no_disponible.fibonacci: boolean`.
+- Backend — `/api/analysis` route:
+  - Import calculateFibonacciRetracement.
+  - `fibRes = calculateFibonacciRetracement(highs, lows, {lookback: 100})`.
+  - `fibonacci = fibRes.available ? {swing_high, swing_low, direction, levels}
+    : null`.
+  - Incluido en payload + no_disponible.fibonacci = !fibRes.available.
+  - Verificado: BTC fibonacci={swing_high: 81479, swing_low: 62716,
+    direction: "down", levels: [23.6%=67144, 38.2%=69883, 50%=72097,
+    61.8%=74311, 78.6%=77464]}.
+- Frontend — `fib-levels.tsx` (nuevo componente):
+  - Header "FIBONACCI · 100 VELAS" + direction badge (↑ Alcista verde /
+    ↓ Bajista rojo).
+  - Swing extremes row: "Swing H $X" / "Swing L $Y" con colores.
+  - 5 niveles Fib: cada row con label + precio. 61.8% (golden ratio) marcado
+    con ⭐ y color ámbar. Level más cercano al spot destacado con bg azul +
+    ring.
+  - Spot position indicator: "Precio cerca de X% ($Y)" al final.
+  - Empty state: "Fibonacci no disponible".
+- Frontend — `asset-card.tsx` integración:
+  - `<FibLevels fibonacci={data.fibonacci} spotPrice={displayPrice}
+    unavailable={nd.fibonacci} />` añadido dentro del CollapsibleSection
+    "Indicadores · 4h" después del RsiGauge.
+- Lint: 0 iteraciones. Limpio desde el primer intento.
+- Tests: 73/73 passing (2 test files: indicators 60 + structure 13).
+- Verificación API: BTC fibonacci con 5 niveles, direction "down", swing
+  high 81479, swing low 62716.
+- Verificación agent-browser:
+  - BTC card contiene "FIBONACCI · 100 VELAS", "↓ BAJISTA", "Swing H $81,479",
+    "Swing L $62,716", 5 niveles (23.6% a 78.6%), "61.8% ⭐", "Precio cerca
+    de 78.6% ($77,464)".
+  - Squeeze banner visible en BTC (bandwidth 2.57% < 3%): "⚡ SQUEEZE ·
+    VOLATILIDAD COMPRIMIDA (2.57%)".
+  - Sin errores console/runtime.
+- Verificación VLM desktop: "Fibonacci levels visible with swing high/low
+  and direction. 61.8% golden ratio has star ⭐. Squeeze banner visible on
+  BTC (2.57%). Spot price position indicator visible. No critical bugs.
+  Excellent polish — clean integration, golden star highlights appropriately,
+  squeeze banner uses distinctive purple color."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 4605 = footerBottom (empujado naturalmente).
+
+Stage Summary:
+- **Estado:** v12 entregada y verificada. Fibonacci retracement levels +
+  squeeze banner verificado en producción (BTC bandwidth 2.57% < 3%).
+  73 tests pasando. Panel ahora tiene 8 indicadores técnicos: EMA55, EMA200,
+  RSI, MACD, S/R, ATR, Bollinger Bands, Fibonacci retracement.
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (+calculateFibonacciRetracement, +FibLevel,
+    +FibonacciResult types)
+  - `src/lib/indicators.test.ts` (+9 tests Fibonacci = 73 total)
+  - `src/lib/types.ts` (+fibonacci field + no_disponible.fibonacci)
+  - `src/app/api/analysis/route.ts` (integración Fibonacci)
+  - `src/components/panel/fib-levels.tsx` (nuevo — levels + golden ratio +
+    spot position)
+  - `src/components/panel/asset-card.tsx` (+FibLevels integration)
+- **Tests:** 73/73 passing en 2 test files. Cobertura: calculateEMA,
+  calculateRSI, determineCrossState, detectRecentCross, detectMacdCross,
+  calculateMACD, findSupportResistance, calculateATR, calculateBollingerBands,
+  calculateFibonacciRetracement (indicators.ts) + buildStructureText
+  (structure.ts).
+- **Indicadores técnicos:** EMA55, EMA200, RSI(14), MACD(12,26,9), S/R
+  pivotes, ATR(14), Bollinger Bands(20,2), Fibonacci retracement (5 levels).
+  8 indicadores por símbolo + alertas activas (EMA cross, MACD cross,
+  momentum flip, Bollinger squeeze).
+
+## Unresolved Issues / Next-Phase Priorities (round 12)
+
+1. **Cross-history filter persistence** (item 2 de round 7, aún pendiente).
+   Prioridad baja.
+2. **Scatter plot enhancements**: histogramas marginales. Prioridad baja.
+3. **Export CSV/IMG** (item 7 de round 8). Prioridad baja.
+4. **Prisma log fix no aplicado al HMR** (item 8 de round 8). Prioridad baja.
+5. **VWAP / Stochastic**: más indicadores. Prioridad baja.
+6. **Stop loss multiplier selector**: dropdown 1.5×/2×/3× en la UI.
+   Prioridad baja.
+7. **Squeeze breakout detection**: cuando bandwidth pasa de <3% a >3%,
+   detectar dirección del breakout. Prioridad media.
+8. **Fib extension levels**: 127.2%, 161.8%, 261.8% para proyecciones de
+   objetivo. Prioridad media.
+
+## Recommended Next Step (round 13)
+
+Priorizar **Fib extension levels** (item 8) — añadir 127.2%, 161.8%, 261.8%
+como proyecciones de objetivo más allá del swing. Es el complemento natural
+de los retracement levels ya implementados. Cálculo puramente backend (misma
+función, nuevos ratios) + UI compacta.
+
+En paralelo, **squeeze breakout detection** (item 7) — comparar bandwidth
+actual vs anterior; si pasó de <3% a >3%, detectar dirección del candle
+de breakout y persistir como evento "squeeze_breakout".
+
+Si sobra ancho de banda, **stop loss multiplier selector** (item 6) —
+dropdown interactivo en la card para ajustar el multiplier del stop ATR.

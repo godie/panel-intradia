@@ -3,6 +3,7 @@
 import { Sparkline } from "./sparkline";
 import { RsiGauge } from "./rsi-gauge";
 import { RangeBar } from "./range-bar";
+import { FibLevels } from "./fib-levels";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
@@ -481,6 +482,14 @@ export function AssetCard({
           unavailable={nd.rsi_14_4h}
           series={data.series.rsi}
         />
+        {/* Fibonacci retracement levels */}
+        <div className="mt-2">
+          <FibLevels
+            fibonacci={data.fibonacci}
+            spotPrice={displayPrice}
+            unavailable={nd.fibonacci}
+          />
+        </div>
       </CollapsibleSection>
 
       {/* Structure text */}

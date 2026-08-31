@@ -11,6 +11,7 @@ import {
   calculateMACD,
   calculateATR,
   calculateBollingerBands,
+  calculateFibonacciRetracement,
   detectMacdCross,
   detectRecentCross,
   findSupportResistance,
@@ -131,6 +132,21 @@ function buildAnalysis(
         }
       : null;
 
+  // Fibonacci retracement levels over the last 100 candles.
+  const fibRes = calculateFibonacciRetracement(highs, lows, { lookback: 100 });
+  const fibonacci = fibRes.available
+    ? {
+        swing_high: round(fibRes.swingHigh, dec),
+        swing_low: round(fibRes.swingLow, dec),
+        direction: fibRes.direction,
+        levels: fibRes.levels.map((l) => ({
+          ratio: l.ratio,
+          price: round(l.price, dec),
+          label: l.label,
+        })),
+      }
+    : null;
+
   const no_disponible = {
     spot_price: spotPrice == null,
     change_24h_pct: change24h == null,
@@ -150,6 +166,7 @@ function buildAnalysis(
     bollinger: !bbRes.available,
     bollinger_squeeze: !bbRes.available,
     stop_loss_suggestion: spotPrice == null || !atrRes.available,
+    fibonacci: !fibRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -192,6 +209,7 @@ function buildAnalysis(
     },
     bollinger_squeeze: bollingerSqueeze,
     stop_loss_suggestion: stopLossSuggestion,
+    fibonacci,
     structure_text: structureText,
     no_disponible,
     series: {

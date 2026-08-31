@@ -699,3 +699,115 @@ export function calculateBollingerBands(
     available: lastMiddle != null,
   };
 }
+
+/**
+ * FibonacciRetracement — classic retracement levels over the last swing.
+ *
+ * Finds the most significant swing high and swing low in the last `lookback`
+ * candles (default 100), then computes the standard Fib levels between them:
+ *   - 0%   = swing high (in an uptrend) / swing low (in a downtrend)
+ *   - 23.6%, 38.2%, 50%, 61.8%, 78.6%
+ *   - 100% = the other extreme
+ *
+ * Direction: if the swing low is more recent than the swing high, we're in
+ * an uptrend (expecting retracement DOWN from high → levels go high→low).
+ * If the swing high is more recent, downtrend (retracement UP from low).
+ *
+ * Returns the 5 retracement levels + the swing extremes. `available: false`
+ * when there aren't enough candles or the swing range is zero.
+ */
+export type FibLevel = {
+  /** Retracement ratio (0.236, 0.382, 0.5, 0.618, 0.786). */
+  ratio: number;
+  /** Price at this retracement level. */
+  price: number;
+  /** Human-readable label, e.g. "38.2%". */
+  label: string;
+};
+
+export type FibonacciResult = {
+  swingHigh: number;
+  swingLow: number;
+  /** "up" if swing low is more recent (expecting pullback down from high). */
+  direction: "up" | "down";
+  levels: FibLevel[];
+  available: boolean;
+};
+
+export function calculateFibonacciRetracement(
+  highs: number[],
+  lows: number[],
+  opts: { lookback?: number } = {},
+): FibonacciResult {
+  const lookback = opts.lookback ?? 100;
+  const n = highs.length;
+  if (n < 2 || lookback < 2) {
+    return {
+      swingHigh: 0,
+      swingLow: 0,
+      direction: "up",
+      levels: [],
+      available: false,
+    };
+  }
+
+  const start = Math.max(0, n - lookback);
+  let swingHigh = -Infinity;
+  let swingHighIdx = start;
+  let swingLow = Infinity;
+  let swingLowIdx = start;
+
+  for (let i = start; i < n; i++) {
+    if (highs[i] > swingHigh) {
+      swingHigh = highs[i];
+      swingHighIdx = i;
+    }
+    if (lows[i] < swingLow) {
+      swingLow = lows[i];
+      swingLowIdx = i;
+    }
+  }
+
+  if (swingHigh === swingLow || !Number.isFinite(swingHigh) || !Number.isFinite(swingLow)) {
+    return {
+      swingHigh,
+      swingLow,
+      direction: "up",
+      levels: [],
+      available: false,
+    };
+  }
+
+  // Direction: if the low came after the high (swingLowIdx > swingHighIdx),
+  // the trend is UP (we retraced down from the high to find a higher low).
+  // If the high came after the low, trend is DOWN.
+  const direction: "up" | "down" = swingLowIdx >= swingHighIdx ? "up" : "down";
+
+  const range = swingHigh - swingLow;
+  const ratios = [
+    { ratio: 0.236, label: "23.6%" },
+    { ratio: 0.382, label: "38.2%" },
+    { ratio: 0.5, label: "50.0%" },
+    { ratio: 0.618, label: "61.8%" },
+    { ratio: 0.786, label: "78.6%" },
+  ];
+
+  // In an uptrend: 0% = swingHigh, 100% = swingLow. Retracement = high - ratio*range.
+  // In a downtrend: 0% = swingLow, 100% = swingHigh. Retracement = low + ratio*range.
+  const levels: FibLevel[] = ratios.map((r) => ({
+    ratio: r.ratio,
+    price:
+      direction === "up"
+        ? swingHigh - r.ratio * range
+        : swingLow + r.ratio * range,
+    label: r.label,
+  }));
+
+  return {
+    swingHigh,
+    swingLow,
+    direction,
+    levels,
+    available: true,
+  };
+}
