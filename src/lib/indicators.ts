@@ -895,3 +895,110 @@ export function calculateVWAP(
     available: lastVwap != null && Number.isFinite(lastVwap),
   };
 }
+
+/**
+ * calculateStochastic — Stochastic Oscillator (%K + %D).
+ *
+ * %K = 100 * (close - lowestLow(n)) / (highestHigh(n) - lowestLow(n))
+ * %D = SMA(period) of %K (default 3).
+ *
+ * Standard params: %K period=14, %D period=3 (slow stochastic).
+ *
+ * Interpretation:
+ *  - %K > 80 → overbought
+ *  - %K < 20 → oversold
+ *  - %K crossing above %D → bullish signal
+ *  - %K crossing below %D → bearish signal
+ *
+ * Returns the last %K + %D values + the full series (null for the first
+ * `kPeriod - 1` entries). `available: false` when insufficient data.
+ */
+export function calculateStochastic(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  kPeriod = 14,
+  dPeriod = 3,
+): {
+  kSeries: (number | null)[];
+  dSeries: (number | null)[];
+  lastK: number | null;
+  lastD: number | null;
+  available: boolean;
+} {
+  const n = closes.length;
+  if (
+    kPeriod <= 0 ||
+    dPeriod <= 0 ||
+    n < kPeriod ||
+    highs.length !== n ||
+    lows.length !== n
+  ) {
+    return {
+      kSeries: Array(n).fill(null),
+      dSeries: Array(n).fill(null),
+      lastK: null,
+      lastD: null,
+      available: false,
+    };
+  }
+
+  const kSeries: (number | null)[] = Array(n).fill(null);
+
+  // Compute %K for each valid index.
+  for (let i = kPeriod - 1; i < n; i++) {
+    let highestHigh = -Infinity;
+    let lowestLow = Infinity;
+    for (let j = i - kPeriod + 1; j <= i; j++) {
+      if (highs[j] > highestHigh) highestHigh = highs[j];
+      if (lows[j] < lowestLow) lowestLow = lows[j];
+    }
+    const range = highestHigh - lowestLow;
+    if (range === 0) {
+      kSeries[i] = 50; // flat — no directional info
+    } else {
+      kSeries[i] = (100 * (closes[i] - lowestLow)) / range;
+    }
+  }
+
+  // %D = SMA of %K over dPeriod.
+  const dSeries: (number | null)[] = Array(n).fill(null);
+  for (let i = kPeriod - 1 + dPeriod - 1; i < n; i++) {
+    let sum = 0;
+    let count = 0;
+    for (let j = i - dPeriod + 1; j <= i; j++) {
+      const k = kSeries[j];
+      if (k != null) {
+        sum += k;
+        count++;
+      }
+    }
+    if (count === dPeriod) {
+      dSeries[i] = sum / dPeriod;
+    }
+  }
+
+  // Find last valid values.
+  let lastK: number | null = null;
+  for (let i = n - 1; i >= 0; i--) {
+    if (kSeries[i] != null) {
+      lastK = kSeries[i];
+      break;
+    }
+  }
+  let lastD: number | null = null;
+  for (let i = n - 1; i >= 0; i--) {
+    if (dSeries[i] != null) {
+      lastD = dSeries[i];
+      break;
+    }
+  }
+
+  return {
+    kSeries,
+    dSeries,
+    lastK,
+    lastD,
+    available: lastK != null,
+  };
+}

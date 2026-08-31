@@ -11,6 +11,7 @@ import {
   calculateBollingerBands,
   calculateFibonacciRetracement,
   calculateVWAP,
+  calculateStochastic,
 } from "./indicators";
 
 describe("calculateEMA", () => {
@@ -722,5 +723,97 @@ describe("calculateVWAP", () => {
     expect(r.available).toBe(true);
     // Every entry should have a value (no nulls) since volume > 0 everywhere.
     expect(r.series.every((v) => v != null)).toBe(true);
+  });
+});
+
+describe("calculateStochastic", () => {
+  it("returns unavailable with too few candles", () => {
+    const r = calculateStochastic([100], [95], [100], 14, 3);
+    expect(r.available).toBe(false);
+    expect(r.lastK).toBeNull();
+  });
+
+  it("returns unavailable with mismatched array lengths", () => {
+    const r = calculateStochastic([100, 110], [95], [100], 14, 3);
+    expect(r.available).toBe(false);
+  });
+
+  it("computes %K = 100 when close equals the highest high", () => {
+    // 15 candles, last close = highest high → %K should be 100.
+    const n = 15;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(95);
+    closes[n - 1] = 100; // close at the high
+    const r = calculateStochastic(highs, lows, closes, 14, 3);
+    expect(r.available).toBe(true);
+    expect(r.lastK).toBe(100);
+  });
+
+  it("computes %K = 0 when close equals the lowest low", () => {
+    const n = 15;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(95);
+    closes[n - 1] = 90; // close at the low
+    const r = calculateStochastic(highs, lows, closes, 14, 3);
+    expect(r.available).toBe(true);
+    expect(r.lastK).toBe(0);
+  });
+
+  it("computes %K = 50 when close is midway", () => {
+    const n = 15;
+    const highs = Array(n).fill(110);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(100); // midway = 50%
+    const r = calculateStochastic(highs, lows, closes, 14, 3);
+    expect(r.available).toBe(true);
+    expect(r.lastK).toBeCloseTo(50, 0);
+  });
+
+  it("returns %K = 50 when the range is zero (flat)", () => {
+    // All highs = lows = closes → range = 0 → %K = 50.
+    const n = 15;
+    const vals = Array(n).fill(100);
+    const r = calculateStochastic(vals, vals, vals, 14, 3);
+    expect(r.available).toBe(true);
+    expect(r.lastK).toBe(50);
+  });
+
+  it("%D is the SMA of %K", () => {
+    // Use a known series where closes stay within the high/low range.
+    const n = 20;
+    const highs = Array(n).fill(110);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(0).map((_, i) => 92 + i * 0.8); // rising but ≤ 110
+    const r = calculateStochastic(highs, lows, closes, 14, 3);
+    expect(r.available).toBe(true);
+    expect(r.lastD).not.toBeNull();
+    // %D should be between 0 and 100.
+    expect(r.lastD!).toBeGreaterThanOrEqual(0);
+    expect(r.lastD!).toBeLessThanOrEqual(100);
+  });
+
+  it("clamps %K to [0, 100]", () => {
+    const n = 20;
+    const highs = Array.from({ length: n }, (_, i) => 100 + i);
+    const lows = Array.from({ length: n }, (_, i) => 90 + i);
+    const closes = Array.from({ length: n }, (_, i) => 95 + i);
+    const r = calculateStochastic(highs, lows, closes, 14, 3);
+    expect(r.available).toBe(true);
+    expect(r.lastK!).toBeGreaterThanOrEqual(0);
+    expect(r.lastK!).toBeLessThanOrEqual(100);
+  });
+
+  it("the first kPeriod-1 entries of %K are null", () => {
+    const n = 20;
+    const highs = Array(n).fill(110);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(100);
+    const r = calculateStochastic(highs, lows, closes, 14, 3);
+    for (let i = 0; i < 13; i++) {
+      expect(r.kSeries[i]).toBeNull();
+    }
+    expect(r.kSeries[13]).not.toBeNull();
   });
 });

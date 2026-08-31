@@ -5,6 +5,7 @@ import { RsiGauge } from "./rsi-gauge";
 import { RangeBar } from "./range-bar";
 import { FibLevels } from "./fib-levels";
 import { StopLossSelector } from "./stop-loss-selector";
+import { StochasticRow } from "./stochastic-row";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
@@ -389,6 +390,7 @@ export function AssetCard({
           ema200={data.series.ema200}
           bbUpper={data.series.bollinger_upper}
           bbLower={data.series.bollinger_lower}
+          vwap={data.series.vwap}
           spot={displayPrice}
           crossState={data.cross_state}
           height={150}
@@ -512,6 +514,12 @@ export function AssetCard({
           rsi={data.rsi_14_4h}
           unavailable={nd.rsi_14_4h}
           series={data.series.rsi}
+        />
+        {/* Stochastic oscillator */}
+        <StochasticRow
+          k={data.stochastic.k}
+          d={data.stochastic.d}
+          unavailable={nd.stochastic}
         />
         {/* Fibonacci retracement levels */}
         <div className="mt-2">

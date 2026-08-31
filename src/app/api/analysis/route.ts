@@ -13,6 +13,7 @@ import {
   calculateBollingerBands,
   calculateFibonacciRetracement,
   calculateVWAP,
+  calculateStochastic,
   detectMacdCross,
   detectRecentCross,
   findSupportResistance,
@@ -84,6 +85,9 @@ function buildAnalysis(
 
   // VWAP(20) on 4h — Volume Weighted Average Price, rolling 20 candles.
   const vwapRes = calculateVWAP(highs, lows, closes, volumes, 20);
+
+  // Stochastic oscillator (14, 3) — %K and %D momentum indicator.
+  const stochRes = calculateStochastic(highs, lows, closes, 14, 3);
 
   // Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev.
   const bbRes = calculateBollingerBands(closes, 20, 2);
@@ -240,6 +244,7 @@ function buildAnalysis(
     stop_loss_suggestion: spotPrice == null || !atrRes.available,
     fibonacci: !fibRes.available,
     vwap_20_4h: !vwapRes.available,
+    stochastic: !stochRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -251,6 +256,7 @@ function buildAnalysis(
   const seriesMacdHist = macdRes.histogram.slice(startIdx);
   const seriesBbUpper = bbRes.upper.slice(startIdx);
   const seriesBbLower = bbRes.lower.slice(startIdx);
+  const seriesVwap = vwapRes.series.slice(startIdx);
 
   return {
     symbol,
@@ -285,6 +291,10 @@ function buildAnalysis(
     stop_loss_suggestion: stopLossSuggestion,
     fibonacci,
     vwap_20_4h: round(vwapRes.last, dec),
+    stochastic: {
+      k: round(stochRes.lastK, 2),
+      d: round(stochRes.lastD, 2),
+    },
     structure_text: structureText,
     no_disponible,
     series: {
@@ -295,6 +305,7 @@ function buildAnalysis(
       macd_histogram: seriesMacdHist,
       bollinger_upper: seriesBbUpper,
       bollinger_lower: seriesBbLower,
+      vwap: seriesVwap,
     },
     updated_at: new Date().toISOString(),
   };

@@ -95,6 +95,8 @@ export type AnalysisResponse = {
   } | null;
   /** VWAP(20) on 4h — Volume Weighted Average Price, rolling 20 candles. */
   vwap_20_4h: number | null;
+  /** Stochastic oscillator %K and %D (14, 3). */
+  stochastic: { k: number | null; d: number | null };
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -118,6 +120,7 @@ export type AnalysisResponse = {
     stop_loss_suggestion: boolean;
     fibonacci: boolean;
     vwap_20_4h: boolean;
+    stochastic: boolean;
   };
   series: {
     closes: number[];
@@ -127,6 +130,7 @@ export type AnalysisResponse = {
     macd_histogram: (number | null)[];
     bollinger_upper: (number | null)[];
     bollinger_lower: (number | null)[];
+    vwap: (number | null)[];
   };
   updated_at: string;
 };

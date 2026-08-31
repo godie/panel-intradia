@@ -158,6 +158,9 @@ export function usePriceAlerts(livePrices: Record<string, { price: number; time:
 }
 
 function fireAlertToast(alert: PriceAlert, livePrice: number) {
+  // Play a beep sound using Web Audio API (no external file needed).
+  playAlertSound(alert.direction);
+
   const asset = SYMBOL_META[alert.symbol]?.asset ?? alert.symbol;
   const isAbove = alert.direction === "above";
   const color = isAbove ? "#5fbf8f" : "#e2604f";
@@ -189,6 +192,51 @@ function fireAlertToast(alert: PriceAlert, livePrice: number) {
       },
     },
   );
+}
+
+/**
+ * playAlertSound — plays a short beep using the Web Audio API.
+ *
+ * "above" alerts play an ascending two-tone (higher pitch = bullish).
+ * "below" alerts play a descending two-tone (lower pitch = bearish).
+ * Silently fails if the AudioContext is not available (older browsers or
+ * autoplay restrictions before user interaction).
+ */
+function playAlertSound(direction: "above" | "below") {
+  try {
+    const AudioContextClass =
+      typeof window !== "undefined"
+        ? window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext
+        : undefined;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    const freq1 = direction === "above" ? 523.25 : 392.0; // C5 or G4
+    const freq2 = direction === "above" ? 659.25 : 329.63; // E5 or E4
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq1, now);
+    osc.frequency.setValueAtTime(freq2, now + 0.12);
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+    osc.start(now);
+    osc.stop(now + 0.3);
+
+    // Close the context after the sound finishes to free resources.
+    osc.onended = () => ctx.close();
+  } catch {
+    // Silently ignore — sound is non-critical.
+  }
 }
 
 export { Bell };

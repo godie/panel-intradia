@@ -2162,3 +2162,125 @@ frontend como gauge similar al RSI.
 
 Si sobra ancho de banda, **price alert sound** (item 6) — reproducir un beep
 cuando una alerta se dispara (usando Web Audio API).
+
+---
+Task ID: round-16
+Agent: cron webDevReview
+Task: VWAP sparkline overlay + Stochastic oscillator + price alert sound.
+
+Work Log:
+- Leído worklog previo: v15 estable con VWAP + price alerts + Fib extension
+  markers. 83 tests pasando.
+- QA inicial: 6 cards, TICK LIVE, sin errores. Servicios corriendo. Lint
+  limpio, 83 tests pasando.
+- Backend — `indicators.ts` (+calculateStochastic):
+  - `calculateStochastic(highs, lows, closes, kPeriod=14, dPeriod=3)` —
+    %K = 100*(close-lowestLow)/(highestHigh-lowestLow), %D = SMA(3) of %K.
+  - Edge cases: unavailable con pocos candles, mismatched arrays, range=0
+    (%K=50 neutral).
+  - Retorna kSeries, dSeries, lastK, lastD, available.
+- Tests — `indicators.test.ts` (+9 tests Stochastic = 92 total):
+  - unavailable con pocos candles, mismatched arrays.
+  - %K=100 cuando close=highestHigh, %K=0 cuando close=lowestLow.
+  - %K=50 cuando close midway, %K=50 cuando range=0 (flat).
+  - %D es SMA de %K (entre 0 y 100).
+  - %K clampeado a [0,100], primeros kPeriod-1 entries null.
+  - 1 test falló: fixture tenía closes > highs (irreal), %D > 100. Corregido
+    fixture para closes ≤ highs.
+- Backend — `types.ts`:
+  - `AnalysisResponse.stochastic: {k, d}`.
+  - `no_disponible.stochastic: boolean`.
+  - `series.vwap: (number|null)[]` para overlay en sparkline.
+- Backend — `/api/analysis` route:
+  - Import calculateStochastic. `stochRes = calculateStochastic(highs, lows,
+    closes, 14, 3)`.
+  - `stochastic: {k: round(stochRes.lastK, 2), d: round(stochRes.lastD, 2)}`.
+  - `series.vwap: vwapRes.series.slice(startIdx)`.
+  - Verificado: BTC stochastic={k: 73.67, d: 72.87}, series.vwap[120].
+- Frontend — `sparkline.tsx` (+VWAP overlay):
+  - Props nueva: `vwap?: (number|null)[]`.
+  - VWAP incluido en el cómputo de y-range.
+  - VWAP line: solid green (#5fbf8f), thin (1.25px), dashed [4,2].
+  - Dibujada entre Bollinger y EMA55.
+  - Legend: nuevo item "VWAP" con dashed green swatch.
+  - COLORS.vwap = "#5fbf8f".
+- Frontend — `stochastic-row.tsx` (nuevo componente):
+  - %K + %D values con color por zona (overbought >80 rojo, oversold <20
+    verde, neutral ámbar).
+  - Cross signal: %K > %D = "↑ alcista" (verde), %K < %D = "↓ bajista" (rojo).
+  - Mini gauge bar con 3 zonas (oversold 20% verde, neutral 60% gris,
+    overbought 20% rojo) + dividers en 20/80.
+  - %K needle con glow del color de zona, %D needle azul thinner.
+  - Scale 0-20-label-80-100.
+  - Empty state: "Dato no disponible".
+- Frontend — `asset-card.tsx`:
+  - Sparkline ahora recibe `vwap={data.series.vwap}`.
+  - `<StochasticRow k={data.stochastic.k} d={data.stochastic.d}
+    unavailable={nd.stochastic} />` añadido después del RsiGauge.
+- Frontend — `use-price-alerts.tsx` (+alert sound):
+  - `playAlertSound(direction)` — Web Audio API beep.
+  - "above": ascending two-tone C5→E5 (523→659 Hz, bullish higher pitch).
+  - "below": descending two-tone G4→E4 (392→330 Hz, bearish lower pitch).
+  - Sine wave, 0.3s duration, gain ramp 0→0.15→0.01.
+  - Silently fails si AudioContext no disponible (autoplay restrictions).
+  - Llamado desde fireAlertToast antes del toast.
+- Lint: 0 iteraciones. Limpio desde el primer intento.
+- Tests: 92/92 passing (2 test files: indicators 79 + structure 13).
+- Verificación API: BTC stochastic={k:73.67, d:72.87}, series.vwap[120].
+- Verificación agent-browser:
+  - 6 cards renderizadas. BTC card con "Stochastic · 14/3" + %K/%D values.
+  - Sparkline legend con "VWAP".
+  - Sin errores console/runtime.
+- Verificación VLM: "VWAP line visible as dashed green on sparkline.
+  Stochastic indicator visible in Indicadores section. VWAP legend item
+  visible. No critical bugs. High professional polish, native integration."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 5083 = footerBottom.
+
+Stage Summary:
+- **Estado:** v16 entregada y verificada. 3 features nuevas (VWAP sparkline
+  overlay + Stochastic oscillator + price alert sound). 92 tests pasando.
+  Panel ahora tiene 10 indicadores técnicos.
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (+calculateStochastic)
+  - `src/lib/indicators.test.ts` (+9 tests Stochastic = 92 total)
+  - `src/lib/types.ts` (+stochastic, +series.vwap)
+  - `src/app/api/analysis/route.ts` (+Stochastic + series.vwap)
+  - `src/components/panel/sparkline.tsx` (+VWAP line overlay + legend)
+  - `src/components/panel/stochastic-row.tsx` (nuevo — gauge + cross signal)
+  - `src/components/panel/asset-card.tsx` (+vwap prop + StochasticRow)
+  - `src/hooks/use-price-alerts.tsx` (+playAlertSound Web Audio API)
+- **Indicadores técnicos (10):** EMA55, EMA200, RSI(14), MACD(12,26,9), S/R
+  pivotes, ATR(14), Bollinger Bands(20,2), Fibonacci retracement+extensions,
+  VWAP(20), Stochastic(14,3).
+- **Sparkline overlays:** Precio, EMA55, EMA200, Bollinger Bands (upper/lower
+  + fill), VWAP — 5 lines + fill area.
+
+## Unresolved Issues / Next-Phase Priorities (round 16)
+
+1. **Cross-history filter persistence** (item 2 de round 7). Prioridad baja.
+2. **Scatter plot enhancements**: histogramas marginales. Prioridad baja.
+3. **Export CSV/IMG** (item 7 de round 8). Prioridad baja.
+4. **Prisma log fix no aplicado al HMR** (item 8 de round 8). Prioridad baja.
+5. **Ichimoku Cloud**: indicador japonés completo. Prioridad baja.
+6. **Alert sound toggle**: permitir al usuario desactivar el sonido.
+   Prioridad baja.
+7. **Stochastic cross alert**: detectar cuando %K cruza %D y persistir como
+   evento. Prioridad media.
+8. **VWAP intraday reset**: VWAP tradicional se resetea al inicio del día de
+   trading. Actualmente es rolling 20. Prioridad baja.
+
+## Recommended Next Step (round 17)
+
+Priorizar **Stochastic cross alert** (item 7) — detectar cuando %K cruza
+%D (bullish: %K sube sobre %D, bearish: %K baja bajo %D) y persistir como
+evento "stoch_cross" en SQLite + toast notification. Análogo a detectMacdCross
+pero para Stochastic. Cierra el loop del Stochastic de "lectura" a "alerta".
+
+En paralelo, **alert sound toggle** (item 6) — añadir un checkbox en el
+PriceAlertsButton modal para activar/desactivar el sonido, persistido en
+localStorage.
+
+Si sobra ancho de banda, **Ichimoku Cloud** (item 5) — el indicador japonés
+clásico (Tenkan, Kijun, Senkou A/B, Chikou). Es el indicador más completo
+que falta. Cálculo puramente backend.

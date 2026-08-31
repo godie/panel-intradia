@@ -11,6 +11,8 @@ type Props = {
   /** Bollinger Bands upper/lower series for overlay (optional). */
   bbUpper?: (number | null)[];
   bbLower?: (number | null)[];
+  /** VWAP series for overlay (optional). */
+  vwap?: (number | null)[];
   /** height of the canvas in CSS pixels (width is responsive). */
   height?: number;
 };
@@ -19,6 +21,7 @@ const COLORS = {
   price: "#e6edf3",
   ema55: "#e8b04b",
   ema200: "#4fa8d8",
+  vwap: "#5fbf8f",
   bollinger: "rgba(180,140,255,0.35)",
   bollingerFill: "rgba(180,140,255,0.06)",
   grid: "rgba(255,255,255,0.05)",
@@ -42,6 +45,7 @@ export function Sparkline({
   crossState,
   bbUpper,
   bbLower,
+  vwap,
   height = 150,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -74,6 +78,7 @@ export function Sparkline({
     const allSeries: (number | null)[][] = [closes, ema55, ema200];
     if (bbUpper) allSeries.push(bbUpper);
     if (bbLower) allSeries.push(bbLower);
+    if (vwap) allSeries.push(vwap);
     for (const s of allSeries) {
       for (const v of s) {
         if (v != null && Number.isFinite(v)) {
@@ -191,6 +196,8 @@ export function Sparkline({
     // Bollinger Bands upper/lower (thin dashed purple).
     if (bbUpper) plotLine(bbUpper, COLORS.bollinger, 1, [2, 3]);
     if (bbLower) plotLine(bbLower, COLORS.bollinger, 1, [2, 3]);
+    // VWAP (solid green, thin).
+    if (vwap) plotLine(vwap, COLORS.vwap, 1.25, [4, 2]);
     // EMA55.
     plotLine(ema55, COLORS.ema55, 1.5);
     // Price last (on top).
@@ -284,6 +291,17 @@ export function Sparkline({
               }}
             />
             Bollinger
+          </span>
+        )}
+        {vwap && (
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-0.5 w-3"
+              style={{
+                background: `repeating-linear-gradient(90deg, ${COLORS.vwap} 0 4px, transparent 4px 6px)`,
+              }}
+            />
+            VWAP
           </span>
         )}
       </div>
