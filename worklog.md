@@ -2028,3 +2028,137 @@ las velas del día. Se integra como una línea adicional en el sparkline.
 
 Si sobra ancho de banda, **Fib extension markers en RangeBar** (item 6) —
 añadir 161.8% como marker para visualizar el profit target más cercano.
+
+---
+Task ID: round-15
+Agent: cron webDevReview
+Task: VWAP indicator + price alerts system + Fib extension markers in RangeBar.
+
+Work Log:
+- Leído worklog previo: v14 estable con squeeze breakout + stop loss
+  persistence + Fib markers en RangeBar. 76 tests pasando.
+- QA inicial: 6 cards, TICK LIVE, sin errores. Servicios corriendo. Lint
+  limpio, 76 tests pasando.
+- Backend — `indicators.ts` (+calculateVWAP):
+  - `calculateVWAP(highs, lows, closes, volumes, period=20)` — Volume
+    Weighted Average Price. VWAP = sum(typicalPrice * volume) / sum(volume)
+    donde typicalPrice = (high + low + close) / 3.
+  - Rolling window de `period` velas (default 20) como proxy intradía.
+  - Edge cases: unavailable con arrays vacíos, mismatched lengths, volume=0.
+  - Retorna series completa + last value + available flag.
+- Tests — `indicators.test.ts` (+7 tests VWAP = 83 total):
+  - unavailable con empty arrays, mismatched lengths, zero volume.
+  - VWAP correcto para single candle (98.33).
+  - Weighting: higher-volume candles dominate (109 con vol 9000 vs 1000).
+  - Rolling window respeta period.
+  - Todas las entradas válidas tienen valor (no nulls con volume > 0).
+- Backend — `types.ts`:
+  - `AnalysisResponse.vwap_20_4h: number | null`.
+  - `no_disponible.vwap_20_4h: boolean`.
+  - `PriceAlert` type exportado (id, symbol, price, direction, createdAt,
+    triggered) para el sistema de alertas.
+- Backend — `/api/analysis` route:
+  - Import calculateVWAP. Extrae `volumes = klines.map(k => k.volume)`.
+  - `vwapRes = calculateVWAP(highs, lows, closes, volumes, 20)`.
+  - `vwap_20_4h: round(vwapRes.last, dec)` en el payload.
+  - Verificado: BTC vwap_20_4h = 78093.32.
+- Frontend — `asset-card.tsx`:
+  - MetricRow "VWAP 20 · 4h" con color verde + hint dinámico:
+    "Precio sobre VWAP (compradores)" o "Precio bajo VWAP (vendedores)".
+  - RangeBar ahora recibe `fibExtensions={data.fibonacci?.extensions}`.
+- Frontend — `range-bar.tsx`:
+  - Props nueva: `fibExtensions?: FibLevel[]`.
+  - Fib extension prices incluidos en el cómputo de min/max range.
+  - 161.8% extension marker añadido con color verde + label "🎯" + tooltip
+    "Fib ext 161.8% (target)".
+- Frontend — `use-price-alerts.tsx` (nuevo hook):
+  - Gestiona alertas de precio definidas por el usuario en localStorage
+    (`panel:price-alerts`).
+  - `usePriceAlerts(livePrices)` — recibe los live tick prices, checks cada
+    alerta cada 2s (interval, no effect dependency para evitar lint
+    set-state-in-effect).
+  - Cuando el live price cruza el threshold (above/below), dispara toast +
+    marca alerta como triggered (no re-fire).
+  - refs para alerts y livePrices (actualizados via effect, no durante render)
+    para evitar react-hooks/refs lint.
+  - Auto-cleanup de triggered alerts después de 24h.
+  - API: `{alerts, addAlert, removeAlert, clearTriggered}`.
+  - fireAlertToast: toast custom con icono BellRing, color verde (above) /
+    rojo (below), "ALCANZÓ/BAJÓ A $X (live: $Y)", duración 10s.
+- Frontend — `price-alerts-button.tsx` (nuevo componente):
+  - Botón en el header con icono Bell + badge con count de alertas activas.
+  - Modal con: crear alerta (symbol dropdown + direction dropdown + price
+    input + "Usar precio actual" quick-fill), lista de alertas (active +
+    triggered con check icon), delete individual, clear triggered.
+  - Cada alerta muestra: symbol, direction (≥/≤), precio, distancia % al
+    precio actual, estado (triggered con Check icon).
+- Frontend — `page.tsx`:
+  - `usePriceAlerts(tick.prices)` hook.
+  - `<PriceAlertsButton>` en el header entre Export y keyboard hint.
+- Lint: 2 iteraciones. Error 1: use-price-alerts.ts tenía JSX → renombrado
+  a .tsx. Error 2: set-state-in-effect + react-hooks/refs → restructurado
+  a interval-based check con refs actualizados via effect. Lint final limpio.
+- Tests: 83/83 passing (2 test files: indicators 70 + structure 13).
+- Verificación API: BTC vwap_20_4h = 78093.32.
+- Verificación agent-browser:
+  - 6 cards renderizadas. BTC card contiene "VWAP 20 · 4H $78,093.48" +
+    "Precio sobre VWAP (compradores)".
+  - Header: botón "Alertas" (Bell icon) visible.
+  - Fib levels + extensions en RangeBar.
+  - Sin errores console/runtime.
+- Verificación VLM: "VWAP metric visible in Indicadores section. Alerts
+  button visible in header. No critical bugs. High professional polish.
+  Feature-rich update."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 4895 = footerBottom.
+
+Stage Summary:
+- **Estado:** v15 entregada y verificada. 3 features nuevas (VWAP indicator +
+  price alerts system + Fib extension markers en RangeBar). 83 tests
+  pasando. Panel ahora tiene 9 indicadores técnicos + sistema de alertas
+  de precio personalizables.
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (+calculateVWAP)
+  - `src/lib/indicators.test.ts` (+7 tests VWAP = 83 total)
+  - `src/lib/types.ts` (+vwap_20_4h, +PriceAlert type)
+  - `src/app/api/analysis/route.ts` (+VWAP computation)
+  - `src/components/panel/asset-card.tsx` (+VWAP metric row + fibExtensions)
+  - `src/components/panel/range-bar.tsx` (+fibExtensions markers + 🎯)
+  - `src/hooks/use-price-alerts.tsx` (nuevo — localStorage + interval check
+    + toast)
+  - `src/components/panel/price-alerts-button.tsx` (nuevo — modal UI)
+  - `src/app/page.tsx` (+usePriceAlerts + PriceAlertsButton)
+- **Indicadores técnicos (9):** EMA55, EMA200, RSI(14), MACD(12,26,9), S/R
+  pivotes, ATR(14), Bollinger Bands(20,2), Fibonacci retracement+extensions,
+  VWAP(20).
+- **Sistema de alertas:** price alerts personalizables (localStorage) +
+  cross-event alerts (5 tipos: EMA, MACD, momentum, squeeze, squeeze
+  breakout) + toast notifications con sessionStorage dedup.
+
+## Unresolved Issues / Next-Phase Priorities (round 15)
+
+1. **Cross-history filter persistence** (item 2 de round 7). Prioridad baja.
+2. **Scatter plot enhancements**: histogramas marginales. Prioridad baja.
+3. **Export CSV/IMG** (item 7 de round 8). Prioridad baja.
+4. **Prisma log fix no aplicado al HMR** (item 8 de round 8). Prioridad baja.
+5. **Stochastic oscillator**: más indicadores. Prioridad baja.
+6. **Price alert sound**: además del toast, reproducir un sonido. Prioridad
+   baja.
+7. **VWAP overlay en sparkline**: además del valor en métricas, dibujar la
+   línea VWAP en el sparkline. Prioridad media.
+8. **Alert history log**: persistir las alertas triggered en SQLite para
+   historial. Prioridad baja.
+
+## Recommended Next Step (round 16)
+
+Priorizar **VWAP overlay en sparkline** (item 7) — dibujar la línea VWAP
+como una línea adicional en el canvas del sparkline (similar a EMA55/EMA200).
+Requiere que la API devuelva la serie VWAP (no solo el último valor). Es la
+integración visual natural del VWAP que ya está calculado.
+
+En paralelo, **Stochastic oscillator** (item 5) — %K y %D, otro indicador
+clásico de momentum. Cálculo puramente backend (función pura + tests) +
+frontend como gauge similar al RSI.
+
+Si sobra ancho de banda, **price alert sound** (item 6) — reproducir un beep
+cuando una alerta se dispara (usando Web Audio API).

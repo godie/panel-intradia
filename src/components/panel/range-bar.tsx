@@ -12,6 +12,8 @@ type Props = {
   low24h: number | null;
   /** Optional Fibonacci retracement levels to display as markers. */
   fibLevels?: FibLevel[];
+  /** Optional Fibonacci extension levels (profit targets). */
+  fibExtensions?: FibLevel[];
 };
 
 /**
@@ -36,12 +38,16 @@ export function RangeBar({
   high24h,
   low24h,
   fibLevels,
+  fibExtensions,
 }: Props) {
-  // Gather all reference points (including Fib levels) to compute the visible range.
+  // Gather all reference points (including Fib levels + extensions) to compute the visible range.
   const fibPrices = (fibLevels ?? [])
     .map((l) => l.price)
     .filter((v): v is number => v != null && Number.isFinite(v));
-  const points = [support, resistance, ema55, ema200, high24h, low24h, spot, ...fibPrices].filter(
+  const fibExtPrices = (fibExtensions ?? [])
+    .map((l) => l.price)
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  const points = [support, resistance, ema55, ema200, high24h, low24h, spot, ...fibPrices, ...fibExtPrices].filter(
     (v): v is number => v != null && Number.isFinite(v),
   );
 
@@ -119,6 +125,21 @@ export function RangeBar({
           label: fl.label.replace("%", ""),
           fullLabel: `Fib ${fl.label}`,
           price: fl.price,
+        });
+      }
+    }
+  }
+  // Fibonacci extension levels (161.8% golden target only, to avoid clutter).
+  if (fibExtensions) {
+    for (const fe of fibExtensions) {
+      if (fe.price == null || !Number.isFinite(fe.price)) continue;
+      if (fe.ratio === 1.618) {
+        ticks.push({
+          pct: pct(fe.price),
+          color: "#5fbf8f",
+          label: "🎯",
+          fullLabel: `Fib ext ${fe.label} (target)`,
+          price: fe.price,
         });
       }
     }

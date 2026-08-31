@@ -10,6 +10,7 @@ import {
   calculateATR,
   calculateBollingerBands,
   calculateFibonacciRetracement,
+  calculateVWAP,
 } from "./indicators";
 
 describe("calculateEMA", () => {
@@ -654,5 +655,72 @@ describe("calculateFibonacciRetracement", () => {
     expect(ext1618).toBeDefined();
     expect(ext1618!.price).toBeLessThan(r.swingLow);
     expect(ext1618!.price).toBeCloseTo(71.46, 1);
+  });
+});
+
+describe("calculateVWAP", () => {
+  it("returns unavailable with empty arrays", () => {
+    const r = calculateVWAP([], [], [], []);
+    expect(r.available).toBe(false);
+    expect(r.last).toBeNull();
+  });
+
+  it("returns unavailable with mismatched array lengths", () => {
+    const r = calculateVWAP([100, 110], [95], [100], [1000]);
+    expect(r.available).toBe(false);
+  });
+
+  it("returns unavailable when total volume is zero", () => {
+    const r = calculateVWAP([100], [95], [100], [0]);
+    expect(r.available).toBe(false);
+  });
+
+  it("computes VWAP correctly for a single candle", () => {
+    // Typical = (100 + 95 + 100) / 3 = 98.33. VWAP = 98.33 * 1000 / 1000 = 98.33.
+    const r = calculateVWAP([100], [95], [100], [1000]);
+    expect(r.available).toBe(true);
+    expect(r.last).not.toBeNull();
+    expect(r.last).toBeCloseTo(98.333, 1);
+  });
+
+  it("weights higher-volume candles more", () => {
+    // Two candles: candle 1 has typical ~100 with volume 1000,
+    // candle 2 has typical ~110 with volume 9000.
+    // VWAP = (100*1000 + 110*9000) / (1000+9000) = (100000 + 990000) / 10000 = 109.
+    const highs = [102, 112];
+    const lows = [98, 108];
+    const closes = [100, 110];
+    const volumes = [1000, 9000];
+    const r = calculateVWAP(highs, lows, closes, volumes, 2);
+    expect(r.available).toBe(true);
+    expect(r.last).toBeCloseTo(109, 0);
+  });
+
+  it("respects the rolling window period", () => {
+    // 5 candles, period=3 → VWAP at index 4 only uses candles 2,3,4.
+    const highs = [100, 100, 100, 100, 200];
+    const lows = [100, 100, 100, 100, 100];
+    const closes = [100, 100, 100, 100, 150];
+    const volumes = [1, 1, 1, 1, 1000];
+    const r = calculateVWAP(highs, lows, closes, volumes, 3);
+    expect(r.available).toBe(true);
+    // The last VWAP should be dominated by candle 4 (volume 1000).
+    const lastVwap = r.last!;
+    // Typical of candle 4 = (200+100+150)/3 = 150. With volume 1000 vs
+    // candles 2,3 with volume 1 each, VWAP ≈ 149.85.
+    expect(lastVwap).toBeGreaterThan(149);
+    expect(lastVwap).toBeLessThan(151);
+  });
+
+  it("produces a value for every valid candle", () => {
+    const n = 10;
+    const highs = Array(n).fill(105);
+    const lows = Array(n).fill(95);
+    const closes = Array(n).fill(100);
+    const volumes = Array(n).fill(1000);
+    const r = calculateVWAP(highs, lows, closes, volumes, 5);
+    expect(r.available).toBe(true);
+    // Every entry should have a value (no nulls) since volume > 0 everywhere.
+    expect(r.series.every((v) => v != null)).toBe(true);
   });
 });

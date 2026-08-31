@@ -430,6 +430,7 @@ export function AssetCard({
           high24h={data.high_24h}
           low24h={data.low_24h}
           fibLevels={data.fibonacci?.levels}
+          fibExtensions={data.fibonacci?.extensions}
         />
       </div>
 
@@ -492,6 +493,19 @@ export function AssetCard({
           unavailable={nd.bollinger}
           color="#b48cff"
           hint="Ancho de banda (squeeze < 3%)"
+        />
+        <MetricRow
+          label="VWAP 20 · 4h"
+          value={`$${fmtPrice(data.vwap_20_4h)}`}
+          unavailable={nd.vwap_20_4h}
+          color="#5fbf8f"
+          hint={
+            data.vwap_20_4h != null && displayPrice != null
+              ? displayPrice > data.vwap_20_4h
+                ? "Precio sobre VWAP (compradores)"
+                : "Precio bajo VWAP (vendedores)"
+              : undefined
+          }
         />
         {/* RSI gauge (own row, richer) */}
         <RsiGauge

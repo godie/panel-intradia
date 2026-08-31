@@ -93,6 +93,8 @@ export type AnalysisResponse = {
     /** Extension levels (127.2%, 161.8%, 261.8%) — profit targets. */
     extensions: { ratio: number; price: number; label: string }[];
   } | null;
+  /** VWAP(20) on 4h — Volume Weighted Average Price, rolling 20 candles. */
+  vwap_20_4h: number | null;
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -115,6 +117,7 @@ export type AnalysisResponse = {
     squeeze_breakout: boolean;
     stop_loss_suggestion: boolean;
     fibonacci: boolean;
+    vwap_20_4h: boolean;
   };
   series: {
     closes: number[];
@@ -156,3 +159,13 @@ export const ALL_SYMBOLS = [
   "SOLUSDT",
   "BNBUSDT",
 ] as const;
+
+/** User-defined price alert (stored in localStorage, checked against live ticks). */
+export type PriceAlert = {
+  id: string;
+  symbol: string;
+  price: number;
+  direction: "above" | "below";
+  createdAt: number;
+  triggered: boolean;
+};

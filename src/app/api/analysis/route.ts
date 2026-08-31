@@ -12,6 +12,7 @@ import {
   calculateATR,
   calculateBollingerBands,
   calculateFibonacciRetracement,
+  calculateVWAP,
   detectMacdCross,
   detectRecentCross,
   findSupportResistance,
@@ -57,6 +58,7 @@ function buildAnalysis(
   const closes = klines.map((k) => k.close);
   const highs = klines.map((k) => k.high);
   const lows = klines.map((k) => k.low);
+  const volumes = klines.map((k) => k.volume);
 
   // Spot price: prefer ticker.lastPrice, fall back to last close.
   const spotPrice =
@@ -79,6 +81,9 @@ function buildAnalysis(
 
   // ATR(14) on 4h — volatility measure (Wilder's smoothing).
   const atrRes = calculateATR(highs, lows, closes, 14);
+
+  // VWAP(20) on 4h — Volume Weighted Average Price, rolling 20 candles.
+  const vwapRes = calculateVWAP(highs, lows, closes, volumes, 20);
 
   // Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev.
   const bbRes = calculateBollingerBands(closes, 20, 2);
@@ -234,6 +239,7 @@ function buildAnalysis(
     squeeze_breakout: !bbRes.available,
     stop_loss_suggestion: spotPrice == null || !atrRes.available,
     fibonacci: !fibRes.available,
+    vwap_20_4h: !vwapRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -278,6 +284,7 @@ function buildAnalysis(
     squeeze_breakout: squeezeBreakout,
     stop_loss_suggestion: stopLossSuggestion,
     fibonacci,
+    vwap_20_4h: round(vwapRes.last, dec),
     structure_text: structureText,
     no_disponible,
     series: {

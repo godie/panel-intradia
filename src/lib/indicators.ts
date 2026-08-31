@@ -833,3 +833,65 @@ export function calculateFibonacciRetracement(
     available: true,
   };
 }
+
+/**
+ * calculateVWAP — Volume Weighted Average Price.
+ *
+ * VWAP = sum(typicalPrice * volume) / sum(volume) over the given period.
+ * Typical price = (high + low + close) / 3.
+ *
+ * Unlike indicators that use a fixed window, VWAP is typically cumulative
+ * from the start of the trading session. Here we compute a rolling VWAP
+ * over the last `period` candles (default 20) as a proxy for intraday
+ * fair value — when price is above VWAP, buyers are in control; below,
+ * sellers are.
+ *
+ * Returns the last VWAP value + the full series (null for the first 0
+ * entries since VWAP is defined from the first candle). `available: false`
+ * when there are no candles or total volume is zero.
+ */
+export function calculateVWAP(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[],
+  period = 20,
+): { series: (number | null)[]; last: number | null; available: boolean } {
+  const n = highs.length;
+  if (
+    n === 0 ||
+    period <= 0 ||
+    lows.length !== n ||
+    closes.length !== n ||
+    volumes.length !== n
+  ) {
+    return { series: Array(n).fill(null), last: null, available: false };
+  }
+
+  const series: (number | null)[] = Array(n).fill(null);
+  let lastVwap: number | null = null;
+
+  for (let i = 0; i < n; i++) {
+    const start = Math.max(0, i - period + 1);
+    let sumPV = 0;
+    let sumVol = 0;
+    for (let j = start; j <= i; j++) {
+      const typical = (highs[j] + lows[j] + closes[j]) / 3;
+      sumPV += typical * volumes[j];
+      sumVol += volumes[j];
+    }
+    if (sumVol === 0) {
+      series[i] = null;
+      continue;
+    }
+    const vwap = sumPV / sumVol;
+    series[i] = vwap;
+    lastVwap = vwap;
+  }
+
+  return {
+    series,
+    last: lastVwap,
+    available: lastVwap != null && Number.isFinite(lastVwap),
+  };
+}

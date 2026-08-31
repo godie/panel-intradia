@@ -14,8 +14,10 @@ import {
 import { useOrderBook } from "@/hooks/use-order-book";
 import { useCrossAlerts } from "@/hooks/use-cross-alerts";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { usePriceAlerts } from "@/hooks/use-price-alerts";
 import { exportSnapshot } from "@/lib/export-snapshot";
 import { KeyboardHelpModal } from "@/components/panel/keyboard-help-modal";
+import { PriceAlertsButton } from "@/components/panel/price-alerts-button";
 import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff, Download, Keyboard, HelpCircle } from "lucide-react";
 
 const REFRESH_MS = 60_000;
@@ -51,6 +53,7 @@ export default function Page() {
   // Live tick stream — shared singleton socket.
   const tick = useTickStream();
   const book = useOrderBook();
+  const priceAlerts = usePriceAlerts(tick.prices);
   useCrossAlerts();
   useKeyboardShortcuts({
     onRefresh: () => fetchAllRef.current?.(true),
@@ -285,6 +288,14 @@ export default function Page() {
                 <Download className="h-3.5 w-3.5" aria-hidden />
                 <span className="hidden sm:inline">Exportar</span>
               </button>
+
+              <PriceAlertsButton
+                alerts={priceAlerts.alerts}
+                onAdd={priceAlerts.addAlert}
+                onRemove={priceAlerts.removeAlert}
+                onClearTriggered={priceAlerts.clearTriggered}
+                livePrices={tick.prices}
+              />
 
               <button
                 type="button"
