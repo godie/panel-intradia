@@ -82,6 +82,8 @@ export type AnalysisResponse = {
     swing_low: number | null;
     direction: "up" | "down" | null;
     levels: { ratio: number; price: number; label: string }[];
+    /** Extension levels (127.2%, 161.8%, 261.8%) — profit targets. */
+    extensions: { ratio: number; price: number; label: string }[];
   } | null;
   structure_text: string;
   no_disponible: {

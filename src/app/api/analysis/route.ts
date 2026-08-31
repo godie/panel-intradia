@@ -144,6 +144,11 @@ function buildAnalysis(
           price: round(l.price, dec),
           label: l.label,
         })),
+        extensions: fibRes.extensions.map((l) => ({
+          ratio: l.ratio,
+          price: round(l.price, dec),
+          label: l.label,
+        })),
       }
     : null;
 

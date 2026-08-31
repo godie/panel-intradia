@@ -4,6 +4,7 @@ import { Sparkline } from "./sparkline";
 import { RsiGauge } from "./rsi-gauge";
 import { RangeBar } from "./range-bar";
 import { FibLevels } from "./fib-levels";
+import { StopLossSelector } from "./stop-loss-selector";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
@@ -501,19 +502,14 @@ export function AssetCard({
           {data.structure_text}
         </p>
 
-        {/* ATR-based stop loss suggestion */}
+        {/* ATR-based stop loss suggestion with interactive multiplier */}
         {data.stop_loss_suggestion && (
-          <div className="mt-2.5 flex items-center gap-2 rounded-md border border-[#b48cff]/20 bg-[#b48cff]/5 px-2.5 py-1.5">
-            <span className="text-[9px] uppercase tracking-wider text-[#b48cff]">
-              Stop ATR
-            </span>
-            <span className="tnum text-[11px] font-medium text-foreground/90">
-              ${fmtPrice(data.stop_loss_suggestion.price)}
-            </span>
-            <span className="text-[9px] text-muted-foreground">
-              ({data.stop_loss_suggestion.direction === "long" ? "largo" : "corto"} · {data.stop_loss_suggestion.multiplier}× ATR)
-            </span>
-          </div>
+          <StopLossSelector
+            spotPrice={displayPrice}
+            atr={data.stop_loss_suggestion.atr}
+            direction={data.stop_loss_suggestion.direction}
+            defaultMultiplier={data.stop_loss_suggestion.multiplier}
+          />
         )}
 
         <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground/60">

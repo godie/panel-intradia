@@ -621,4 +621,38 @@ describe("calculateFibonacciRetracement", () => {
       "78.6%",
     ]);
   });
+
+  it("computes 3 extension levels (127.2%, 161.8%, 261.8%)", () => {
+    const highs = [100, 110, 120, 110, 100];
+    const lows = [95, 95, 100, 92, 90]; // uptrend
+    const r = calculateFibonacciRetracement(highs, lows);
+    expect(r.extensions).toHaveLength(3);
+    expect(r.extensions.map((l) => l.ratio)).toEqual([1.272, 1.618, 2.618]);
+  });
+
+  it("extensions go ABOVE swing high in an uptrend", () => {
+    // Uptrend: swing high = 120, swing low = 90, range = 30.
+    // 161.8% extension = 120 + (1.618 - 1) * 30 = 120 + 18.54 = 138.54.
+    const highs = [100, 110, 120, 110, 100];
+    const lows = [95, 95, 100, 92, 90];
+    const r = calculateFibonacciRetracement(highs, lows);
+    expect(r.direction).toBe("up");
+    const ext1618 = r.extensions.find((l) => l.ratio === 1.618);
+    expect(ext1618).toBeDefined();
+    expect(ext1618!.price).toBeGreaterThan(r.swingHigh);
+    expect(ext1618!.price).toBeCloseTo(138.54, 1);
+  });
+
+  it("extensions go BELOW swing low in a downtrend", () => {
+    // Downtrend: swing low = 90, swing high = 120, range = 30.
+    // 161.8% extension = 90 - (1.618 - 1) * 30 = 90 - 18.54 = 71.46.
+    const lows = [90, 95, 100, 95, 92];
+    const highs = [100, 110, 120, 110, 100];
+    const r = calculateFibonacciRetracement(highs, lows);
+    expect(r.direction).toBe("down");
+    const ext1618 = r.extensions.find((l) => l.ratio === 1.618);
+    expect(ext1618).toBeDefined();
+    expect(ext1618!.price).toBeLessThan(r.swingLow);
+    expect(ext1618!.price).toBeCloseTo(71.46, 1);
+  });
 });

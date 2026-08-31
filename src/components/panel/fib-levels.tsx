@@ -8,6 +8,7 @@ type Props = {
     swing_low: number | null;
     direction: "up" | "down" | null;
     levels: FibLevel[];
+    extensions?: FibLevel[];
   } | null;
   spotPrice: number | null;
   unavailable: boolean;
@@ -122,6 +123,42 @@ export function FibLevels({ fibonacci, spotPrice, unavailable }: Props) {
           );
         })}
       </div>
+
+      {/* Extension levels (profit targets) */}
+      {fibonacci.extensions && fibonacci.extensions.length > 0 && (
+        <>
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50">
+              Extensiones · objetivos
+            </span>
+            <div className="h-px flex-1 bg-white/5" />
+          </div>
+          <div className="space-y-0.5">
+            {fibonacci.extensions.map((l) => {
+              const isGolden = l.ratio === 1.618;
+              return (
+                <div
+                  key={l.ratio}
+                  className="flex items-center justify-between rounded px-2 py-0.5 text-[10px] hover:bg-white/[0.03]"
+                  title={`${l.label} extension = $${fmtPrice(l.price)}`}
+                >
+                  <span
+                    className={`font-medium ${
+                      isGolden ? "text-[#5fbf8f]" : "text-muted-foreground/60"
+                    }`}
+                  >
+                    {l.label}
+                    {isGolden && " 🎯"}
+                  </span>
+                  <span className="tnum text-foreground/70">
+                    ${fmtPrice(l.price)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* Spot position indicator */}
       {spotPrice != null && closestIdx >= 0 && (

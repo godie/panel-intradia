@@ -1803,3 +1803,113 @@ de breakout y persistir como evento "squeeze_breakout".
 
 Si sobra ancho de banda, **stop loss multiplier selector** (item 6) —
 dropdown interactivo en la card para ajustar el multiplier del stop ATR.
+
+---
+Task ID: round-13
+Agent: cron webDevReview
+Task: Fib extension levels + stop loss multiplier selector.
+
+Work Log:
+- Leído worklog previo: v12 estable con Fibonacci retracement + squeeze banner.
+  73 tests pasando. Próxima prioridad: Fib extension levels, squeeze breakout
+  detection, stop loss multiplier selector.
+- QA inicial: 6 cards, TICK LIVE, sin errores. Servicios corriendo. Lint
+  limpio, 73 tests pasando.
+- Backend — `indicators.ts` (+Fib extension levels):
+  - `calculateFibonacciRetracement` ahora computa también `extensions`: 3
+    niveles de extensión (127.2%, 161.8%, 261.8%) que proyectan MÁS ALLÁ
+    del swing en la dirección de la tendencia.
+  - Uptrend: extensions = swingHigh + (ratio - 1) * range (arriba del high,
+    profit targets para longs).
+  - Downtrend: extensions = swingLow - (ratio - 1) * range (abajo del low,
+    profit targets para shorts).
+  - Tipo `FibonacciResult` ampliado con `extensions: FibLevel[]`.
+- Backend — `types.ts`:
+  - `AnalysisResponse.fibonacci.extensions: {ratio, price, label}[]`.
+- Backend — `/api/analysis` route:
+  - `fibonacci.extensions` mapeado desde `fibRes.extensions`.
+  - Verificado: BTC extensions = [127.2%=$57612, 161.8%=$51120, 261.8%=$32357]
+    (downtrend, extensions below swing low).
+- Tests — `indicators.test.ts` (+3 tests Fibonacci extensions = 76 total):
+  - 3 extension levels con ratios correctos.
+  - Extensions above swing high en uptrend (161.8% = 138.54).
+  - Extensions below swing low en downtrend (161.8% = 71.46).
+- Frontend — `fib-levels.tsx` (+extensiones):
+  - Nueva subsección "EXTENSIONES · OBJETIVOS" con divisor.
+  - 3 niveles de extensión con color verde muted. 161.8% marcado con 🎯
+    (target icon) y color verde brillante.
+  - Separación visual clara entre retracements (pullback) y extensions
+    (profit targets).
+- Frontend — `stop-loss-selector.tsx` (nuevo componente):
+  - Dropdown interactivo con 4 multiplicadores: 1×, 1.5×, 2×, 3× ATR.
+  - Recalcula el stop price client-side instantáneamente (sin API round-trip).
+  - Muestra el % de riesgo (atr * multiplier / spotPrice * 100).
+  - Estado local del multiplicador (useState), default del backend (1.5×).
+  - Styled con border púrpura, bg púrpura 5%, consistent con el stop loss
+    anterior.
+- Frontend — `asset-card.tsx`:
+  - Reemplazado el stop loss box estático con `<StopLossSelector>` que
+    acepta spotPrice, atr, direction, defaultMultiplier.
+- Lint: 0 iteraciones. Limpio.
+- Tests: 76/76 passing (2 test files: indicators 63 + structure 13).
+- Verificación API: BTC fibonacci.extensions = [127.2%=$57612, 161.8%=$51120,
+  261.8%=$32357].
+- Verificación agent-browser:
+  - FibLevels con "EXTENSIONES · OBJETIVOS", "161.8% 🎯 $51,121",
+    "261.8% $32,358".
+  - StopLossSelector con dropdown (value=1.5, options 1/1.5/2/3).
+  - Sin errores console/runtime.
+- Verificación VLM: "Fibonacci extension levels visible with 161.8% target
+  icon 🎯. Stop loss multiplier dropdown visible. Risk percentage displayed.
+  No critical bugs. Professional, logical Setup→Target→Exit flow. Ready for
+  use."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 4827 = footerBottom.
+
+Stage Summary:
+- **Estado:** v13 entregada y verificada. 2 features nuevas (Fib extension
+  levels + stop loss multiplier selector interactivo). 76 tests pasando.
+  Panel ahora tiene 8 indicadores técnicos + extensiones Fib + stop loss
+  configurable.
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (+extensions en calculateFibonacciRetracement)
+  - `src/lib/types.ts` (+fibonacci.extensions)
+  - `src/app/api/analysis/route.ts` (+extensions mapping)
+  - `src/lib/indicators.test.ts` (+3 tests extensions = 76 total)
+  - `src/components/panel/fib-levels.tsx` (+extensiones section + 🎯)
+  - `src/components/panel/stop-loss-selector.tsx` (nuevo — dropdown interactivo)
+  - `src/components/panel/asset-card.tsx` (StopLossSelector integration)
+- **Tests:** 76/76 passing. Cobertura completa de indicators.ts (EMA, RSI,
+  MACD, S/R, ATR, Bollinger, Fibonacci retracement + extensions) + structure.ts.
+- **Fibonacci completo:** 5 retracement levels (23.6%-78.6%) + 3 extension
+  levels (127.2%-261.8%). Golden ratio 61.8% marcado con ⭐, extension
+  161.8% marcada con 🎯.
+
+## Unresolved Issues / Next-Phase Priorities (round 13)
+
+1. **Cross-history filter persistence** (item 2 de round 7). Prioridad baja.
+2. **Scatter plot enhancements**: histogramas marginales. Prioridad baja.
+3. **Export CSV/IMG** (item 7 de round 8). Prioridad baja.
+4. **Prisma log fix no aplicado al HMR** (item 8 de round 8). Prioridad baja.
+5. **VWAP / Stochastic**: más indicadores. Prioridad baja.
+6. **Squeeze breakout detection**: cuando bandwidth pasa de <3% a >3%,
+   detectar dirección. Prioridad media.
+7. **Stop loss multiplier persistence**: persistir el multiplier seleccionado
+   en localStorage. Prioridad baja.
+8. **Fib levels en RangeBar**: mostrar los levels Fib como markers en la
+   barra de rango S/R, además de la lista. Prioridad baja.
+
+## Recommended Next Step (round 14)
+
+Priorizar **squeeze breakout detection** (item 6) — comparar el bandwidth
+actual vs el anterior (necesita historial de bandwidth). Si pasó de <3% a
+>3%, detectar la dirección del candle de breakout (alcista si close > open,
+bajista si close < open) y persistir como evento "squeeze_breakout" con
+direction bullish/bearish. Cierra el loop squeeze → breakout → alerta.
+
+En paralelo, **stop loss multiplier persistence** (item 7) — guardar el
+multiplier seleccionado en localStorage para que se mantenga entre recargas.
+
+Si sobra ancho de banda, **Fib levels en RangeBar** (item 8) — añadir
+markers Fib a la barra de rango existente para visualizar la posición del
+precio respecto a los levels Fib de un vistazo.

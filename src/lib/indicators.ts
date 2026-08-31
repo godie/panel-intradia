@@ -731,6 +731,8 @@ export type FibonacciResult = {
   /** "up" if swing low is more recent (expecting pullback down from high). */
   direction: "up" | "down";
   levels: FibLevel[];
+  /** Extension levels (127.2%, 161.8%, 261.8%) — profit targets beyond the swing. */
+  extensions: FibLevel[];
   available: boolean;
 };
 
@@ -784,7 +786,7 @@ export function calculateFibonacciRetracement(
   const direction: "up" | "down" = swingLowIdx >= swingHighIdx ? "up" : "down";
 
   const range = swingHigh - swingLow;
-  const ratios = [
+  const retracementRatios = [
     { ratio: 0.236, label: "23.6%" },
     { ratio: 0.382, label: "38.2%" },
     { ratio: 0.5, label: "50.0%" },
@@ -794,7 +796,7 @@ export function calculateFibonacciRetracement(
 
   // In an uptrend: 0% = swingHigh, 100% = swingLow. Retracement = high - ratio*range.
   // In a downtrend: 0% = swingLow, 100% = swingHigh. Retracement = low + ratio*range.
-  const levels: FibLevel[] = ratios.map((r) => ({
+  const levels: FibLevel[] = retracementRatios.map((r) => ({
     ratio: r.ratio,
     price:
       direction === "up"
@@ -803,11 +805,31 @@ export function calculateFibonacciRetracement(
     label: r.label,
   }));
 
+  // Extension levels — project BEYOND the swing in the trend direction.
+  // Uptrend: extensions go ABOVE the swing high (profit targets for longs).
+  //   ext = swingHigh + (ratio - 1) * range  →  127.2% → 0.272*range above high.
+  // Downtrend: extensions go BELOW the swing low (profit targets for shorts).
+  //   ext = swingLow - (ratio - 1) * range
+  const extensionRatios = [
+    { ratio: 1.272, label: "127.2%" },
+    { ratio: 1.618, label: "161.8%" },
+    { ratio: 2.618, label: "261.8%" },
+  ];
+  const extensions: FibLevel[] = extensionRatios.map((r) => ({
+    ratio: r.ratio,
+    price:
+      direction === "up"
+        ? swingHigh + (r.ratio - 1) * range
+        : swingLow - (r.ratio - 1) * range,
+    label: r.label,
+  }));
+
   return {
     swingHigh,
     swingLow,
     direction,
     levels,
+    extensions,
     available: true,
   };
 }
