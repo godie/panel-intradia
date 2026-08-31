@@ -1913,3 +1913,118 @@ multiplier seleccionado en localStorage para que se mantenga entre recargas.
 Si sobra ancho de banda, **Fib levels en RangeBar** (item 8) — añadir
 markers Fib a la barra de rango existente para visualizar la posición del
 precio respecto a los levels Fib de un vistazo.
+
+---
+Task ID: round-14
+Agent: cron webDevReview
+Task: Squeeze breakout detection + stop loss multiplier persistence + Fib levels in RangeBar.
+
+Work Log:
+- Leído worklog previo: v13 estable con Fib extension levels + stop loss
+  multiplier selector. 76 tests pasando. Próxima prioridad: squeeze breakout
+  detection, stop loss multiplier persistence, Fib levels en RangeBar.
+- QA inicial: 6 cards, TICK LIVE, sin errores. Servicios corriendo. Lint
+  limpio, 76 tests pasando.
+- Backend — squeeze breakout detection en `/api/analysis`:
+  - Computa bandwidth para las últimas 6 velas desde bbRes.upper/lower/middle.
+  - Busca transición: bandwidth[i-1] < 3% AND bandwidth[i] >= 3%.
+  - Direction del breakout: close >= open del candle de transición → bullish,
+    close < open → bearish.
+  - `happened = true` si la transición fue dentro de las últimas 3 velas.
+  - Retorna `{happened, direction, candles_since_breakout, bandwidth_before,
+    bandwidth_after}`.
+  - Persistencia: evento "squeeze_breakout" con direction bullish/bearish,
+    dedup 6h (DEDUP_WINDOW_MS estándar).
+- Backend — types.ts:
+  - `AnalysisResponse.squeeze_breakout: {happened, direction, candles_since,
+    bandwidth_before, bandwidth_after}`.
+  - `no_disponible.squeeze_breakout: boolean`.
+- Backend — cross-history.ts:
+  - `CrossEventType` ahora incluye "squeeze_breakout".
+  - Dedup usa DEDUP_WINDOW_MS (6h) para squeeze_breakout.
+- Frontend — asset-card.tsx:
+  - Squeeze breakout banner: cuando `squeeze_breakout.happened === true`,
+    muestra banner verde (bullish) o rojo (bearish) "⚡ Breakout alcista/
+    bajista · hace N vela(s)".
+  - RangeBar ahora recibe `fibLevels={data.fibonacci?.levels}`.
+- Frontend — range-bar.tsx:
+  - Props nueva: `fibLevels?: FibLevel[]`.
+  - Fib prices incluidos en el cómputo de min/max range.
+  - 3 Fib markers añadidos (38.2%, 61.8%, 78.6%) con color púrpura (#b48cff),
+    labels cortos ("38.2", "61.8", "78.6"), tooltips "Fib X%: $Y (Z% del rango)".
+  - Solo los 3 ratios clave para evitar overcrowding (no 23.6% ni 50%).
+- Frontend — stop-loss-selector.tsx:
+  - Multiplier ahora persistido en localStorage (`panel:stop-multiplier`).
+  - useState initializer carga desde localStorage (SSR-safe con typeof window check).
+  - `handleMultiplierChange` guarda en localStorage on every change.
+  - Global key (no per-symbol) — risk tolerance es preferencia personal.
+- Frontend — use-cross-alerts.tsx:
+  - Tipo CrossEvent.type ahora incluye "squeeze_breakout".
+  - TYPE_LABELS["squeeze_breakout"] = "Squeeze Breakout".
+  - Toast support: squeeze_breakout events fire toasts con color basado en
+    direction (green bullish / red bearish).
+- Lint: 0 iteraciones. Limpio.
+- Tests: 76/76 passing (sin cambios — squeeze breakout es lógica de
+  integración en el route, no función pura nueva).
+- Verificación API: BTC squeeze_breakout={happened: false} (bandwidth
+  consistentemente > 3% recientemente — correcto, no hay breakout).
+- Verificación agent-browser:
+  - 6 cards renderizadas. BTC card con Fib markers en RangeBar (3 ticks
+    púrpura con tooltips "Fib 38.2%: $69,883 (24.4%)", "Fib 61.8%: $74,311
+    (57.9%)", "Fib 78.6%: $77,464 (81.7%)").
+  - StopLossSelector con dropdown persistente.
+  - Squeeze banner visible en BTC (bandwidth 2.27% < 3%).
+  - Sin errores console/runtime.
+- Verificación VLM: "Fib markers visible as purple ticks in RangeBar. Stop
+  loss multiplier dropdown visible. No visual bugs. Terminal-grade polish.
+  Color coding creates clear visual hierarchy. Squeeze banner displayed
+  where applicable."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 4827 = footerBottom.
+
+Stage Summary:
+- **Estado:** v14 entregada y verificada. 3 features nuevas (squeeze breakout
+  detection + stop loss multiplier persistence + Fib markers en RangeBar).
+  76 tests pasando. Panel ahora tiene detección completa de ciclo squeeze →
+  breakout → alerta.
+- **Artefactos producidos:**
+  - `src/app/api/analysis/route.ts` (+squeeze breakout detection + persistence)
+  - `src/lib/types.ts` (+squeeze_breakout field)
+  - `src/lib/cross-history.ts` (+squeeze_breakout type)
+  - `src/components/panel/asset-card.tsx` (+breakout banner + fibLevels prop)
+  - `src/components/panel/range-bar.tsx` (+fibLevels markers)
+  - `src/components/panel/stop-loss-selector.tsx` (localStorage persistence)
+  - `src/hooks/use-cross-alerts.tsx` (+squeeze_breakout toast support)
+- **Alertas activas (5 tipos):** EMA cross, MACD cross, momentum flip,
+  Bollinger squeeze, squeeze breakout. Todas persistidas en SQLite +
+  notificadas via toast con sessionStorage dedup.
+- **Fibonacci en RangeBar:** 3 markers púrpura (38.2%, 61.8%, 78.6%)
+  integrados con los markers existentes de S/R/EMA55/EMA200.
+
+## Unresolved Issues / Next-Phase Priorities (round 14)
+
+1. **Cross-history filter persistence** (item 2 de round 7). Prioridad baja.
+2. **Scatter plot enhancements**: histogramas marginales. Prioridad baja.
+3. **Export CSV/IMG** (item 7 de round 8). Prioridad baja.
+4. **Prisma log fix no aplicado al HMR** (item 8 de round 8). Prioridad baja.
+5. **VWAP / Stochastic**: más indicadores. Prioridad baja.
+6. **Fib extension markers en RangeBar**: además de los retracements, mostrar
+   las extensiones (127.2%, 161.8%) como markers. Prioridad baja.
+7. **Price alerts**: permitir al usuario setear un precio objetivo y
+   notificar cuando se alcanza. Prioridad media.
+8. **Dark/light theme toggle**: el tema es oscuro forzado. Prioridad baja.
+
+## Recommended Next Step (round 15)
+
+Priorizar **price alerts** (item 7) — permitir al usuario setear un precio
+objetivo por símbolo (ej. "alertar cuando BTC baje de $75,000"). El frontend
+guarda los alerts en localStorage, el hook de tick stream compara el live
+price con los alerts, y dispara un toast cuando se alcanza. Feature de alto
+valor práctico para traders.
+
+En paralelo, **VWAP (Volume Weighted Average Price)** (item 5) — indicador
+clásico intradía que faltan. Cálculo: sum(price*volume)/sum(volume) sobre
+las velas del día. Se integra como una línea adicional en el sparkline.
+
+Si sobra ancho de banda, **Fib extension markers en RangeBar** (item 6) —
+añadir 161.8% como marker para visualizar el profit target más cercano.

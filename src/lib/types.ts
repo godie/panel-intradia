@@ -68,6 +68,14 @@ export type AnalysisResponse = {
     threshold_pct: number;
     bandwidth: number | null;
   };
+  /** Squeeze breakout — when bandwidth crosses from <3% to ≥3% (volatility expansion). */
+  squeeze_breakout: {
+    happened: boolean;
+    direction: "bullish" | "bearish" | null;
+    candles_since_breakout: number | null;
+    bandwidth_before: number | null;
+    bandwidth_after: number | null;
+  };
   /** ATR-based stop loss suggestion — price - ATR * multiplier. */
   stop_loss_suggestion: {
     price: number | null;
@@ -104,6 +112,7 @@ export type AnalysisResponse = {
     atr_14_4h: boolean;
     bollinger: boolean;
     bollinger_squeeze: boolean;
+    squeeze_breakout: boolean;
     stop_loss_suggestion: boolean;
     fibonacci: boolean;
   };

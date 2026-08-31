@@ -94,6 +94,67 @@ function buildAnalysis(
     bandwidth: bbRes.lastBandwidth,
   };
 
+  // Squeeze breakout detection — the bar where bandwidth crosses FROM <3%
+  // (squeezed) TO ≥3% (expanding). This signals the end of a volatility
+  // compression and the start of a directional move. Direction is determined
+  // by the candle body: close > open = bullish breakout, close < open = bearish.
+  // We scan the last 5 bandwidth values for the transition point.
+  let squeezeBreakout: {
+    happened: boolean;
+    direction: "bullish" | "bearish" | null;
+    candles_since_breakout: number | null;
+    bandwidth_before: number | null;
+    bandwidth_after: number | null;
+  } = {
+    happened: false,
+    direction: null,
+    candles_since_breakout: null,
+    bandwidth_before: null,
+    bandwidth_after: null,
+  };
+  if (bbRes.available && closes.length >= 2) {
+    // Compute bandwidth for the last few bars.
+    const n = closes.length;
+    const bandwidths: (number | null)[] = [];
+    for (let i = Math.max(0, n - 6); i < n; i++) {
+      const u = bbRes.upper[i];
+      const l = bbRes.lower[i];
+      const m = bbRes.middle[i];
+      if (u != null && l != null && m != null && m !== 0) {
+        bandwidths.push(((u - l) / m) * 100);
+      } else {
+        bandwidths.push(null);
+      }
+    }
+    // Look for the transition: bandwidth[i-1] < threshold AND bandwidth[i] >= threshold.
+    for (let i = 1; i < bandwidths.length; i++) {
+      const prev = bandwidths[i - 1];
+      const curr = bandwidths[i];
+      if (
+        prev != null &&
+        curr != null &&
+        prev < SQUEEZE_THRESHOLD_PCT &&
+        curr >= SQUEEZE_THRESHOLD_PCT
+      ) {
+        // Found the breakout. The candle index in the original array is
+        // (n - bandwidths.length + i). Direction from that candle's body.
+        const candleIdx = n - bandwidths.length + i;
+        const open = klines[candleIdx]?.open ?? closes[candleIdx - 1] ?? closes[candleIdx];
+        const close = closes[candleIdx];
+        const direction = close >= open ? "bullish" : "bearish";
+        const candlesSince = n - 1 - candleIdx; // bars ago (0 = current bar)
+        squeezeBreakout = {
+          happened: candlesSince <= 3, // fresh if within last 3 bars
+          direction,
+          candles_since_breakout: candlesSince,
+          bandwidth_before: prev,
+          bandwidth_after: curr,
+        };
+        break;
+      }
+    }
+  }
+
   // Support / resistance.
   const srRes = findSupportResistance(highs, lows, spotPrice ?? 0);
 
@@ -170,6 +231,7 @@ function buildAnalysis(
     atr_14_4h: !atrRes.available,
     bollinger: !bbRes.available,
     bollinger_squeeze: !bbRes.available,
+    squeeze_breakout: !bbRes.available,
     stop_loss_suggestion: spotPrice == null || !atrRes.available,
     fibonacci: !fibRes.available,
   };
@@ -213,6 +275,7 @@ function buildAnalysis(
       bandwidth: round(bbRes.lastBandwidth, 2),
     },
     bollinger_squeeze: bollingerSqueeze,
+    squeeze_breakout: squeezeBreakout,
     stop_loss_suggestion: stopLossSuggestion,
     fibonacci,
     structure_text: structureText,
@@ -293,6 +356,24 @@ async function persistCrosses(payload: AnalysisResponse): Promise<void> {
         direction: "neutral",
         price,
         candlesAgo: 0,
+      }),
+    );
+  }
+
+  // Squeeze breakout event — when bandwidth expands past the threshold,
+  // persist the directional breakout. Uses 6h dedup (shorter than squeeze
+  // since breakouts are time-sensitive signals).
+  if (
+    payload.squeeze_breakout?.happened === true &&
+    payload.squeeze_breakout.direction
+  ) {
+    tasks.push(
+      recordCrossIfNew({
+        symbol: payload.symbol,
+        type: "squeeze_breakout",
+        direction: payload.squeeze_breakout.direction,
+        price,
+        candlesAgo: payload.squeeze_breakout.candles_since_breakout ?? 0,
       }),
     );
   }

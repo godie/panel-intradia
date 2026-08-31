@@ -1,5 +1,7 @@
 "use client";
 
+type FibLevel = { ratio: number; price: number; label: string };
+
 type Props = {
   spot: number | null;
   support: number | null;
@@ -8,6 +10,8 @@ type Props = {
   ema200: number | null;
   high24h: number | null;
   low24h: number | null;
+  /** Optional Fibonacci retracement levels to display as markers. */
+  fibLevels?: FibLevel[];
 };
 
 /**
@@ -31,9 +35,13 @@ export function RangeBar({
   ema200,
   high24h,
   low24h,
+  fibLevels,
 }: Props) {
-  // Gather all reference points to compute the visible range.
-  const points = [support, resistance, ema55, ema200, high24h, low24h, spot].filter(
+  // Gather all reference points (including Fib levels) to compute the visible range.
+  const fibPrices = (fibLevels ?? [])
+    .map((l) => l.price)
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  const points = [support, resistance, ema55, ema200, high24h, low24h, spot, ...fibPrices].filter(
     (v): v is number => v != null && Number.isFinite(v),
   );
 
@@ -99,6 +107,22 @@ export function RangeBar({
       fullLabel: "EMA 200 (4h)",
       price: ema200,
     });
+  // Fibonacci retracement levels (only the golden ratio 61.8% to avoid clutter).
+  if (fibLevels) {
+    for (const fl of fibLevels) {
+      if (fl.price == null || !Number.isFinite(fl.price)) continue;
+      // Only show the key Fib levels on the range bar to avoid overcrowding.
+      if (fl.ratio === 0.382 || fl.ratio === 0.618 || fl.ratio === 0.786) {
+        ticks.push({
+          pct: pct(fl.price),
+          color: "#b48cff",
+          label: fl.label.replace("%", ""),
+          fullLabel: `Fib ${fl.label}`,
+          price: fl.price,
+        });
+      }
+    }
+  }
 
   const fmtP = (n: number | null) =>
     n == null

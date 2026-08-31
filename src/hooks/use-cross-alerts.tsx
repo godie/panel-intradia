@@ -8,7 +8,7 @@ import { SYMBOL_META } from "@/lib/types";
 type CrossEvent = {
   id: string;
   symbol: string;
-  type: "ema" | "macd" | "momentum" | "squeeze";
+  type: "ema" | "macd" | "momentum" | "squeeze" | "squeeze_breakout";
   direction: "bullish" | "bearish" | "neutral";
   price: number;
   candlesAgo: number;
@@ -26,6 +26,7 @@ const TYPE_LABELS: Record<CrossEvent["type"], string> = {
   macd: "MACD / Signal",
   momentum: "Giro momentum",
   squeeze: "Bollinger Squeeze",
+  squeeze_breakout: "Squeeze Breakout",
 };
 
 /**

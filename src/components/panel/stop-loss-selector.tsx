@@ -34,7 +34,28 @@ export function StopLossSelector({
   direction,
   defaultMultiplier = 1.5,
 }: Props) {
-  const [multiplier, setMultiplier] = useState<number>(defaultMultiplier);
+  // Persist the selected multiplier in localStorage so the user's risk
+  // preference survives page reloads. Key is global (not per-symbol) since
+  // risk tolerance is a personal preference.
+  const STORAGE_KEY = "panel:stop-multiplier";
+  const [multiplier, setMultiplier] = useState<number>(() => {
+    if (typeof window === "undefined") return defaultMultiplier;
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? Number(stored) : defaultMultiplier;
+    } catch {
+      return defaultMultiplier;
+    }
+  });
+
+  const handleMultiplierChange = (m: number) => {
+    setMultiplier(m);
+    try {
+      localStorage.setItem(STORAGE_KEY, String(m));
+    } catch {
+      // Ignore quota / privacy mode errors.
+    }
+  };
 
   if (spotPrice == null || atr == null) {
     return null;
@@ -61,7 +82,7 @@ export function StopLossSelector({
       <div className="ml-auto flex items-center gap-1">
         <select
           value={multiplier}
-          onChange={(e) => setMultiplier(Number(e.target.value))}
+          onChange={(e) => handleMultiplierChange(Number(e.target.value))}
           className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[9px] font-medium text-foreground/80 focus-visible:outline-2 focus-visible:outline-[#b48cff]"
           aria-label="Multiplicador ATR del stop loss"
         >

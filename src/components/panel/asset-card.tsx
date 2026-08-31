@@ -266,6 +266,21 @@ export function AssetCard({
         </div>
       )}
 
+      {/* Squeeze breakout banner — volatility expansion after a squeeze */}
+      {data.squeeze_breakout?.happened === true && data.squeeze_breakout.direction && (
+        <div
+          className={`flex items-center justify-center gap-1.5 py-1 text-[10px] font-bold uppercase tracking-widest ${
+            data.squeeze_breakout.direction === "bullish"
+              ? "bg-[#5fbf8f]/15 text-[#5fbf8f]"
+              : "bg-[#e2604f]/15 text-[#e2604f]"
+          }`}
+        >
+          <Zap className="h-3 w-3 animate-pulse" aria-hidden />
+          Breakout {data.squeeze_breakout.direction === "bullish" ? "alcista" : "bajista"} · hace{" "}
+          {data.squeeze_breakout.candles_since_breakout} vela(s)
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-3 p-5 pb-3">
         <div className="min-w-0">
@@ -414,6 +429,7 @@ export function AssetCard({
           ema200={data.ema200_4h}
           high24h={data.high_24h}
           low24h={data.low_24h}
+          fibLevels={data.fibonacci?.levels}
         />
       </div>
 
