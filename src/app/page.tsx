@@ -19,6 +19,8 @@ import { useStrategyAlerts } from "@/hooks/use-strategy-alerts";
 import { exportSnapshot } from "@/lib/export-snapshot";
 import { KeyboardHelpModal } from "@/components/panel/keyboard-help-modal";
 import { PriceAlertsButton } from "@/components/panel/price-alerts-button";
+import { LanguageSelector } from "@/components/panel/language-selector";
+import { useLanguage } from "@/hooks/use-language";
 import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff, Download, Keyboard, HelpCircle } from "lucide-react";
 
 const REFRESH_MS = 60_000;
@@ -41,6 +43,7 @@ function fmtTime(iso: string | null): string {
 }
 
 export default function Page() {
+  const { t } = useLanguage();
   const [cells, setCells] = useState<Record<string, Cell>>(
     Object.fromEntries(SYMBOLS.map((s) => [s, { ...initialCell }])),
   );
@@ -203,12 +206,11 @@ export default function Page() {
               </div>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                  Panel Cuantitativo{" "}
-                  <span className="text-muted-foreground">{"// Intradía"}</span>
+                  {t("header.title")}{" "}
+                  <span className="text-muted-foreground">{t("header.subtitle")}</span>
                 </h1>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  BTC · ETH · XRP — EMA 55/200 (4h), RSI, MACD, soportes/resistencias
-                  por pivotes y estructura de mercado en vivo.
+                  {t("header.description")}
                 </p>
               </div>
             </div>
@@ -278,18 +280,18 @@ export default function Page() {
                   className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
                   aria-hidden
                 />
-                {refreshing ? "Actualizando…" : "Actualizar ahora"}
+                {refreshing ? t("header.refreshing") : t("header.refresh")}
               </button>
 
               <button
                 type="button"
                 onClick={() => exportSnapshot(tickerItems)}
                 className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-foreground/70 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
-                aria-label="Exportar snapshot JSON"
+                aria-label={t("header.export")}
                 title="Exportar análisis actual como JSON"
               >
                 <Download className="h-3.5 w-3.5" aria-hidden />
-                <span className="hidden sm:inline">Exportar</span>
+                <span className="hidden sm:inline">{t("header.export")}</span>
               </button>
 
               <PriceAlertsButton
@@ -300,15 +302,17 @@ export default function Page() {
                 livePrices={tick.prices}
               />
 
+              <LanguageSelector />
+
               <button
                 type="button"
                 onClick={() => setHelpOpen(true)}
                 className="hidden items-center gap-1 rounded-md border border-white/8 bg-black/20 px-2.5 py-1.5 text-[10px] text-muted-foreground/50 transition-colors hover:bg-white/10 hover:text-foreground/80 focus-visible:outline-2 focus-visible:outline-[#4fa8d8] md:inline-flex"
                 title="Atajos: R=refrescar, C=colapsar todo, E=expandir todo, ?=ayuda"
-                aria-label="Mostrar ayuda de atajos de teclado"
+                aria-label={t("header.shortcuts")}
               >
                 <Keyboard className="h-3 w-3" aria-hidden />
-                R · C · E
+                {t("header.shortcuts")}
               </button>
             </div>
           </div>
@@ -467,13 +471,12 @@ export default function Page() {
           <div className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4 text-center text-[11px] sm:px-6 md:flex-row md:items-center md:justify-between md:text-left lg:px-8">
             <p className="text-muted-foreground">
               <span className="font-medium text-foreground/80">
-                Panel Cuantitativo // Intrad&iacute;a
+                {t("footer.name")}
               </span>{" "}
-              — an&aacute;lisis t&eacute;cnico autom&aacute;tico, sin juicio humano.
+              — {t("footer.tagline")}
             </p>
             <p className="font-medium text-foreground/70">
-              Esto no constituye asesor&iacute;a financiera; verifica siempre en tu
-              plataforma de ejecuci&oacute;n antes de operar.
+              {t("footer.disclaimer")}
             </p>
           </div>
         </footer>
