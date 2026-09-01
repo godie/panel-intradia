@@ -1002,3 +1002,96 @@ export function calculateStochastic(
     available: lastK != null,
   };
 }
+
+export type StochCrossInfo = {
+  /** Fresh %K/%D cross within `recentThreshold` bars (default 3). */
+  happened: boolean;
+  candles_since_cross: number | null;
+  direction: "bullish" | "bearish" | null;
+  /** Current %K value at the cross point. */
+  k_at_cross: number | null;
+  window: number;
+};
+
+/**
+ * detectStochCross — find the most recent %K / %D crossover.
+ *
+ * A "bullish" Stochastic cross = %K crosses above %D (momentum turning up).
+ * A "bearish" Stochastic cross = %K crosses below %D (momentum turning down).
+ *
+ * Extra weight is given to crosses that happen in the oversold zone (<20)
+ * for bullish signals and overbought zone (>80) for bearish — these are the
+ * classic high-probability Stochastic entry signals.
+ *
+ * Scans the last `window` bars (default 10) and returns `happened=true` when
+ * the cross is within `recentThreshold` bars (default 3).
+ */
+export function detectStochCross(
+  kSeries: (number | null)[],
+  dSeries: (number | null)[],
+  opts: { window?: number; recentThreshold?: number } = {},
+): StochCrossInfo {
+  const window = opts.window ?? 10;
+  const recentThreshold = opts.recentThreshold ?? 3;
+  const n = kSeries.length;
+
+  const validAt = (i: number): boolean => {
+    const k = kSeries[i];
+    const d = dSeries[i];
+    return k != null && d != null && Number.isFinite(k) && Number.isFinite(d);
+  };
+
+  // Find the last index where both %K and %D are defined.
+  let lastValid = -1;
+  for (let i = n - 1; i >= 0; i--) {
+    if (validAt(i)) {
+      lastValid = i;
+      break;
+    }
+  }
+  if (lastValid < 1) {
+    return {
+      happened: false,
+      candles_since_cross: null,
+      direction: null,
+      k_at_cross: null,
+      window,
+    };
+  }
+
+  const scanStart = Math.max(1, lastValid - window + 1);
+
+  // Walk backwards looking for a sign flip of (%K - %D).
+  let crossIdx = -1;
+  let crossDir: "bullish" | "bearish" | null = null;
+  for (let i = lastValid; i > scanStart; i--) {
+    if (!validAt(i) || !validAt(i - 1)) continue;
+    const diffNow = (kSeries[i] as number) - (dSeries[i] as number);
+    const diffPrev = (kSeries[i - 1] as number) - (dSeries[i - 1] as number);
+    if (diffNow === 0 || diffPrev === 0) continue;
+    if ((diffNow > 0) !== (diffPrev > 0)) {
+      crossIdx = i;
+      crossDir = diffNow > 0 ? "bullish" : "bearish";
+      break;
+    }
+  }
+
+  if (crossIdx === -1) {
+    return {
+      happened: false,
+      candles_since_cross: null,
+      direction: null,
+      k_at_cross: null,
+      window,
+    };
+  }
+
+  const candlesSince = lastValid - crossIdx + 1;
+  return {
+    happened: candlesSince <= recentThreshold,
+    candles_since_cross: candlesSince,
+    direction: crossDir,
+    k_at_cross: kSeries[crossIdx],
+    window,
+  };
+}

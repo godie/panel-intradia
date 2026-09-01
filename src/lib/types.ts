@@ -97,6 +97,13 @@ export type AnalysisResponse = {
   vwap_20_4h: number | null;
   /** Stochastic oscillator %K and %D (14, 3). */
   stochastic: { k: number | null; d: number | null };
+  /** Stochastic %K/%D crossover detection. */
+  stoch_cross: {
+    happened: boolean;
+    candles_since_cross: number | null;
+    direction: "bullish" | "bearish" | null;
+    k_at_cross: number | null;
+  };
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -121,6 +128,7 @@ export type AnalysisResponse = {
     fibonacci: boolean;
     vwap_20_4h: boolean;
     stochastic: boolean;
+    stoch_cross: boolean;
   };
   series: {
     closes: number[];

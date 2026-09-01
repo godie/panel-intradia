@@ -14,6 +14,7 @@ import {
   calculateFibonacciRetracement,
   calculateVWAP,
   calculateStochastic,
+  detectStochCross,
   detectMacdCross,
   detectRecentCross,
   findSupportResistance,
@@ -88,6 +89,16 @@ function buildAnalysis(
 
   // Stochastic oscillator (14, 3) — %K and %D momentum indicator.
   const stochRes = calculateStochastic(highs, lows, closes, 14, 3);
+  // Stochastic %K/%D crossover detection.
+  const stochCross = stochRes.available
+    ? detectStochCross(stochRes.kSeries, stochRes.dSeries)
+    : {
+        happened: false,
+        candles_since_cross: null as number | null,
+        direction: null as "bullish" | "bearish" | null,
+        k_at_cross: null as number | null,
+        window: 10,
+      };
 
   // Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev.
   const bbRes = calculateBollingerBands(closes, 20, 2);
@@ -245,6 +256,7 @@ function buildAnalysis(
     fibonacci: !fibRes.available,
     vwap_20_4h: !vwapRes.available,
     stochastic: !stochRes.available,
+    stoch_cross: !stochRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -295,6 +307,7 @@ function buildAnalysis(
       k: round(stochRes.lastK, 2),
       d: round(stochRes.lastD, 2),
     },
+    stoch_cross: stochCross,
     structure_text: structureText,
     no_disponible,
     series: {
@@ -392,6 +405,19 @@ async function persistCrosses(payload: AnalysisResponse): Promise<void> {
         direction: payload.squeeze_breakout.direction,
         price,
         candlesAgo: payload.squeeze_breakout.candles_since_breakout ?? 0,
+      }),
+    );
+  }
+
+  // Stochastic %K/%D cross event — persisted with 6h dedup.
+  if (payload.stoch_cross?.happened === true && payload.stoch_cross.direction) {
+    tasks.push(
+      recordCrossIfNew({
+        symbol: payload.symbol,
+        type: "stoch_cross",
+        direction: payload.stoch_cross.direction,
+        price,
+        candlesAgo: payload.stoch_cross.candles_since_cross ?? 0,
       }),
     );
   }

@@ -12,6 +12,7 @@ import {
   calculateFibonacciRetracement,
   calculateVWAP,
   calculateStochastic,
+  detectStochCross,
 } from "./indicators";
 
 describe("calculateEMA", () => {
@@ -815,5 +816,80 @@ describe("calculateStochastic", () => {
       expect(r.kSeries[i]).toBeNull();
     }
     expect(r.kSeries[13]).not.toBeNull();
+  });
+});
+
+describe("detectStochCross", () => {
+  it("returns no cross when %K stays above %D", () => {
+    const k = Array(20).fill(80);
+    const d = Array(20).fill(70);
+    const r = detectStochCross(k, d);
+    expect(r.happened).toBe(false);
+    expect(r.direction).toBeNull();
+  });
+
+  it("returns no cross when %K stays below %D", () => {
+    const k = Array(20).fill(20);
+    const d = Array(20).fill(30);
+    const r = detectStochCross(k, d);
+    expect(r.happened).toBe(false);
+    expect(r.direction).toBeNull();
+  });
+
+  it("detects a fresh bullish cross (%K crosses above %D)", () => {
+    // %K goes from 20 to 60 at index 18 and stays 60, %D stays at 50.
+    const k = Array(20).fill(20);
+    k[18] = 60;
+    k[19] = 60; // stays above D=50 — no second cross
+    const d = Array(20).fill(50);
+    const r = detectStochCross(k, d, { window: 10, recentThreshold: 5 });
+    expect(r.happened).toBe(true);
+    expect(r.direction).toBe("bullish");
+  });
+
+  it("detects a fresh bearish cross (%K crosses below %D)", () => {
+    // %K goes from 80 to 40 at index 18 and stays 40, %D stays at 50.
+    const k = Array(20).fill(80);
+    k[18] = 40;
+    k[19] = 40; // stays below D=50 — no second cross
+    const d = Array(20).fill(50);
+    const r = detectStochCross(k, d, { window: 10, recentThreshold: 5 });
+    expect(r.happened).toBe(true);
+    expect(r.direction).toBe("bearish");
+  });
+
+  it("returns happened=false when cross is older than recentThreshold", () => {
+    // Cross at index 5 → 15 candles ago, recentThreshold=3 → too old.
+    // k stays above d=50 from index 5 onwards (no rebound cross).
+    const k = Array(20).fill(20);
+    for (let i = 5; i < 20; i++) k[i] = 60;
+    const d = Array(20).fill(50);
+    const r = detectStochCross(k, d, { window: 20, recentThreshold: 3 });
+    expect(r.happened).toBe(false);
+    // lastValid=19, crossIdx=5, candlesSince = 19-5+1 = 15.
+    expect(r.candles_since_cross).toBe(15);
+  });
+
+  it("handles empty/short series gracefully", () => {
+    const r = detectStochCross([], []);
+    expect(r.happened).toBe(false);
+  });
+
+  it("handles null-heavy series gracefully", () => {
+    const k: (number | null)[] = [null, null, null, 60, 70, 80];
+    const d: (number | null)[] = [null, null, null, 50, 50, 50];
+    const r = detectStochCross(k, d, { window: 10, recentThreshold: 5 });
+    // At index 3, K=60 > D=50 (bullish), before that null. First valid diff > 0
+    // so no actual cross detected.
+    expect(r.happened).toBe(false);
+  });
+
+  it("records the %K value at the cross point", () => {
+    const k = Array(20).fill(20);
+    k[18] = 55;
+    k[19] = 55; // stays above — only one cross
+    const d = Array(20).fill(50);
+    const r = detectStochCross(k, d, { window: 10, recentThreshold: 5 });
+    expect(r.k_at_cross).toBe(55);
   });
 });

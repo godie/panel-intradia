@@ -2284,3 +2284,152 @@ localStorage.
 Si sobra ancho de banda, **Ichimoku Cloud** (item 5) — el indicador japonés
 clásico (Tenkan, Kijun, Senkou A/B, Chikou). Es el indicador más completo
 que falta. Cálculo puramente backend.
+
+---
+Task ID: round-17
+Agent: cron webDevReview
+Task: Stochastic cross alert + strategy system (predefined trading strategies).
+
+Work Log:
+- Leído worklog previo: v16 estable con VWAP overlay + Stochastic + alert
+  sound. 92 tests pasando. Usuario pidió: Stochastic cross alert + sistema
+  de estrategias predefinidas (hold, buy, short) con alertas.
+- QA inicial: 6 cards, TICK LIVE, sin errores. Lint limpio, 92 tests.
+- Backend — `indicators.ts` (+detectStochCross):
+  - `detectStochCross(kSeries, dSeries, {window=10, recentThreshold=3})` —
+    busca el cruce más reciente de %K sobre/debajo de %D.
+  - Bullish: %K cruza arriba de %D. Bearish: %K cruza abajo de %D.
+  - Retorna {happened, candles_since_cross, direction, k_at_cross, window}.
+  - Exportado tipo StochCrossInfo.
+- Tests — `indicators.test.ts` (+8 tests detectStochCross = 100 total):
+  - No cross cuando %K stays above/below %D.
+  - Fresh bullish cross, fresh bearish cross.
+  - Outside recentThreshold (too old).
+  - Empty/short series, null-heavy series.
+  - Records %K value at cross point.
+  - 4 tests fallaron en primer intento: fixtures tenían rebound crosses
+    (k[18]=60 pero k[19]=20 causaba segundo cross). Corregidos para que
+    los valores se mantengan después del cross.
+- Backend — `types.ts`:
+  - `AnalysisResponse.stoch_cross: {happened, candles_since_cross,
+    direction, k_at_cross}`.
+  - `no_disponible.stoch_cross: boolean`.
+- Backend — `/api/analysis` route:
+  - Import detectStochCross.
+  - `stochCross = stochRes.available ? detectStochCross(kSeries, dSeries)
+    : {fallback}`.
+  - Incluido en payload + no_disponible.stoch_cross = !stochRes.available.
+  - Persistencia: evento "stoch_cross" con direction, dedup 6h.
+  - Verificado: BTC stoch_cross={happened: true, direction: "bearish",
+    k_at_cross: 45.79, candles_since_cross: 3} — cruce fresco detectado.
+- Backend — `cross-history.ts`:
+  - `CrossEventType` ahora incluye "stoch_cross".
+  - Dedup usa DEDUP_WINDOW_MS (6h) para stoch_cross.
+- Frontend — `asset-card.tsx`:
+  - Stochastic cross banner: ámbar, "STOCH ↑/↓ · %K X · hace N vela(s)"
+    con icono Activity pulsante.
+- Frontend — `use-cross-alerts.tsx`:
+  - Tipo CrossEvent.type incluye "stoch_cross".
+  - TYPE_LABELS["stoch_cross"] = "Stochastic Cross".
+  - Toast support para stoch_cross events.
+- Backend — `strategies.ts` (nuevo — sistema de estrategias):
+  - Tipos: StrategyAction (BUY/HOLD/SHORT/WAIT), StrategySignal,
+    StrategyResult, Strategy.
+  - `evaluateStrategy(strategy, data)` — evalúa las condiciones de la
+    estrategia contra el analysis payload, retorna acción + confianza
+    (0-100%) + signals breakdown + summary en español.
+  - Confianza >= 60% → target action, sino WAIT.
+  - 4 estrategias predefinidas:
+    1. TREND_BUY: "Seguimiento de Tendencia · Compra" — EMA55>EMA200,
+       RSI<70, precio>EMA55, MACD alcista, Stochastic no sobrecomprado.
+    2. MEAN_REVERSION_BUY: "Reversión a la Media · Compra" — RSI<35,
+       Stochastic %K<25, cruce Stoch alcista fresco, precio cerca soporte,
+       no squeeze.
+    3. TREND_SHORT: "Seguimiento de Tendencia · Short" — EMA55<EMA200,
+       RSI>30, precio<EMA55, MACD bajista, Stochastic no sobrevendido.
+    4. HOLD: "Mantener · No Operar" — medias comprimidas, squeeze activo,
+       RSI neutral, sin cruces frescos.
+  - Cada estrategia: 5 condiciones, cada una con name + fired + description.
+  - STRATEGY_LIST + STRATEGIES map exportados.
+- Frontend — `strategy-selector.tsx` (nuevo componente):
+  - Dropdown para seleccionar estrategia (persistido en localStorage
+    `panel:strategy`).
+  - Action badge: BUY (verde), SHORT (rojo), HOLD (ámbar), WAIT (gris)
+    con % de confianza.
+  - Descripción de la estrategia seleccionada.
+  - Summary text con la recomendación + confianza + signals activas.
+  - Signal breakdown: cada condición con check (fired) o minus (not fired)
+    + descripción del estado actual.
+  - Confidence bar con color del action.
+- Frontend — `asset-card.tsx`:
+  - `<StrategySelector data={data} />` añadido entre el texto de estructura
+    y el stop loss, en el footer de la card.
+- Lint: 0 iteraciones. Limpio desde el primer intento.
+- Tests: 100/100 passing (2 test files: indicators 87 + structure 13).
+- Verificación API: BTC stoch_cross={happened: true, direction: "bearish",
+  k_at_cross: 45.79, candles_since_cross: 3}.
+- Verificación agent-browser:
+  - BTC card con "SQUEEZE · VOLATILIDAD COMPRIMIDA (1.97%)" + "STOCH ↓
+    BAJISTA · %K 46 · HACE 3 VELA(S)" banners.
+  - Strategy panel con "ESTRATEGIA" + action badge + "Confianza 80%" +
+    signal breakdown con checks.
+  - Sin errores console/runtime.
+- Verificación VLM: "Stochastic cross banner visible (amber). Strategy panel
+  visible with confidence score and signal checks. No visual bugs. High
+  polish. Strategy adds decision-making logic that was previously missing."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 5938 = footerBottom.
+
+Stage Summary:
+- **Estado:** v17 entregada y verificada. 2 features nuevas (Stochastic cross
+  alert + strategy system con 4 estrategias predefinidas). 100 tests pasando.
+  Panel ahora tiene 10 indicadores + 6 tipos de alertas + 4 estrategias.
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (+detectStochCross, +StochCrossInfo type)
+  - `src/lib/indicators.test.ts` (+8 tests detectStochCross = 100 total)
+  - `src/lib/types.ts` (+stoch_cross field)
+  - `src/app/api/analysis/route.ts` (+stoch_cross detection + persistence)
+  - `src/lib/cross-history.ts` (+stoch_cross type)
+  - `src/lib/strategies.ts` (nuevo — 4 estrategias + evaluateStrategy)
+  - `src/components/panel/strategy-selector.tsx` (nuevo — dropdown + signals)
+  - `src/components/panel/asset-card.tsx` (+stoch banner + StrategySelector)
+  - `src/hooks/use-cross-alerts.tsx` (+stoch_cross toast support)
+- **Tests:** 100/100 passing. Cobertura completa de indicators.ts (11
+  funciones: EMA, RSI, MACD, S/R, ATR, Bollinger, Fibonacci, VWAP,
+  Stochastic, detectMacdCross, detectStochCross) + structure.ts.
+- **Alertas activas (6 tipos):** EMA cross, MACD cross, momentum flip,
+  Bollinger squeeze, squeeze breakout, Stochastic cross.
+- **Estrategias predefinidas (4):** Trend Buy, Mean Reversion Buy, Trend
+  Short, Hold. Cada una con 5 condiciones, confidence score, signal breakdown.
+- **Vista de estrategia:** dropdown persistido en localStorage, action badge
+  (BUY/HOLD/SHORT/WAIT) con % confianza, signal checks con descripciones.
+
+## Unresolved Issues / Next-Phase Priorities (round 17)
+
+1. **Strategy alerts**: enviar toast cuando una estrategia cambia de WAIT a
+   BUY/SHORT. Requiere polling del resultado de la estrategia. Prioridad
+   media.
+2. **Custom strategy builder**: permitir al usuario definir sus propias
+   condiciones. Prioridad baja.
+3. **Strategy backtesting**: simular el rendimiento histórico de la
+   estrategia. Requiere datos históricos + SQLite. Prioridad baja.
+4. **Multiple strategies simultaneously**: evaluar múltiples estrategias a
+   la vez y mostrar la que tenga mayor confianza. Prioridad baja.
+5. **Cross-history filter persistence** (item 2 de round 7). Prioridad baja.
+6. **Scatter plot enhancements**: histogramas marginales. Prioridad baja.
+7. **Export CSV/IMG** (item 7 de round 8). Prioridad baja.
+8. **Ichimoku Cloud** (item 5 de round 16). Prioridad baja.
+
+## Recommended Next Step (round 18)
+
+Priorizar **strategy alerts** (item 1) — cuando la estrategia seleccionada
+cambia de WAIT a BUY/SHORT (o viceversa), disparar un toast + sonido. El
+hook compara el action actual con el anterior (ref) y solo dispara en
+transiciones. Cierra el loop: estrategia → señal → alerta activa.
+
+En paralelo, **multiple strategies simultaneously** (item 4) — evaluar las
+4 estrategias a la vez y mostrar un "consensus" action (ej. 3/4 dicen BUY =
+strong BUY). Quick win de alto valor.
+
+Si sobra ancho de banda, **Ichimoku Cloud** (item 8) — Tenkan, Kijun, Senkou
+A/B, Chikou. El indicador japonés más completo que falta.

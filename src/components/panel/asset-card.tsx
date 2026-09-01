@@ -6,6 +6,7 @@ import { RangeBar } from "./range-bar";
 import { FibLevels } from "./fib-levels";
 import { StopLossSelector } from "./stop-loss-selector";
 import { StochasticRow } from "./stochastic-row";
+import { StrategySelector } from "./strategy-selector";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
@@ -282,6 +283,21 @@ export function AssetCard({
         </div>
       )}
 
+      {/* Stochastic cross banner — %K crossing %D */}
+      {data.stoch_cross?.happened === true && data.stoch_cross.direction && (
+        <div
+          className={`flex items-center justify-center gap-1.5 py-1 text-[10px] font-bold uppercase tracking-widest ${
+            data.stoch_cross.direction === "bullish"
+              ? "bg-[#e8b04b]/15 text-[#e8b04b]"
+              : "bg-[#e8b04b]/15 text-[#e8b04b]"
+          }`}
+        >
+          <Activity className="h-3 w-3 animate-pulse" aria-hidden />
+          Stoch {data.stoch_cross.direction === "bullish" ? "↑ alcista" : "↓ bajista"} · %K {data.stoch_cross.k_at_cross?.toFixed(0)} · hace{" "}
+          {data.stoch_cross.candles_since_cross} vela(s)
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-3 p-5 pb-3">
         <div className="min-w-0">
@@ -531,7 +547,7 @@ export function AssetCard({
         </div>
       </CollapsibleSection>
 
-      {/* Structure text */}
+      {/* Structure text + Strategy + Stop loss */}
       <div className="mt-auto border-t border-white/5 bg-white/[0.015] p-5">
         <div className="mb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
           Estructura de mercado
@@ -539,6 +555,11 @@ export function AssetCard({
         <p className="text-xs leading-relaxed text-foreground/80">
           {data.structure_text}
         </p>
+
+        {/* Strategy selector — predefined trading strategies */}
+        <div className="mt-3">
+          <StrategySelector data={data} />
+        </div>
 
         {/* ATR-based stop loss suggestion with interactive multiplier */}
         {data.stop_loss_suggestion && (
