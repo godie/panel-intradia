@@ -2,44 +2,12 @@
 
 import { useEffect } from "react";
 import { X, Keyboard, RefreshCw, ChevronDown, ChevronUp, HelpCircle } from "lucide-react";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   open: boolean;
   onClose: () => void;
 };
-
-const SHORTCUTS = [
-  {
-    key: "R",
-    desc: "Refrescar todos los datos del panel",
-    icon: RefreshCw,
-    color: "#4fa8d8",
-  },
-  {
-    key: "C",
-    desc: "Colapsar todas las secciones colapsables",
-    icon: ChevronDown,
-    color: "#e8b04b",
-  },
-  {
-    key: "E",
-    desc: "Expandir todas las secciones colapsables",
-    icon: ChevronUp,
-    color: "#5fbf8f",
-  },
-  {
-    key: "?",
-    desc: "Mostrar esta ayuda de atajos",
-    icon: HelpCircle,
-    color: "#b48cff",
-  },
-  {
-    key: "Esc",
-    desc: "Cerrar modales y overlays",
-    icon: X,
-    color: "#8b96a5",
-  },
-];
 
 /**
  * KeyboardHelpModal — a modal listing all available keyboard shortcuts.
@@ -47,6 +15,40 @@ const SHORTCUTS = [
  * Closes on Escape or clicking outside.
  */
 export function KeyboardHelpModal({ open, onClose }: Props) {
+  const { t } = useLanguage();
+
+  const SHORTCUTS = [
+    {
+      key: "R",
+      desc: t("keyboard.refresh"),
+      icon: RefreshCw,
+      color: "#4fa8d8",
+    },
+    {
+      key: "C",
+      desc: t("keyboard.collapse"),
+      icon: ChevronDown,
+      color: "#e8b04b",
+    },
+    {
+      key: "E",
+      desc: t("keyboard.expand"),
+      icon: ChevronUp,
+      color: "#5fbf8f",
+    },
+    {
+      key: "?",
+      desc: t("keyboard.help"),
+      icon: HelpCircle,
+      color: "#b48cff",
+    },
+    {
+      key: "Esc",
+      desc: t("keyboard.close"),
+      icon: X,
+      color: "#8b96a5",
+    },
+  ];
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -64,7 +66,7 @@ export function KeyboardHelpModal({ open, onClose }: Props) {
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Atajos de teclado"
+      aria-label={t("keyboard.title")}
     >
       <div
         className="relative w-full max-w-sm mx-4 rounded-xl border border-white/10 bg-card shadow-2xl"
@@ -75,7 +77,7 @@ export function KeyboardHelpModal({ open, onClose }: Props) {
           <div className="flex items-center gap-2">
             <Keyboard className="h-4 w-4 text-[#4fa8d8]" aria-hidden />
             <h3 className="text-sm font-semibold text-foreground">
-              Atajos de teclado
+              {t("keyboard.title")}
             </h3>
           </div>
           <button
@@ -125,7 +127,7 @@ export function KeyboardHelpModal({ open, onClose }: Props) {
             })}
           </ul>
           <p className="mt-3 text-center text-[10px] text-muted-foreground/50">
-            Los atajos se ignoran cuando escribes en campos de formulario.
+            {t("keyboard.note")}
           </p>
         </div>
       </div>

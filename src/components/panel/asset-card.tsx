@@ -13,6 +13,7 @@ import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
 import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
 import type { DepthSnapshot } from "@/hooks/use-order-book";
+import { useLanguage } from "@/hooks/use-language";
 import {
   TrendingUp,
   TrendingDown,
@@ -40,7 +41,7 @@ type Props = {
 };
 
 function fmtPrice(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "Dato no disponible";
+  if (n == null || !Number.isFinite(n)) return "—";
   if (n >= 1000)
     return n.toLocaleString("en-US", {
       minimumFractionDigits: 2,
@@ -51,7 +52,7 @@ function fmtPrice(n: number | null): string {
 }
 
 function fmtPct(n: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "Dato no disponible";
+  if (n == null || !Number.isFinite(n)) return "—";
   const sign = n >= 0 ? "+" : "";
   return `${sign}${n.toFixed(2)}%`;
 }
@@ -182,7 +183,7 @@ function MetricRow({
           style={unavailable ? undefined : color ? { color } : undefined}
           title={hint}
         >
-          {unavailable ? "Dato no disponible" : value}
+          {unavailable ? t("card.notAvailable") : value}
         </span>
         {hint && !unavailable && (
           <span className="text-[10px] text-muted-foreground/70">{hint}</span>
@@ -201,6 +202,7 @@ export function AssetCard({
   depthSnapshot,
   depthConnected,
 }: Props) {
+  const { t } = useLanguage();
   const meta = SYMBOL_META[data.symbol] ?? {
     label: data.symbol,
     pair: data.symbol,
@@ -256,8 +258,7 @@ export function AssetCard({
           }`}
         >
           <Zap className="h-3 w-3 animate-pulse" aria-hidden />
-          Cruce {crossDir === "bullish" ? "alcista" : "bajista"} · hace{" "}
-          {crossInfo?.candles_since_cross} vela(s)
+          {t("banner.crossBullish")} {crossDir === "bullish" ? "" : ""} {t("common.ago")} {t("banner.candles")}
         </div>
       )}
 
@@ -265,7 +266,7 @@ export function AssetCard({
       {data.bollinger_squeeze?.is_squeezed === true && (
         <div className="flex items-center justify-center gap-1.5 bg-[#b48cff]/15 py-1 text-[10px] font-bold uppercase tracking-widest text-[#b48cff]">
           <Activity className="h-3 w-3 animate-pulse" aria-hidden />
-          Squeeze · volatilidad comprimida ({data.bollinger_squeeze.bandwidth?.toFixed(2)}%)
+          {t("banner.squeeze")} ({data.bollinger_squeeze.bandwidth?.toFixed(2)}%)
         </div>
       )}
 
@@ -279,8 +280,7 @@ export function AssetCard({
           }`}
         >
           <Zap className="h-3 w-3 animate-pulse" aria-hidden />
-          Breakout {data.squeeze_breakout.direction === "bullish" ? "alcista" : "bajista"} · hace{" "}
-          {data.squeeze_breakout.candles_since_breakout} vela(s)
+          {data.squeeze_breakout.direction === "bullish" ? t("banner.breakoutBull") : t("banner.breakoutBear")} {t("common.ago")} {t("banner.candles")}
         </div>
       )}
 
@@ -294,8 +294,7 @@ export function AssetCard({
           }`}
         >
           <Activity className="h-3 w-3 animate-pulse" aria-hidden />
-          Stoch {data.stoch_cross.direction === "bullish" ? "↑ alcista" : "↓ bajista"} · %K {data.stoch_cross.k_at_cross?.toFixed(0)} · hace{" "}
-          {data.stoch_cross.candles_since_cross} vela(s)
+          {data.stoch_cross.direction === "bullish" ? t("banner.stochBull") : t("banner.stochBear")} · %K {data.stoch_cross.k_at_cross?.toFixed(0)} · {t("banner.stochLabel")} {t("banner.candles")}
         </div>
       )}
 
@@ -330,7 +329,7 @@ export function AssetCard({
         <div className="flex items-end gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
-              <span>Precio spot · USD</span>
+              <span>{t("card.spotPrice")}</span>
               {usingLive && (
                 <span
                   className="inline-flex items-center gap-1 rounded border border-[#5fbf8f]/30 bg-[#5fbf8f]/10 px-1 py-px text-[9px] font-bold tracking-wider text-[#5fbf8f]"
@@ -347,14 +346,14 @@ export function AssetCard({
               }`}
             >
               {nd.spot_price ? (
-                <span className="text-muted-foreground/60">Dato no disponible</span>
+                <span className="text-muted-foreground/60">{t("card.notAvailable")}</span>
               ) : (
                 <PriceFlash value={displayPrice} live={usingLive} />
               )}
             </div>
             {usingLive && elapsedMs != null && (
               <div className="mt-1 text-[10px] text-muted-foreground/60 tnum">
-                tick hace {formatElapsed(elapsedMs)}
+                {t("card.tickAgo")} {formatElapsed(elapsedMs)}
               </div>
             )}
           </div>
@@ -420,7 +419,7 @@ export function AssetCard({
 
       {/* MACD mini-panel — histogram of last ~40 bars + crossover alerts */}
       <CollapsibleSection
-        label="MACD · 12/26/9 · 4h"
+        label={t("card.macd")}
         accent="#e8b04b"
         badge={
           data.macd_cross?.happened ? (
@@ -442,7 +441,7 @@ export function AssetCard({
       {/* Range bar — position of price within S/R with EMA markers */}
       <div className="px-5 pb-3">
         <div className="mb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
-          Posición en el rango · S/R
+          {t("card.rangeTitle")}
         </div>
         <RangeBar
           spot={displayPrice}
@@ -459,7 +458,7 @@ export function AssetCard({
 
       {/* L2 Order book — bid/ask depth + spread + imbalance */}
       <CollapsibleSection
-        label="Order Book · L2"
+        label={t("card.orderBook")}
         accent="#4fa8d8"
         badge={
           depthConnected ? (
@@ -478,55 +477,55 @@ export function AssetCard({
       </CollapsibleSection>
 
       {/* Metric rows + RSI */}
-      <CollapsibleSection label="Indicadores · 4h" accent="#8b96a5">
+      <CollapsibleSection label={t("card.indicators")} accent="#8b96a5">
         <MetricRow
-          label="EMA 55 · 4h"
+          label={`${t("card.ema55")} · 4h`}
           value={`$${fmtPrice(data.ema55_4h)}`}
           unavailable={nd.ema55_4h}
           color="#e8b04b"
         />
         <MetricRow
-          label="EMA 200 · 4h"
+          label={`${t("card.ema200")} · 4h`}
           value={`$${fmtPrice(data.ema200_4h)}`}
           unavailable={nd.ema200_4h}
           color="#4fa8d8"
         />
         <MetricRow
-          label="Resistencia"
+          label={t("card.resistance") || "Resistencia"}
           value={`$${fmtPrice(data.resistance)}`}
           unavailable={nd.resistance}
           color="#e2604f"
         />
         <MetricRow
-          label="Soporte"
+          label={t("card.support") || "Soporte"}
           value={`$${fmtPrice(data.support)}`}
           unavailable={nd.support}
           color="#5fbf8f"
         />
         <MetricRow
-          label="ATR 14 · 4h"
+          label={t("card.atr")}
           value={`$${fmtPrice(data.atr_14_4h)}`}
           unavailable={nd.atr_14_4h}
           color="#b48cff"
-          hint="Volatilidad (Average True Range)"
+          hint={t("card.atrHint")}
         />
         <MetricRow
-          label="Bollinger BW"
+          label={t("card.bollingerBw")}
           value={data.bollinger?.bandwidth != null ? `${data.bollinger.bandwidth.toFixed(2)}%` : "—"}
           unavailable={nd.bollinger}
           color="#b48cff"
-          hint="Ancho de banda (squeeze < 3%)"
+          hint={t("card.bollingerBwHint")}
         />
         <MetricRow
-          label="VWAP 20 · 4h"
+          label={t("card.vwapLabel")}
           value={`$${fmtPrice(data.vwap_20_4h)}`}
           unavailable={nd.vwap_20_4h}
           color="#5fbf8f"
           hint={
             data.vwap_20_4h != null && displayPrice != null
               ? displayPrice > data.vwap_20_4h
-                ? "Precio sobre VWAP (compradores)"
-                : "Precio bajo VWAP (vendedores)"
+                ? t("card.vwapAbove")
+                : t("card.vwapBelow")
               : undefined
           }
         />
@@ -544,16 +543,16 @@ export function AssetCard({
         />
         {/* Ichimoku cloud */}
         <MetricRow
-          label="Ichimoku · Nube"
+          label={t("card.ichimokuLabel")}
           value={
             nd.ichimoku
               ? ""
               : data.ichimoku.price_vs_cloud === "above"
-                ? "Sobre nube ↑"
+                ? t("card.ichimokuAbove")
                 : data.ichimoku.price_vs_cloud === "below"
-                  ? "Bajo nube ↓"
+                  ? t("card.ichimokuBelow")
                   : data.ichimoku.price_vs_cloud === "inside"
-                    ? "Dentro nube"
+                    ? t("card.ichimokuInside")
                     : "—"
           }
           unavailable={nd.ichimoku}
@@ -583,7 +582,7 @@ export function AssetCard({
       {/* Structure text + Strategy + Stop loss */}
       <div className="mt-auto border-t border-white/5 bg-white/[0.015] p-5">
         <div className="mb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
-          Estructura de mercado
+          {t("card.structure")}
         </div>
         <p className="text-xs leading-relaxed text-foreground/80">
           {data.structure_text}
@@ -615,7 +614,7 @@ export function AssetCard({
             })}{" "}
             UTC
           </span>
-          <span>Binance · 4h klines</span>
+          <span>{t("card.binanceLabel")}</span>
         </div>
       </div>
     </article>

@@ -2783,3 +2783,99 @@ cruce y persistir como evento.
 
 Si sobra ancho de banda, **custom strategy builder** (item 2) — pendiente
 desde round 19.
+
+---
+Task ID: round-21
+Agent: cron webDevReview
+Task: Completa i18n — traducir strings internas de todos los componentes.
+
+Work Log:
+- Leído worklog previo: v20 con sistema i18n básico (header/footer traducidos,
+  selector de idioma). 110 tests pasando.
+- QA inicial: 6 cards, sin errores. Lint limpio, 110 tests.
+- Traducidos los siguientes componentes (añadiendo useLanguage + t()):
+  1. **AssetCard**: spotPrice, tickAgo, notAvailable, macd label, rangeTitle,
+     orderBook, indicators, structure, binanceLabel, ema55, ema200, resistance,
+     support, atr, atrHint, bollingerBw, bollingerBwHint, vwapLabel, vwapAbove,
+     vwapBelow, ichimokuLabel, ichimokuAbove/Below/Inside, banners (cross,
+     squeeze, breakout, stoch), stopAtr, stopLong, stopShort, stopRisk.
+  2. **MarketOverview**: title, subtitle, breadth, topPerformer, worstPerformer,
+     biggestMover, avgRsi, changeByPair, footer sentiment labels.
+  3. **MarketSummary**: market, bullishRisk, bearishRisk, mixed, bullish,
+     bearish, compressed, avgChange, avgRsi, recentBullCross, recentBearCross.
+  4. **CrossHistory**: title, recent, recents, all, bullish, bearish, empty,
+     events, common.loading.
+  5. **PriceAlertsButton**: title, create, below, above, price, createBtn,
+     useCurrent, empty, soundOn, soundOff, clearTriggered.
+  6. **KeyboardHelpModal**: title, refresh, collapse, expand, help, close, note.
+  7. **StrategySelector**: title, buy, short, hold, wait, confidence (ACTION_META
+     movido dentro del componente para acceso a t()).
+  8. **StrategyConsensus**: consensus, shortLabel.
+  9. **DepthBar**: buy, sell, equilibrium, spread, syncing, notAvailable.
+  10. **StopLossSelector**: stopAtr, stopLong, stopShort, stopRisk.
+  11. **FibLevels**: fibonacci, fibExtensions, fibUptrend, fibDowntrend,
+      fibSpotNear, notAvailable, swings, swingl.
+  12. **StochasticRow**: stochastic, notAvailable, rsiOverbought, rsiOversold,
+      rsiNeutral.
+  13. **TickerTape**: loading.
+- BUG CRÍTICO encontrado y arreglado: `t is not defined` en
+  keyboard-help-modal.tsx — el array SHORTCUTS usaba `t()` a nivel de módulo
+  (fuera del componente). Fix: movido SHORTCUTS dentro del componente, después
+  de `const { t } = useLanguage()`. Mismo fix aplicado al ACTION_META en
+  strategy-selector.tsx (movido dentro del componente).
+- i18n keys añadidos: card.resistance y card.support en los 4 diccionarios
+  (faltaban en round 20).
+- Lint: 0 iteraciones (después del fix). Limpio.
+- Tests: 110/110 passing.
+- Verificación agent-browser:
+  - 6 cards renderizadas, sin errores console/runtime.
+  - Cambio a English: header dice "Quantitative Panel // Intraday", footer
+    dice "automated technical analysis...", cards muestran "SPOT PRICE · USD",
+    "tick ago", "COMPRESSED VOLATILITY".
+  - Cambio a 中文: header dice "量化面板 // 日内".
+  - Cambio a Français: header dice "Panneau Quantitatif // Intraday".
+- Nota: Algunas strings internas de strategies.ts (trend descriptions, signal
+  descriptions) y AssetCard (MACD trend labels, price flash) siguen en español
+  hardcoded. Se traducirán en la siguiente iteración.
+
+Stage Summary:
+- **Estado:** v21 entregada y verificada. i18n extendido a 13 componentes
+  principales. 110 tests pasando. El 90%+ de las strings visibles ahora usan
+  t() con los 4 idiomas.
+- **Artefactos producidos:**
+  - `src/components/panel/asset-card.tsx` (+useLanguage, ~30 strings traducidas)
+  - `src/components/panel/market-overview.tsx` (+useLanguage, ~10 strings)
+  - `src/components/panel/market-summary.tsx` (+useLanguage, ~12 strings)
+  - `src/components/panel/cross-history.tsx` (+useLanguage, ~10 strings)
+  - `src/components/panel/price-alerts-button.tsx` (+useLanguage, ~12 strings)
+  - `src/components/panel/keyboard-help-modal.tsx` (+useLanguage, SHORTCUTS
+    movido dentro del componente, ~7 strings)
+  - `src/components/panel/strategy-selector.tsx` (+useLanguage, ACTION_META
+    movido dentro del componente, ~6 strings)
+  - `src/components/panel/strategy-consensus.tsx` (+useLanguage, ~3 strings)
+  - `src/components/panel/depth-bar.tsx` (+useLanguage, ~6 strings)
+  - `src/components/panel/stop-loss-selector.tsx` (+useLanguage, ~4 strings)
+  - `src/components/panel/fib-levels.tsx` (+useLanguage, ~8 strings)
+  - `src/components/panel/stochastic-row.tsx` (+useLanguage, ~6 strings)
+  - `src/components/panel/ticker-tape.tsx` (+useLanguage, 1 string)
+  - `src/lib/i18n.ts` (+card.resistance, card.support en 4 idiomas)
+- **Strings restantes (no críticas):** descripciones de estrategias en
+  strategies.ts, labels de MACD trend (Alcista/Bajista), textos de PriceFlash.
+  Se traducirán en round 22.
+
+## Unresolved Issues / Next-Phase Priorities (round 21)
+
+1. **Traducir strategies.ts**: las descripciones de las 4 estrategias y los
+   signal descriptions siguen en español. Prioridad media.
+2. **Custom strategy builder** (pendiente desde round 19). Prioridad media.
+3. **Ichimoku Tenkan/Kijun cross alert** (item 6 de round 19). Prioridad media.
+4. **Strategy backtesting** (item 2 de round 19). Prioridad baja.
+5. **Cross-history filter persistence** (item 2 de round 7). Prioridad baja.
+
+## Recommended Next Step (round 22)
+
+Priorizar **traducir strategies.ts** (item 1) — las descripciones de las 4
+estrategias y los signal descriptions son las últimas strings visibles en
+español. Una vez traducidas, el dashboard estará ~95%+ en los 4 idiomas.
+
+En paralelo, **custom strategy builder** (item 2) — pendiente desde round 19.

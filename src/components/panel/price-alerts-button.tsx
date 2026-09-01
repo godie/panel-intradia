@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Bell, X, Plus, Trash2, Check, Volume2, VolumeX } from "lucide-react";
 import { SYMBOL_META, SYMBOLS, type PriceAlert } from "@/lib/types";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   alerts: PriceAlert[];
@@ -29,6 +30,7 @@ export function PriceAlertsButton({
   onClearTriggered,
   livePrices,
 }: Props) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [newSymbol, setNewSymbol] = useState<string>("BTCUSDT");
   const [newPrice, setNewPrice] = useState<string>("");
@@ -67,11 +69,11 @@ export function PriceAlertsButton({
         type="button"
         onClick={() => setOpen(true)}
         className="relative inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-foreground/70 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
-        aria-label="Alertas de precio"
-        title="Gestionar alertas de precio"
+        aria-label={t("alerts.title")}
+        title={t("alerts.title")}
       >
         <Bell className="h-3.5 w-3.5" aria-hidden />
-        <span className="hidden sm:inline">Alertas</span>
+        <span className="hidden sm:inline">{t("header.alerts")}</span>
         {activeCount > 0 && (
           <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#4fa8d8] px-1 text-[9px] font-bold text-black">
             {activeCount}
@@ -85,7 +87,7 @@ export function PriceAlertsButton({
           onClick={() => setOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="Alertas de precio"
+          aria-label={t("alerts.title")}
         >
           <div
             className="relative w-full max-w-md mx-4 rounded-xl border border-white/10 bg-card shadow-2xl"
@@ -96,7 +98,7 @@ export function PriceAlertsButton({
               <div className="flex items-center gap-2">
                 <Bell className="h-4 w-4 text-[#4fa8d8]" aria-hidden />
                 <h3 className="text-sm font-semibold text-foreground">
-                  Alertas de Precio
+                  {t("alerts.title")}
                 </h3>
               </div>
               <button
@@ -112,7 +114,7 @@ export function PriceAlertsButton({
             {/* Create new alert */}
             <div className="border-b border-white/5 p-4">
               <div className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                Crear alerta
+                {t("alerts.create")}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <select
@@ -131,14 +133,14 @@ export function PriceAlertsButton({
                   onChange={(e) => setNewDirection(e.target.value as "above" | "below")}
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
                 >
-                  <option value="below" className="bg-card">baja de</option>
-                  <option value="above" className="bg-card">sube a</option>
+                  <option value="below" className="bg-card">{t("alerts.below")}</option>
+                  <option value="above" className="bg-card">{t("alerts.above")}</option>
                 </select>
                 <input
                   type="number"
                   value={newPrice}
                   onChange={(e) => setNewPrice(e.target.value)}
-                  placeholder="precio"
+                  placeholder={t("alerts.price")}
                   className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
                   onKeyDown={(e) => e.key === "Enter" && handleAdd()}
                 />
@@ -149,7 +151,7 @@ export function PriceAlertsButton({
                   className="inline-flex items-center gap-1 rounded-md border border-[#4fa8d8]/30 bg-[#4fa8d8]/10 px-2.5 py-1.5 text-xs font-medium text-[#4fa8d8] transition-colors hover:bg-[#4fa8d8]/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Plus className="h-3 w-3" aria-hidden />
-                  Crear
+                  {t("alerts.createBtn")}
                 </button>
               </div>
               {/* Quick fill with current price */}
@@ -161,7 +163,7 @@ export function PriceAlertsButton({
                   }
                   className="mt-1.5 text-[10px] text-muted-foreground/60 hover:text-foreground/80"
                 >
-                  Usar precio actual: ${livePrices[newSymbol].price.toFixed(2)}
+                  {t("alerts.useCurrent")} ${livePrices[newSymbol].price.toFixed(2)}
                 </button>
               )}
             </div>
@@ -170,8 +172,7 @@ export function PriceAlertsButton({
             <div className="max-h-72 overflow-y-auto scroll-thin p-4">
               {alerts.length === 0 ? (
                 <div className="py-8 text-center text-xs text-muted-foreground/60">
-                  Sin alertas configuradas. Crea una arriba para recibir
-                  notificaciones cuando el precio alcance tu objetivo.
+                  {t("alerts.empty")}
                 </div>
               ) : (
                 <ul className="space-y-1.5">
@@ -245,7 +246,7 @@ export function PriceAlertsButton({
                 ) : (
                   <VolumeX className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {soundEnabled ? "Sonido on" : "Sonido off"}
+                {soundEnabled ? t("alerts.soundOn") : t("alerts.soundOff")}
               </button>
               {alerts.some((a) => a.triggered) && (
                 <button
@@ -253,7 +254,7 @@ export function PriceAlertsButton({
                   onClick={onClearTriggered}
                   className="flex-1 rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
                 >
-                  Limpiar disparadas
+                  {t("alerts.clearTriggered")}
                 </button>
               )}
             </div>

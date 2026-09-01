@@ -10,39 +10,10 @@ import {
 } from "@/lib/strategies";
 import type { AnalysisResponse } from "@/lib/types";
 import { Target, ChevronDown, Check, X, Minus } from "lucide-react";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   data: AnalysisResponse;
-};
-
-const ACTION_META: Record<
-  StrategyAction,
-  { label: string; color: string; bg: string; icon: typeof Check }
-> = {
-  BUY: {
-    label: "Comprar",
-    color: "#5fbf8f",
-    bg: "bg-[#5fbf8f]/12 border-[#5fbf8f]/30",
-    icon: Check,
-  },
-  SHORT: {
-    label: "Short",
-    color: "#e2604f",
-    bg: "bg-[#e2604f]/12 border-[#e2604f]/30",
-    icon: X,
-  },
-  HOLD: {
-    label: "Mantener",
-    color: "#e8b04b",
-    bg: "bg-[#e8b04b]/12 border-[#e8b04b]/30",
-    icon: Minus,
-  },
-  WAIT: {
-    label: "Esperar",
-    color: "#8b96a5",
-    bg: "bg-white/5 border-white/10",
-    icon: Minus,
-  },
 };
 
 /**
@@ -54,6 +25,38 @@ const ACTION_META: Record<
  * call). The selected strategy is persisted in localStorage.
  */
 export function StrategySelector({ data }: Props) {
+  const { t } = useLanguage();
+
+  const ACTION_META: Record<
+    StrategyAction,
+    { label: string; color: string; bg: string; icon: typeof Check }
+  > = {
+    BUY: {
+      label: t("strategy.buy"),
+      color: "#5fbf8f",
+      bg: "bg-[#5fbf8f]/12 border-[#5fbf8f]/30",
+      icon: Check,
+    },
+    SHORT: {
+      label: t("strategy.short"),
+      color: "#e2604f",
+      bg: "bg-[#e2604f]/12 border-[#e2604f]/30",
+      icon: X,
+    },
+    HOLD: {
+      label: t("strategy.hold"),
+      color: "#e8b04b",
+      bg: "bg-[#e8b04b]/12 border-[#e8b04b]/30",
+      icon: Minus,
+    },
+    WAIT: {
+      label: t("strategy.wait"),
+      color: "#8b96a5",
+      bg: "bg-white/5 border-white/10",
+      icon: Minus,
+    },
+  };
+
   const [selectedId, setSelectedId] = useState<string>(() => {
     if (typeof window === "undefined") return "trend_buy";
     try {
@@ -89,7 +92,7 @@ export function StrategySelector({ data }: Props) {
         <div className="flex items-center gap-2">
           <Target className="h-4 w-4 text-[#4fa8d8]" aria-hidden />
           <span className="text-xs font-semibold uppercase tracking-wider text-foreground/80">
-            Estrategia
+            {t("strategy.title")}
           </span>
         </div>
         {/* Action badge */}
@@ -204,7 +207,7 @@ export function StrategySelector({ data }: Props) {
       {/* Confidence bar */}
       <div className="mt-2.5">
         <div className="flex items-center justify-between text-[9px] text-muted-foreground/50">
-          <span>Confianza</span>
+          <span>{t("strategy.confidence")}</span>
           <span className="tnum">{result.confidence}%</span>
         </div>
         <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-black/30">

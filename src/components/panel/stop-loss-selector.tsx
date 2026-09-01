@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   spotPrice: number | null;
@@ -34,6 +35,7 @@ export function StopLossSelector({
   direction,
   defaultMultiplier = 1.5,
 }: Props) {
+  const { t } = useLanguage();
   // Persist the selected multiplier in localStorage so the user's risk
   // preference survives page reloads. Key is global (not per-symbol) since
   // risk tolerance is a personal preference.
@@ -71,13 +73,13 @@ export function StopLossSelector({
   return (
     <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-md border border-[#b48cff]/20 bg-[#b48cff]/5 px-2.5 py-1.5">
       <span className="text-[9px] uppercase tracking-wider text-[#b48cff]">
-        Stop ATR
+        {t("card.stopAtr")}
       </span>
       <span className="tnum text-[11px] font-medium text-foreground/90">
         ${fmtPrice(stopPrice)}
       </span>
       <span className="text-[9px] text-muted-foreground">
-        ({direction === "long" ? "largo" : "corto"} · {riskPct.toFixed(2)}% riesgo)
+        ({direction === "long" ? t("card.stopLong") : t("card.stopShort")} · {riskPct.toFixed(2)}% {t("card.stopRisk")})
       </span>
       <div className="ml-auto flex items-center gap-1">
         <select

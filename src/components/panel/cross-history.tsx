@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SYMBOL_META, type CrossState } from "@/lib/types";
+import { useLanguage } from "@/hooks/use-language";
 import {
   TrendingUp,
   TrendingDown,
@@ -82,6 +83,7 @@ function fmtPrice(n: number): string {
  * expected on a fresh database until crosses occur in the market.
  */
 export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
+  const { t } = useLanguage();
   const [data, setData] = useState<Response | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,11 +148,11 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
           </div>
           <div>
             <h2 className="text-sm font-semibold tracking-tight text-foreground">
-              Historial de Cruces
+              {t("crossHistory.title")}
             </h2>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {totalAll > 0
-                ? `${totalAll} cruces en los últimos 7 días · ${events.length} recientes`
+                ? `${totalAll} ${t("crossHistory.recent")} · ${events.length} ${t("crossHistory.recents")}`
                 : "EMA · MACD · momentum flips persistidos en SQLite"}
             </p>
           </div>
@@ -193,15 +195,15 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
                 <FilterButton
                   active={typeFilter === "all"}
                   onClick={() => setTypeFilter("all")}
-                  label="Todos"
+                  label={t("crossHistory.all")}
                 />
-                {(Object.keys(TYPE_META) as CrossEventType[]).map((t) => (
+                {(Object.keys(TYPE_META) as CrossEventType[]).map((tt) => (
                   <FilterButton
-                    key={t}
-                    active={typeFilter === t}
-                    onClick={() => setTypeFilter(t)}
-                    label={TYPE_META[t].short}
-                    color={TYPE_META[t].color}
+                    key={tt}
+                    active={typeFilter === tt}
+                    onClick={() => setTypeFilter(tt)}
+                    label={TYPE_META[tt].short}
+                    color={TYPE_META[tt].color}
                   />
                 ))}
               </div>
@@ -215,25 +217,25 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
                 <FilterButton
                   active={dirFilter === "bullish"}
                   onClick={() => setDirFilter("bullish")}
-                  label="↑ Alcista"
+                  label={t("crossHistory.bullish")}
                   color="#5fbf8f"
                 />
                 <FilterButton
                   active={dirFilter === "bearish"}
                   onClick={() => setDirFilter("bearish")}
-                  label="↓ Bajista"
+                  label={t("crossHistory.bearish")}
                   color="#e2604f"
                 />
               </div>
               <span className="tnum ml-auto text-[10px] text-muted-foreground/60">
-                {events.length}/{allEvents.length} eventos
+                {events.length}/{allEvents.length} {t("crossHistory.events")}
               </span>
             </div>
           )}
           {loading && (
             <div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Cargando historial…
+              {t("common.loading")}…
             </div>
           )}
           {error && (
@@ -243,9 +245,7 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
           )}
           {!loading && !error && events.length === 0 && (
             <div className="py-8 text-center text-xs text-muted-foreground/60">
-              Sin cruces registrados todavía. Aparecerán aquí cuando el
-              mercado produzca cruces frescos de EMA55/200, MACD/signal o
-              giros de momentum.
+              {t("crossHistory.empty")}
             </div>
           )}
           {!loading && !error && events.length > 0 && (
@@ -292,7 +292,7 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
                           style={{ color: dirColor }}
                         >
                           <DirIcon className="h-3 w-3" aria-hidden />
-                          {bullish ? "Alcista" : "Bajista"}
+                          {bullish ? t("market.bullish") : t("market.bearish")}
                         </span>
                       </div>
                       <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/70">

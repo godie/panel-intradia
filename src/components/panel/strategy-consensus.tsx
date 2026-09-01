@@ -7,6 +7,7 @@ import {
 } from "@/lib/strategies";
 import type { AnalysisResponse } from "@/lib/types";
 import { Check, X, Minus, Target } from "lucide-react";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   data: AnalysisResponse;
@@ -33,6 +34,7 @@ const ACTION_META: Record<
  *  - A weighted score bar (sum of weights × confidence)
  */
 export function StrategyConsensus({ data }: Props) {
+  const { t } = useLanguage();
   const results = STRATEGY_LIST.map((s) => ({
     ...evaluateStrategy(s, data),
     strategy: s,
@@ -83,7 +85,7 @@ export function StrategyConsensus({ data }: Props) {
         <div className="flex items-center gap-2">
           <Target className="h-4 w-4 text-[#4fa8d8]" aria-hidden />
           <span className="text-xs font-semibold uppercase tracking-wider text-foreground/80">
-            Consenso
+            {t("strategy.consensus")}
           </span>
         </div>
         <div
@@ -111,7 +113,7 @@ export function StrategyConsensus({ data }: Props) {
           />
         </div>
         <div className="mt-1 flex justify-between text-[9px] text-muted-foreground/50">
-          <span className="text-[#e2604f]">Short</span>
+          <span className="text-[#e2604f]">{t("strategy.shortLabel")}</span>
           <span>Neutral</span>
           <span className="text-[#5fbf8f]">Buy</span>
         </div>

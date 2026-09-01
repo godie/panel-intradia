@@ -1,6 +1,7 @@
 "use client";
 
 import { computeTopOfBook, type DepthSnapshot } from "@/hooks/use-order-book";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   snapshot: DepthSnapshot | undefined;
@@ -37,10 +38,11 @@ function fmtQty(n: number): string {
  * explicit "Order book no disponible" notice — never fabricated levels.
  */
 export function DepthBar({ snapshot, spotPrice, connected }: Props) {
+  const { t } = useLanguage();
   if (!connected || !snapshot || snapshot.bids.length === 0 || snapshot.asks.length === 0) {
     return (
       <div className="rounded-md border border-white/5 bg-black/20 px-3 py-2.5 text-center text-[11px] italic text-muted-foreground/60">
-        Order book {connected ? "sincronizando…" : "no disponible"}
+        Order book {connected ? t("depth.syncing").toLowerCase() : t("depth.notAvailable").toLowerCase()}
       </div>
     );
   }
@@ -63,10 +65,10 @@ export function DepthBar({ snapshot, spotPrice, connected }: Props) {
     imbalance > 0.1 ? "#5fbf8f" : imbalance < -0.1 ? "#e2604f" : "#e8b04b";
   const imbalanceLabel =
     imbalance > 0.1
-      ? "Compra"
+      ? t("depth.buy")
       : imbalance < -0.1
-        ? "Venta"
-        : "Equilibrado";
+        ? t("depth.sell")
+        : t("depth.equilibrium");
 
   return (
     <div className="space-y-1.5">
@@ -113,7 +115,7 @@ export function DepthBar({ snapshot, spotPrice, connected }: Props) {
       <div className="flex items-center justify-between border-y border-white/10 bg-black/30 px-1.5 py-1">
         <div className="flex items-baseline gap-1">
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground/70">
-            Spread
+            {t("depth.spread")}
           </span>
           <span className="tnum text-[10px] font-medium text-foreground/80">
             {tob.spread != null ? fmtPrice(tob.spread) : "—"}
@@ -164,7 +166,7 @@ export function DepthBar({ snapshot, spotPrice, connected }: Props) {
       <div className="grid grid-cols-2 gap-2 text-[10px] pt-0.5">
         <div className="rounded border border-[#5fbf8f]/20 bg-[#5fbf8f]/5 px-1.5 py-1">
           <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70">
-            Vol. Bid (top 20)
+            {t("depth.volBid")}
           </div>
           <div className="tnum font-medium text-[#5fbf8f]">
             {fmtQty(tob.bidVolume)}
@@ -172,7 +174,7 @@ export function DepthBar({ snapshot, spotPrice, connected }: Props) {
         </div>
         <div className="rounded border border-[#e2604f]/20 bg-[#e2604f]/5 px-1.5 py-1">
           <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70">
-            Vol. Ask (top 20)
+            {t("depth.volAsk")}
           </div>
           <div className="tnum font-medium text-[#e2604f]">
             {fmtQty(tob.askVolume)}

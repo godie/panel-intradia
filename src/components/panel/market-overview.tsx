@@ -2,6 +2,7 @@
 
 import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
 import { CorrelationMatrix } from "./correlation-matrix";
+import { useLanguage } from "@/hooks/use-language";
 import { TrendingUp, TrendingDown, Minimize2, Globe, Award } from "lucide-react";
 
 type Props = {
@@ -36,6 +37,7 @@ function fmtPct(n: number | null): string {
  * When no data is available (all loading), shows a placeholder.
  */
 export function MarketOverview({ items }: Props) {
+  const { t } = useLanguage();
   const ready = items.filter(
     (i): i is AnalysisResponse =>
       i != null && i.spot_price != null && i.change_24h_pct != null,
@@ -100,11 +102,11 @@ export function MarketOverview({ items }: Props) {
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
             <h2 className="text-lg font-semibold tracking-tight text-foreground">
-              Visión de Mercado
+              {t("overview.title")}
             </h2>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Resumen agregado · {ready.length} pares
+            {t("overview.subtitle")} · {ready.length} pares
           </p>
         </div>
         <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#4fa8d8]/30 bg-[#4fa8d8]/12 px-2.5 py-1 text-xs font-medium text-[#4fa8d8]">
@@ -116,7 +118,7 @@ export function MarketOverview({ items }: Props) {
       {/* Breadth gauge */}
       <div className="px-5 pb-3">
         <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          Amplitud del mercado
+          {t("overview.breadth")}
         </div>
         <div className="mt-1.5 flex items-center gap-2">
           <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-black/30">
@@ -155,7 +157,7 @@ export function MarketOverview({ items }: Props) {
         <div className="rounded-lg border border-[#5fbf8f]/20 bg-[#5fbf8f]/5 p-3">
           <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[#5fbf8f]">
             <Award className="h-3 w-3" aria-hidden />
-            Top performer
+            {t("overview.topPerformer")}
           </div>
           <div className="mt-1 tnum text-base font-bold text-foreground">
             {topAsset}
@@ -167,7 +169,7 @@ export function MarketOverview({ items }: Props) {
         <div className="rounded-lg border border-[#e2604f]/20 bg-[#e2604f]/5 p-3">
           <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[#e2604f]">
             <TrendingDown className="h-3 w-3" aria-hidden />
-            Peor performer
+            {t("overview.worstPerformer")}
           </div>
           <div className="mt-1 tnum text-base font-bold text-foreground">
             {worstAsset}
@@ -182,7 +184,7 @@ export function MarketOverview({ items }: Props) {
       <div className="grid grid-cols-2 gap-2 px-5 pb-3">
         <div className="rounded-lg border border-white/8 bg-black/15 p-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Mayor movimiento
+            {t("overview.biggestMover")}
           </div>
           <div className="mt-1 tnum text-base font-bold text-foreground">
             {moverAsset}
@@ -201,7 +203,7 @@ export function MarketOverview({ items }: Props) {
         </div>
         <div className="rounded-lg border border-white/8 bg-black/15 p-3">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            RSI promedio
+            {t("overview.avgRsi")}
           </div>
           <div className="mt-1 tnum text-base font-bold text-foreground">
             {avgRsi != null ? avgRsi.toFixed(1) : "—"}
@@ -229,7 +231,7 @@ export function MarketOverview({ items }: Props) {
       {/* Mini bar chart of 24h changes */}
       <div className="px-5 pb-3">
         <div className="mb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
-          Cambio 24h por par
+          {t("overview.changeByPair")}
         </div>
         <div className="space-y-1">
           {sorted.map((item) => {
@@ -286,10 +288,10 @@ export function MarketOverview({ items }: Props) {
         <p className="text-xs leading-relaxed text-foreground/70">
           <span className="font-medium text-foreground/90">
             {breadthPct >= 60
-              ? "Sesgo alcista amplio"
+              ? t("market.bullishRisk")
               : breadthPct <= 40
-                ? "Sesgo bajista amplio"
-                : "Mercado dividido"}
+                ? t("market.bearishRisk")
+                : t("market.mixed")}
           </span>
           {" — "}
           {bullish}/{ready.length} pares en estructura alcista

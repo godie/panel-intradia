@@ -1,6 +1,7 @@
 "use client";
 
 import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   items: (AnalysisResponse | null)[];
@@ -47,11 +48,12 @@ function TickerItem({ data }: { data: AnalysisResponse }) {
  * Hovering pauses the animation (see .animate-ticker in globals.css).
  */
 export function TickerTape({ items }: Props) {
+  const { t } = useLanguage();
   const ready = items.filter((i): i is AnalysisResponse => i != null);
   if (ready.length === 0) {
     return (
       <div className="flex h-9 items-center border-b border-white/5 bg-black/30 px-4 text-xs text-muted-foreground">
-        Cargando precios…
+        {t("ticker.loading")}
       </div>
     );
   }

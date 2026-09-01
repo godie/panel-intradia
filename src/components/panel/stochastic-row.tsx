@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from "@/hooks/use-language";
+
 type Props = {
   k: number | null;
   d: number | null;
@@ -17,14 +19,15 @@ type Props = {
  *  - %K crossing below %D → bearish
  */
 export function StochasticRow({ k, d, unavailable }: Props) {
+  const { t } = useLanguage();
   if (unavailable || k == null || !Number.isFinite(k)) {
     return (
       <div className="flex items-center justify-between gap-3 border-b border-white/5 py-2 last:border-0">
         <span className="text-xs uppercase tracking-wider text-muted-foreground">
-          Stochastic · 14/3
+          {t("card.stochastic")}
         </span>
         <span className="tnum text-xs italic text-muted-foreground/60">
-          Dato no disponible
+          {t("card.notAvailable")}
         </span>
       </div>
     );
@@ -35,10 +38,10 @@ export function StochasticRow({ k, d, unavailable }: Props) {
     zone === "overbought" ? "#e2604f" : zone === "oversold" ? "#5fbf8f" : "#e8b04b";
   const label =
     zone === "overbought"
-      ? "Sobrecomprado"
+      ? t("card.rsiOverbought")
       : zone === "oversold"
-        ? "Sobrevendido"
-        : "Neutral";
+        ? t("card.rsiOversold")
+        : t("card.rsiNeutral");
 
   // Cross signal: %K above %D = bullish, below = bearish.
   const crossSignal =
@@ -61,7 +64,7 @@ export function StochasticRow({ k, d, unavailable }: Props) {
             aria-hidden
           />
           <span className="text-xs uppercase tracking-wider text-muted-foreground">
-            Stochastic · 14/3
+            {t("card.stochastic")}
           </span>
         </div>
         <div className="flex items-baseline gap-2">

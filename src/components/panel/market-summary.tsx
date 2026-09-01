@@ -1,6 +1,7 @@
 "use client";
 
 import type { AnalysisResponse, CrossState } from "@/lib/types";
+import { useLanguage } from "@/hooks/use-language";
 import { TrendingUp, TrendingDown, Minimize2 } from "lucide-react";
 
 type Props = {
@@ -78,15 +79,16 @@ function Stat({
 }
 
 export function MarketSummary({ items }: Props) {
+  const { t } = useLanguage();
   const s = computeSummary(items);
   if (s.total === 0) return null;
 
   const sentiment =
     s.bullish > s.bearish
-      ? { label: "Riesgo Alcista", color: "#5fbf8f" }
+      ? { label: t("market.bullishRisk"), color: "#5fbf8f" }
       : s.bearish > s.bullish
-        ? { label: "Riesgo Bajista", color: "#e2604f" }
-        : { label: "Mixto / Neutral", color: "#e8b04b" };
+        ? { label: t("market.bearishRisk"), color: "#e2604f" }
+        : { label: t("market.mixed"), color: "#e8b04b" };
 
   const avgChangeColor =
     (s.avgChange ?? 0) >= 0 ? "#5fbf8f" : "#e2604f";
@@ -108,7 +110,7 @@ export function MarketSummary({ items }: Props) {
           aria-hidden
         />
         <span className="text-xs font-semibold uppercase tracking-wider text-foreground/90">
-          Mercado:
+          {t("market.market")}:
         </span>
         <span
           className="text-xs font-bold uppercase tracking-wider"
@@ -123,20 +125,20 @@ export function MarketSummary({ items }: Props) {
       {/* Cross-state breakdown */}
       <div className="flex items-center gap-3">
         <Stat
-          label="Alcista"
+          label={t("market.bullish")}
           value={`${s.bullish}/${s.total}`}
           color="#5fbf8f"
           icon={<TrendingUp className="h-3 w-3 text-[#5fbf8f]" aria-hidden />}
         />
         <Stat
-          label="Bajista"
+          label={t("market.bearish")}
           value={`${s.bearish}/${s.total}`}
           color="#e2604f"
           icon={<TrendingDown className="h-3 w-3 text-[#e2604f]" aria-hidden />}
         />
         {s.compressed > 0 && (
           <Stat
-            label="Compr."
+            label={t("market.compressed")}
             value={`${s.compressed}/${s.total}`}
             color="#e8b04b"
             icon={<Minimize2 className="h-3 w-3 text-[#e8b04b]" aria-hidden />}
@@ -148,12 +150,12 @@ export function MarketSummary({ items }: Props) {
 
       {/* Avg change + avg RSI */}
       <Stat
-        label="Δ24h prom."
+        label={t("market.avgChange")}
         value={`${s.avgChange != null ? (s.avgChange >= 0 ? "+" : "") + s.avgChange.toFixed(2) : "—"}%`}
         color={avgChangeColor}
       />
       <Stat
-        label="RSI prom."
+        label={t("market.avgRsi")}
         value={s.avgRsi != null ? s.avgRsi.toFixed(1) : "—"}
         color={avgRsiColor}
       />
@@ -164,12 +166,12 @@ export function MarketSummary({ items }: Props) {
           <div className="hidden h-4 w-px bg-white/10 sm:block" />
           {s.recentBullCross > 0 && (
             <span className="inline-flex items-center gap-1 rounded border border-[#5fbf8f]/30 bg-[#5fbf8f]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#5fbf8f]">
-              ⚡ {s.recentBullCross} cruce alcista reciente
+              ⚡ {s.recentBullCross} {t("market.recentBullCross")}
             </span>
           )}
           {s.recentBearCross > 0 && (
             <span className="inline-flex items-center gap-1 rounded border border-[#e2604f]/30 bg-[#e2604f]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#e2604f]">
-              ⚡ {s.recentBearCross} cruce bajista reciente
+              ⚡ {s.recentBearCross} {t("market.recentBearCross")}
             </span>
           )}
         </>
