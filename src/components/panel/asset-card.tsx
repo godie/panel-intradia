@@ -7,6 +7,7 @@ import { FibLevels } from "./fib-levels";
 import { StopLossSelector } from "./stop-loss-selector";
 import { StochasticRow } from "./stochastic-row";
 import { StrategySelector } from "./strategy-selector";
+import { StrategyConsensus } from "./strategy-consensus";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
@@ -537,6 +538,34 @@ export function AssetCard({
           d={data.stochastic.d}
           unavailable={nd.stochastic}
         />
+        {/* Ichimoku cloud */}
+        <MetricRow
+          label="Ichimoku · Nube"
+          value={
+            nd.ichimoku
+              ? ""
+              : data.ichimoku.price_vs_cloud === "above"
+                ? "Sobre nube ↑"
+                : data.ichimoku.price_vs_cloud === "below"
+                  ? "Bajo nube ↓"
+                  : data.ichimoku.price_vs_cloud === "inside"
+                    ? "Dentro nube"
+                    : "—"
+          }
+          unavailable={nd.ichimoku}
+          color={
+            data.ichimoku?.cloud_color === "bullish"
+              ? "#5fbf8f"
+              : data.ichimoku?.cloud_color === "bearish"
+                ? "#e2604f"
+                : "#e8b04b"
+          }
+          hint={
+            !nd.ichimoku && data.ichimoku
+              ? `Tenkan ${data.ichimoku.tenkan?.toFixed(0)} · Kijun ${data.ichimoku.kijun?.toFixed(0)}`
+              : undefined
+          }
+        />
         {/* Fibonacci retracement levels */}
         <div className="mt-2">
           <FibLevels
@@ -556,8 +585,9 @@ export function AssetCard({
           {data.structure_text}
         </p>
 
-        {/* Strategy selector — predefined trading strategies */}
-        <div className="mt-3">
+        {/* Strategy: individual selector + consensus of all 4 */}
+        <div className="mt-3 space-y-2">
+          <StrategyConsensus data={data} />
           <StrategySelector data={data} />
         </div>
 

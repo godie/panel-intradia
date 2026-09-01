@@ -15,6 +15,7 @@ import { useOrderBook } from "@/hooks/use-order-book";
 import { useCrossAlerts } from "@/hooks/use-cross-alerts";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { usePriceAlerts } from "@/hooks/use-price-alerts";
+import { useStrategyAlerts } from "@/hooks/use-strategy-alerts";
 import { exportSnapshot } from "@/lib/export-snapshot";
 import { KeyboardHelpModal } from "@/components/panel/keyboard-help-modal";
 import { PriceAlertsButton } from "@/components/panel/price-alerts-button";
@@ -152,6 +153,8 @@ export default function Page() {
   }, []);
 
   const tickerItems = SYMBOLS.map((s) => cells[s].data);
+  // Strategy alerts — fire toasts when strategy transitions WAIT→BUY/SHORT.
+  useStrategyAlerts(tickerItems, "trend_buy");
   const anyLoading = SYMBOLS.some((s) => cells[s].loading);
   const anyError = SYMBOLS.some((s) => cells[s].error);
 

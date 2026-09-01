@@ -13,6 +13,7 @@ import {
   calculateVWAP,
   calculateStochastic,
   detectStochCross,
+  calculateIchimoku,
 } from "./indicators";
 
 describe("calculateEMA", () => {
@@ -891,5 +892,112 @@ describe("detectStochCross", () => {
     const d = Array(20).fill(50);
     const r = detectStochCross(k, d, { window: 10, recentThreshold: 5 });
     expect(r.k_at_cross).toBe(55);
+  });
+});
+
+describe("calculateIchimoku", () => {
+  it("returns unavailable with too few candles", () => {
+    const r = calculateIchimoku([100], [95], [100]);
+    expect(r.available).toBe(false);
+    expect(r.tenkan).toBeNull();
+  });
+
+  it("returns unavailable with mismatched arrays", () => {
+    const r = calculateIchimoku([100, 110], [95], [100], 9, 26, 52);
+    expect(r.available).toBe(false);
+  });
+
+  it("computes all 5 components for sufficient data", () => {
+    const n = 60;
+    const highs = Array.from({ length: n }, (_, i) => 100 + Math.sin(i / 5) * 10 + i * 0.5);
+    const lows = Array.from({ length: n }, (_, i) => 95 + Math.sin(i / 5) * 10 + i * 0.5);
+    const closes = Array.from({ length: n }, (_, i) => 97 + Math.sin(i / 5) * 8 + i * 0.5);
+    const r = calculateIchimoku(highs, lows, closes);
+    expect(r.available).toBe(true);
+    expect(r.tenkan).not.toBeNull();
+    expect(r.kijun).not.toBeNull();
+    expect(r.senkouA).not.toBeNull();
+    expect(r.senkouB).not.toBeNull();
+    expect(r.chikou).not.toBeNull();
+  });
+
+  it("SenkouA = (Tenkan + Kijun) / 2", () => {
+    const n = 60;
+    const highs = Array(n).fill(110);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(100);
+    const r = calculateIchimoku(highs, lows, closes);
+    if (r.available) {
+      expect(r.senkouA).toBeCloseTo((r.tenkan! + r.kijun!) / 2, 5);
+    }
+  });
+
+  it("cloudColor is bullish when SenkouA > SenkouB", () => {
+    // Rising closes → Tenkan reacts faster than Kijun → A > B.
+    const n = 60;
+    const highs = Array.from({ length: n }, (_, i) => 100 + i);
+    const lows = Array.from({ length: n }, (_, i) => 90 + i);
+    const closes = Array.from({ length: n }, (_, i) => 95 + i);
+    const r = calculateIchimoku(highs, lows, closes);
+    if (r.available && r.senkouA! > r.senkouB!) {
+      expect(r.cloudColor).toBe("bullish");
+    }
+  });
+
+  it("cloudColor is bearish when SenkouA < SenkouB", () => {
+    // Falling closes → Tenkan drops faster than Kijun → A < B.
+    const n = 60;
+    const highs = Array.from({ length: n }, (_, i) => 200 - i);
+    const lows = Array.from({ length: n }, (_, i) => 190 - i);
+    const closes = Array.from({ length: n }, (_, i) => 195 - i);
+    const r = calculateIchimoku(highs, lows, closes);
+    if (r.available && r.senkouA! < r.senkouB!) {
+      expect(r.cloudColor).toBe("bearish");
+    }
+  });
+
+  it("priceVsCloud is above when close > both SenkouA and SenkouB", () => {
+    // Flat data then spike up at the end.
+    const n = 60;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(95);
+    closes[n - 1] = 150; // way above the cloud
+    const r = calculateIchimoku(highs, lows, closes);
+    expect(r.available).toBe(true);
+    expect(r.priceVsCloud).toBe("above");
+  });
+
+  it("priceVsCloud is below when close < both SenkouA and SenkouB", () => {
+    const n = 60;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(95);
+    closes[n - 1] = 50; // way below the cloud
+    const r = calculateIchimoku(highs, lows, closes);
+    expect(r.available).toBe(true);
+    expect(r.priceVsCloud).toBe("below");
+  });
+
+  it("Chikou = close 26 bars ago", () => {
+    const n = 60;
+    const highs = Array(n).fill(110);
+    const lows = Array(n).fill(90);
+    const closes = Array.from({ length: n }, (_, i) => 100 + i);
+    const r = calculateIchimoku(highs, lows, closes);
+    // Chikou = closes[n - 26 - 1] = closes[33].
+    expect(r.chikou).toBe(closes[n - 26 - 1]);
+  });
+
+  it("Tenkan uses 9-period window", () => {
+    // With a spike in the last 9 bars, Tenkan should reflect it.
+    const n = 60;
+    const highs = Array(n).fill(100);
+    const lows = Array(n).fill(90);
+    const closes = Array(n).fill(95);
+    highs[n - 1] = 200; // spike in the last bar
+    const r = calculateIchimoku(highs, lows, closes);
+    // Tenkan = (200 + lowest of last 9) / 2 = (200 + 90) / 2 = 145.
+    expect(r.tenkan).toBe(145);
   });
 });

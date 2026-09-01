@@ -104,6 +104,16 @@ export type AnalysisResponse = {
     direction: "bullish" | "bearish" | null;
     k_at_cross: number | null;
   };
+  /** Ichimoku Kinko Hyo (9, 26, 52) — cloud indicator. */
+  ichimoku: {
+    tenkan: number | null;
+    kijun: number | null;
+    senkou_a: number | null;
+    senkou_b: number | null;
+    chikou: number | null;
+    cloud_color: "bullish" | "bearish" | "neutral";
+    price_vs_cloud: "above" | "below" | "inside" | "unknown";
+  };
   structure_text: string;
   no_disponible: {
     spot_price: boolean;
@@ -129,6 +139,7 @@ export type AnalysisResponse = {
     vwap_20_4h: boolean;
     stochastic: boolean;
     stoch_cross: boolean;
+    ichimoku: boolean;
   };
   series: {
     closes: number[];

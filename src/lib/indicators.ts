@@ -1095,3 +1095,100 @@ export function detectStochCross(
     window,
   };
 }
+
+/**
+ * calculateIchimoku — Ichimoku Kinko Hyo cloud indicator.
+ *
+ * Components:
+ *  - Tenkan-sen (Conversion Line): (highestHigh(9) + lowestLow(9)) / 2
+ *  - Kijun-sen (Base Line):        (highestHigh(26) + lowestLow(26)) / 2
+ *  - Senkou Span A (Leading A):    (Tenkan + Kijun) / 2
+ *  - Senkou Span B (Leading B):   (highestHigh(52) + lowestLow(52)) / 2
+ *  - Chikou Span (Lagging):        close shifted backward 26
+ *
+ * The "cloud" (Kumo) is the area between Senkou A and B. Price above the
+ * cloud = bullish, below = bearish, inside = neutral/transition.
+ *
+ * Standard params: 9, 26, 52 (Goichi Hosoda originals).
+ */
+export type IchimokuResult = {
+  tenkan: number | null;
+  kijun: number | null;
+  senkouA: number | null;
+  senkouB: number | null;
+  chikou: number | null;
+  /** "bullish" if SenkouA > SenkouB (green cloud), "bearish" if A < B (red). */
+  cloudColor: "bullish" | "bearish" | "neutral";
+  /** "above" if price > cloud, "below" if < cloud, "inside" if between. */
+  priceVsCloud: "above" | "below" | "inside" | "unknown";
+  available: boolean;
+};
+
+export function calculateIchimoku(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  tenkanPeriod = 9,
+  kijunPeriod = 26,
+  senkouBPeriod = 52,
+): IchimokuResult {
+  const n = closes.length;
+  if (
+    n < senkouBPeriod ||
+    highs.length !== n ||
+    lows.length !== n ||
+    tenkanPeriod <= 0 ||
+    kijunPeriod <= 0 ||
+    senkouBPeriod <= 0
+  ) {
+    return {
+      tenkan: null,
+      kijun: null,
+      senkouA: null,
+      senkouB: null,
+      chikou: null,
+      cloudColor: "neutral",
+      priceVsCloud: "unknown",
+      available: false,
+    };
+  }
+
+  // Helper: midpoint of highest high + lowest low over last `period` candles.
+  const midpoint = (period: number): number => {
+    let hh = -Infinity;
+    let ll = Infinity;
+    for (let i = n - period; i < n; i++) {
+      if (highs[i] > hh) hh = highs[i];
+      if (lows[i] < ll) ll = lows[i];
+    }
+    return (hh + ll) / 2;
+  };
+
+  const tenkan = midpoint(tenkanPeriod);
+  const kijun = midpoint(kijunPeriod);
+  const senkouA = (tenkan + kijun) / 2;
+  const senkouB = midpoint(senkouBPeriod);
+  const chikou = n >= kijunPeriod + 1 ? closes[n - kijunPeriod - 1] : null;
+
+  const lastClose = closes[n - 1];
+  const cloudColor =
+    senkouA > senkouB ? "bullish" : senkouA < senkouB ? "bearish" : "neutral";
+
+  const maxCloud = Math.max(senkouA, senkouB);
+  const minCloud = Math.min(senkouA, senkouB);
+  let priceVsCloud: "above" | "below" | "inside" | "unknown" = "unknown";
+  if (lastClose > maxCloud) priceVsCloud = "above";
+  else if (lastClose < minCloud) priceVsCloud = "below";
+  else priceVsCloud = "inside";
+
+  return {
+    tenkan,
+    kijun,
+    senkouA,
+    senkouB,
+    chikou,
+    cloudColor,
+    priceVsCloud,
+    available: true,
+  };
+}

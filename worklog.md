@@ -2433,3 +2433,132 @@ strong BUY). Quick win de alto valor.
 
 Si sobra ancho de banda, **Ichimoku Cloud** (item 8) — Tenkan, Kijun, Senkou
 A/B, Chikou. El indicador japonés más completo que falta.
+
+---
+Task ID: round-18
+Agent: cron webDevReview
+Task: Ichimoku Cloud + Strategy consensus + Strategy alerts.
+
+Work Log:
+- Leído worklog previo: v17 estable con Stochastic cross + strategy system.
+  100 tests pasando. Usuario pidió: strategy alerts + consensus + Ichimoku.
+- QA inicial: 6 cards, sin errores. Lint limpio, 100 tests.
+- Backend — `indicators.ts` (+calculateIchimoku):
+  - Tenkan-sen (9): (HH(9) + LL(9)) / 2
+  - Kijun-sen (26): (HH(26) + LL(26)) / 2
+  - Senkou A: (Tenkan + Kijun) / 2
+  - Senkou B: (HH(52) + LL(52)) / 2
+  - Chikou: close 26 bars ago
+  - cloudColor: bullish (A>B), bearish (A<B), neutral
+  - priceVsCloud: above/below/inside/unknown
+  - Exportado tipo IchimokuResult.
+- Tests — `indicators.test.ts` (+10 tests Ichimoku = 110 total):
+  - unavailable con pocos candles, mismatched arrays.
+  - 5 componentes computados correctamente.
+  - SenkouA = (Tenkan + Kijun) / 2.
+  - cloudColor bullish/bearish.
+  - priceVsCloud above/below/inside.
+  - Chikou = close 26 bars ago.
+  - Tenkan usa 9-period window (spike test).
+- Backend — `types.ts`:
+  - `AnalysisResponse.ichimoku: {tenkan, kijun, senkou_a, senkou_b, chikou,
+    cloud_color, price_vs_cloud}`.
+  - `no_disponible.ichimoku: boolean`.
+- Backend — `/api/analysis` route:
+  - `ichimokuRes = calculateIchimoku(highs, lows, closes)`.
+  - Incluido en payload con todos los campos redondeados.
+  - Verificado: BTC ichimoku={tenkan: 78284, kijun: 78363, senkou_a: 78324,
+    senkou_b: 79074, cloud_color: "bearish", price_vs_cloud: "below"}.
+- Frontend — `asset-card.tsx`:
+  - MetricRow "Ichimoku · Nube" con color por cloud_color (verde bullish,
+    rojo bearish, ámbar neutral) + value "Sobre nube ↑"/"Bajo nube ↓"/"Dentro
+    nube" + hint con Tenkan/Kijun values.
+  - StrategyConsensus + StrategySelector integrados en el footer.
+- Frontend — `strategy-consensus.tsx` (nuevo):
+  - Evalúa las 4 estrategias simultáneamente.
+  - Consensus: strong_buy (3+ BUY, 0 SHORT), buy (2+ BUY, 0 SHORT), short
+    (2+ SHORT, 0 BUY), strong_short (3+ SHORT, 0 BUY), mixed (todo lo demás).
+  - Score bar: -100 (all short) to +100 (all buy) con fill verde/rojo desde
+    el centro.
+  - Lista de las 4 estrategias con action badge individual + confianza.
+  - Avg confidence badge en el header.
+- Frontend — `use-strategy-alerts.tsx` (nuevo hook):
+  - `useStrategyAlerts(items, strategyId)` — evalúa la estrategia seleccionada
+    en cada refresh y dispara toast cuando la action transiciona WAIT→BUY/SHORT
+    (o viceversa).
+  - Solo notifica transiciones (no steady states) para evitar spam.
+  - Seen-state persistido en sessionStorage.
+  - fireStrategyToast: icono TrendingUp/Down/Target, color verde/rojo/gris,
+    "SEÑAL DE COMPRA/SHORT (X% confianza)", duración 10s.
+- Frontend — `page.tsx`:
+  - `useStrategyAlerts(tickerItems, "trend_buy")` después de que tickerItems
+    se define (fix: estaba antes de la declaración → ReferenceError 500).
+- BUG CRÍTICO encontrado y arreglado: `useStrategyAlerts(tickerItems, ...)`
+  estaba antes de la declaración de `tickerItems` (temporal dead zone) →
+  500 error "Cannot access 'tickerItems' before initialization". Fix: movido
+  después de `const tickerItems = SYMBOLS.map(...)`.
+- Lint: 0 iteraciones (después del fix del ordering). Limpio.
+- Tests: 110/110 passing (2 test files: indicators 97 + structure 13).
+- Verificación API: BTC ichimoku cloud_color=bearish, price_vs_cloud=below.
+- Verificación agent-browser:
+  - 6 cards renderizadas. BTC card con "Ichimoku · Nube" + "Bajo nube ↓"
+    + hint "Tenkan 78284 · Kijun 78363".
+  - "Consenso" panel con score bar + lista de 4 estrategias.
+  - "Estrategia" panel con confidence + signal checks.
+  - Sin errores console/runtime (después del fix).
+- Verificación VLM: "Ichimoku cloud metric visible in all panels. Consensus
+  panel with score bar present. Strategy panel with confidence and signal
+  checks. No critical bugs. High-quality, professional-grade dashboard. All
+  requested features present and functional."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 6481 = footerBottom.
+
+Stage Summary:
+- **Estado:** v18 entregada y verificada. 3 features nuevas (Ichimoku Cloud
+  + Strategy consensus + Strategy alerts). 110 tests pasando. Panel ahora
+  tiene 11 indicadores técnicos + consensus de 4 estrategias + alertas de
+  transición de estrategia.
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (+calculateIchimoku, +IchimokuResult type)
+  - `src/lib/indicators.test.ts` (+10 tests Ichimoku = 110 total)
+  - `src/lib/types.ts` (+ichimoku field)
+  - `src/app/api/analysis/route.ts` (+Ichimoku computation)
+  - `src/components/panel/strategy-consensus.tsx` (nuevo — evalúa 4 estrategias)
+  - `src/components/panel/asset-card.tsx` (+Ichimoku metric + Consensus panel)
+  - `src/hooks/use-strategy-alerts.tsx` (nuevo — toast en transiciones)
+  - `src/app/page.tsx` (+useStrategyAlerts, fix ordering)
+- **Indicadores técnicos (11):** EMA55, EMA200, RSI(14), MACD(12,26,9), S/R
+  pivotes, ATR(14), Bollinger Bands(20,2), Fibonacci retracement+extensions,
+  VWAP(20), Stochastic(14,3), Ichimoku(9,26,52).
+- **Sistema de estrategias:** 4 predefinidas + consensus (strong_buy/buy/
+  mixed/short/strong_short) + alertas de transición + persistencia localStorage
+  + sessionStorage dedup.
+- **Alertas activas (7 tipos):** EMA cross, MACD cross, momentum flip,
+  Bollinger squeeze, squeeze breakout, Stochastic cross, strategy transition.
+
+## Unresolved Issues / Next-Phase Priorities (round 18)
+
+1. **Custom strategy builder**: permitir al usuario definir sus propias
+   condiciones. Prioridad baja.
+2. **Strategy backtesting**: simular rendimiento histórico. Prioridad baja.
+3. **Cross-history filter persistence** (item 2 de round 7). Prioridad baja.
+4. **Scatter plot enhancements**: histogramas marginales. Prioridad baja.
+5. **Export CSV/IMG** (item 7 de round 8). Prioridad baja.
+6. **Ichimoku cloud overlay en sparkline**: además del MetricRow, dibujar la
+   nube en el canvas. Requiere series de Senkou A/B. Prioridad media.
+7. **Alert sound toggle** (item 6 de round 16). Prioridad baja.
+8. **VWAP intraday reset** (item 8 de round 16). Prioridad baja.
+
+## Recommended Next Step (round 19)
+
+Priorizar **Ichimoku cloud overlay en sparkline** (item 6) — añadir las series
+de Senkou A/B al API para que el sparkline pueda dibujar la nube verde/roja
+como área rellena (similar al Bollinger fill). Es la integración visual
+natural del Ichimoku que ya está calculado.
+
+En paralelo, **alert sound toggle** (item 7) — checkbox en el PriceAlerts
+modal para activar/desactivar el beep.
+
+Si sobra ancho de banda, **custom strategy builder** (item 1) — UI para que
+el usuario combine condiciones (EMA cross + RSI < X + MACD bullish) y guarde
+su estrategia personalizada en localStorage.

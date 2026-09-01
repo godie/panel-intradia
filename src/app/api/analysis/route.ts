@@ -14,6 +14,7 @@ import {
   calculateFibonacciRetracement,
   calculateVWAP,
   calculateStochastic,
+  calculateIchimoku,
   detectStochCross,
   detectMacdCross,
   detectRecentCross,
@@ -99,6 +100,9 @@ function buildAnalysis(
         k_at_cross: null as number | null,
         window: 10,
       };
+
+  // Ichimoku Kinko Hyo (9, 26, 52) — cloud indicator.
+  const ichimokuRes = calculateIchimoku(highs, lows, closes);
 
   // Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev.
   const bbRes = calculateBollingerBands(closes, 20, 2);
@@ -257,6 +261,7 @@ function buildAnalysis(
     vwap_20_4h: !vwapRes.available,
     stochastic: !stochRes.available,
     stoch_cross: !stochRes.available,
+    ichimoku: !ichimokuRes.available,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -308,6 +313,15 @@ function buildAnalysis(
       d: round(stochRes.lastD, 2),
     },
     stoch_cross: stochCross,
+    ichimoku: {
+      tenkan: round(ichimokuRes.tenkan, dec),
+      kijun: round(ichimokuRes.kijun, dec),
+      senkou_a: round(ichimokuRes.senkouA, dec),
+      senkou_b: round(ichimokuRes.senkouB, dec),
+      chikou: round(ichimokuRes.chikou, dec),
+      cloud_color: ichimokuRes.cloudColor,
+      price_vs_cloud: ichimokuRes.priceVsCloud,
+    },
     structure_text: structureText,
     no_disponible,
     series: {
