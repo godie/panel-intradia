@@ -274,6 +274,10 @@ function buildAnalysis(
   const seriesBbUpper = bbRes.upper.slice(startIdx);
   const seriesBbLower = bbRes.lower.slice(startIdx);
   const seriesVwap = vwapRes.series.slice(startIdx);
+  const seriesIchSenkouA = ichimokuRes.senkouASeries.slice(startIdx);
+  const seriesIchSenkouB = ichimokuRes.senkouBSeries.slice(startIdx);
+  const seriesIchTenkan = ichimokuRes.tenkanSeries.slice(startIdx);
+  const seriesIchKijun = ichimokuRes.kijunSeries.slice(startIdx);
 
   return {
     symbol,
@@ -333,6 +337,10 @@ function buildAnalysis(
       bollinger_upper: seriesBbUpper,
       bollinger_lower: seriesBbLower,
       vwap: seriesVwap,
+      ichimoku_senkou_a: seriesIchSenkouA,
+      ichimoku_senkou_b: seriesIchSenkouB,
+      ichimoku_tenkan: seriesIchTenkan,
+      ichimoku_kijun: seriesIchKijun,
     },
     updated_at: new Date().toISOString(),
   };

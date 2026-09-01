@@ -408,6 +408,10 @@ export function AssetCard({
           bbUpper={data.series.bollinger_upper}
           bbLower={data.series.bollinger_lower}
           vwap={data.series.vwap}
+          ichimokuSenkouA={data.series.ichimoku_senkou_a}
+          ichimokuSenkouB={data.series.ichimoku_senkou_b}
+          ichimokuTenkan={data.series.ichimoku_tenkan}
+          ichimokuKijun={data.series.ichimoku_kijun}
           spot={displayPrice}
           crossState={data.cross_state}
           height={150}

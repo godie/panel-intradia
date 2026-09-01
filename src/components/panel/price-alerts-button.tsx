@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, X, Plus, Trash2, Check } from "lucide-react";
+import { Bell, X, Plus, Trash2, Check, Volume2, VolumeX } from "lucide-react";
 import { SYMBOL_META, SYMBOLS, type PriceAlert } from "@/lib/types";
 
 type Props = {
@@ -33,6 +33,24 @@ export function PriceAlertsButton({
   const [newSymbol, setNewSymbol] = useState<string>("BTCUSDT");
   const [newPrice, setNewPrice] = useState<string>("");
   const [newDirection, setNewDirection] = useState<"above" | "below">("below");
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return localStorage.getItem("panel:alert-sound") !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleSound = () => {
+    const newVal = !soundEnabled;
+    setSoundEnabled(newVal);
+    try {
+      localStorage.setItem("panel:alert-sound", String(newVal));
+    } catch {
+      // ignore
+    }
+  };
 
   const activeCount = alerts.filter((a) => !a.triggered).length;
 
@@ -209,18 +227,36 @@ export function PriceAlertsButton({
               )}
             </div>
 
-            {/* Footer */}
-            {alerts.some((a) => a.triggered) && (
-              <div className="border-t border-white/5 p-3">
+            {/* Footer with sound toggle + clear triggered */}
+            <div className="flex items-center gap-2 border-t border-white/5 p-3">
+              <button
+                type="button"
+                onClick={handleToggleSound}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                  soundEnabled
+                    ? "border-[#4fa8d8]/20 bg-[#4fa8d8]/10 text-[#4fa8d8] hover:bg-[#4fa8d8]/20"
+                    : "border-white/10 bg-black/20 text-muted-foreground hover:text-foreground/80"
+                }`}
+                aria-pressed={soundEnabled}
+                title={soundEnabled ? "Sonido activado" : "Sonido desactivado"}
+              >
+                {soundEnabled ? (
+                  <Volume2 className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <VolumeX className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {soundEnabled ? "Sonido on" : "Sonido off"}
+              </button>
+              {alerts.some((a) => a.triggered) && (
                 <button
                   type="button"
                   onClick={onClearTriggered}
-                  className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+                  className="flex-1 rounded-md border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
                 >
-                  Limpiar alertas disparadas
+                  Limpiar disparadas
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -13,6 +13,11 @@ type Props = {
   bbLower?: (number | null)[];
   /** VWAP series for overlay (optional). */
   vwap?: (number | null)[];
+  /** Ichimoku cloud series (Senkou A/B + Tenkan/Kijun) for overlay (optional). */
+  ichimokuSenkouA?: (number | null)[];
+  ichimokuSenkouB?: (number | null)[];
+  ichimokuTenkan?: (number | null)[];
+  ichimokuKijun?: (number | null)[];
   /** height of the canvas in CSS pixels (width is responsive). */
   height?: number;
 };
@@ -24,6 +29,10 @@ const COLORS = {
   vwap: "#5fbf8f",
   bollinger: "rgba(180,140,255,0.35)",
   bollingerFill: "rgba(180,140,255,0.06)",
+  ichimokuTenkan: "rgba(95,191,143,0.5)",
+  ichimokuKijun: "rgba(79,168,216,0.5)",
+  ichimokuCloudBull: "rgba(95,191,143,0.08)",
+  ichimokuCloudBear: "rgba(226,96,79,0.08)",
   grid: "rgba(255,255,255,0.05)",
   bullFill: "rgba(95,191,143,0.12)",
   bearFill: "rgba(226,96,79,0.12)",
@@ -46,6 +55,10 @@ export function Sparkline({
   bbUpper,
   bbLower,
   vwap,
+  ichimokuSenkouA,
+  ichimokuSenkouB,
+  ichimokuTenkan,
+  ichimokuKijun,
   height = 150,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -79,6 +92,10 @@ export function Sparkline({
     if (bbUpper) allSeries.push(bbUpper);
     if (bbLower) allSeries.push(bbLower);
     if (vwap) allSeries.push(vwap);
+    if (ichimokuSenkouA) allSeries.push(ichimokuSenkouA);
+    if (ichimokuSenkouB) allSeries.push(ichimokuSenkouB);
+    if (ichimokuTenkan) allSeries.push(ichimokuTenkan);
+    if (ichimokuKijun) allSeries.push(ichimokuKijun);
     for (const s of allSeries) {
       for (const v of s) {
         if (v != null && Number.isFinite(v)) {
@@ -160,6 +177,27 @@ export function Sparkline({
       ctx.fill();
     }
 
+    // Ichimoku cloud (Kumo) — fill between Senkou A and B, green/red per candle.
+    if (ichimokuSenkouA && ichimokuSenkouB) {
+      for (let i = 0; i < ichimokuSenkouA.length - 1; i++) {
+        const a1 = ichimokuSenkouA[i];
+        const a2 = ichimokuSenkouA[i + 1];
+        const b1 = ichimokuSenkouB[i];
+        const b2 = ichimokuSenkouB[i + 1];
+        if (a1 == null || a2 == null || b1 == null || b2 == null) continue;
+        // Cloud color: green when A > B, red when A < B.
+        const isBull = a1 >= b1;
+        ctx.fillStyle = isBull ? COLORS.ichimokuCloudBull : COLORS.ichimokuCloudBear;
+        ctx.beginPath();
+        ctx.moveTo(x(i), y(a1));
+        ctx.lineTo(x(i + 1), y(a2));
+        ctx.lineTo(x(i + 1), y(b2));
+        ctx.lineTo(x(i), y(b1));
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
     // Helper to plot a series skipping nulls.
     const plotLine = (
       series: (number | null)[],
@@ -196,6 +234,9 @@ export function Sparkline({
     // Bollinger Bands upper/lower (thin dashed purple).
     if (bbUpper) plotLine(bbUpper, COLORS.bollinger, 1, [2, 3]);
     if (bbLower) plotLine(bbLower, COLORS.bollinger, 1, [2, 3]);
+    // Ichimoku Tenkan/Kijun (thin, semi-transparent).
+    if (ichimokuTenkan) plotLine(ichimokuTenkan, COLORS.ichimokuTenkan, 1, [3, 2]);
+    if (ichimokuKijun) plotLine(ichimokuKijun, COLORS.ichimokuKijun, 1, [3, 2]);
     // VWAP (solid green, thin).
     if (vwap) plotLine(vwap, COLORS.vwap, 1.25, [4, 2]);
     // EMA55.
@@ -302,6 +343,12 @@ export function Sparkline({
               }}
             />
             VWAP
+          </span>
+        )}
+        {ichimokuSenkouA && ichimokuSenkouB && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2 w-3 rounded-sm" style={{ background: COLORS.ichimokuCloudBull }} />
+            Ichimoku
           </span>
         )}
       </div>

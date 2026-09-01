@@ -1121,6 +1121,11 @@ export type IchimokuResult = {
   cloudColor: "bullish" | "bearish" | "neutral";
   /** "above" if price > cloud, "below" if < cloud, "inside" if between. */
   priceVsCloud: "above" | "below" | "inside" | "unknown";
+  /** Full series for sparkline overlay (null until enough data). */
+  tenkanSeries: (number | null)[];
+  kijunSeries: (number | null)[];
+  senkouASeries: (number | null)[];
+  senkouBSeries: (number | null)[];
   available: boolean;
 };
 
@@ -1149,25 +1154,51 @@ export function calculateIchimoku(
       chikou: null,
       cloudColor: "neutral",
       priceVsCloud: "unknown",
+      tenkanSeries: Array(n).fill(null),
+      kijunSeries: Array(n).fill(null),
+      senkouASeries: Array(n).fill(null),
+      senkouBSeries: Array(n).fill(null),
       available: false,
     };
   }
 
-  // Helper: midpoint of highest high + lowest low over last `period` candles.
-  const midpoint = (period: number): number => {
+  // Helper: midpoint of highest high + lowest low over a window ending at index `end`.
+  const midpointAt = (period: number, end: number): number => {
     let hh = -Infinity;
     let ll = Infinity;
-    for (let i = n - period; i < n; i++) {
+    for (let i = end - period + 1; i <= end; i++) {
       if (highs[i] > hh) hh = highs[i];
       if (lows[i] < ll) ll = lows[i];
     }
     return (hh + ll) / 2;
   };
 
-  const tenkan = midpoint(tenkanPeriod);
-  const kijun = midpoint(kijunPeriod);
-  const senkouA = (tenkan + kijun) / 2;
-  const senkouB = midpoint(senkouBPeriod);
+  // Build full series.
+  const tenkanSeries: (number | null)[] = Array(n).fill(null);
+  const kijunSeries: (number | null)[] = Array(n).fill(null);
+  const senkouASeries: (number | null)[] = Array(n).fill(null);
+  const senkouBSeries: (number | null)[] = Array(n).fill(null);
+
+  for (let i = 0; i < n; i++) {
+    if (i >= tenkanPeriod - 1) {
+      tenkanSeries[i] = midpointAt(tenkanPeriod, i);
+    }
+    if (i >= kijunPeriod - 1) {
+      kijunSeries[i] = midpointAt(kijunPeriod, i);
+    }
+    // Senkou A requires both Tenkan and Kijun.
+    if (i >= kijunPeriod - 1) {
+      senkouASeries[i] = (tenkanSeries[i]! + kijunSeries[i]!) / 2;
+    }
+    if (i >= senkouBPeriod - 1) {
+      senkouBSeries[i] = midpointAt(senkouBPeriod, i);
+    }
+  }
+
+  const tenkan = tenkanSeries[n - 1]!;
+  const kijun = kijunSeries[n - 1]!;
+  const senkouA = senkouASeries[n - 1]!;
+  const senkouB = senkouBSeries[n - 1]!;
   const chikou = n >= kijunPeriod + 1 ? closes[n - kijunPeriod - 1] : null;
 
   const lastClose = closes[n - 1];
@@ -1189,6 +1220,10 @@ export function calculateIchimoku(
     chikou,
     cloudColor,
     priceVsCloud,
+    tenkanSeries,
+    kijunSeries,
+    senkouASeries,
+    senkouBSeries,
     available: true,
   };
 }

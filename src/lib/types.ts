@@ -150,6 +150,10 @@ export type AnalysisResponse = {
     bollinger_upper: (number | null)[];
     bollinger_lower: (number | null)[];
     vwap: (number | null)[];
+    ichimoku_senkou_a: (number | null)[];
+    ichimoku_senkou_b: (number | null)[];
+    ichimoku_tenkan: (number | null)[];
+    ichimoku_kijun: (number | null)[];
   };
   updated_at: string;
 };

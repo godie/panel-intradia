@@ -2562,3 +2562,117 @@ modal para activar/desactivar el beep.
 Si sobra ancho de banda, **custom strategy builder** (item 1) — UI para que
 el usuario combine condiciones (EMA cross + RSI < X + MACD bullish) y guarde
 su estrategia personalizada en localStorage.
+
+---
+Task ID: round-19
+Agent: cron webDevReview
+Task: Ichimoku cloud overlay en sparkline + alert sound toggle.
+
+Work Log:
+- Leído worklog previo: v18 estable con Ichimoku + consensus + strategy
+  alerts. 110 tests pasando.
+- QA inicial: 6 cards, sin errores. Lint limpio, 110 tests.
+- Backend — `indicators.ts` (calculateIchimoku ampliado):
+  - Ahora computa series completas: tenkanSeries, kijunSeries,
+    senkouASeries, senkouBSeries (null hasta que hay suficientes datos).
+  - midpointAt(period, end) reemplaza midpoint(period) para calcular el
+    midpoint en cualquier índice, no solo el último.
+  - IchimokuResult ampliado con los 4 arrays de series.
+  - Tests existentes siguen pasando (100/100 en indicators).
+- Backend — `types.ts`:
+  - `series.ichimoku_senkou_a`, `series.ichimoku_senkou_b`,
+    `series.ichimoku_tenkan`, `series.ichimoku_kijun` añadidos.
+- Backend — `/api/analysis` route:
+  - Slice de las 4 series de Ichimoku (últimas SPARK_POINTS velas).
+  - Incluidas en el payload `series`.
+  - Verificado: API devuelve las 4 series con 120 entradas cada una.
+- Frontend — `sparkline.tsx` (Ichimoku cloud overlay):
+  - Props nuevas: ichimokuSenkouA, ichimokuSenkouB, ichimokuTenkan,
+    ichimokuKijun.
+  - Y-range incluye las 4 series Ichimoku.
+  - **Cloud fill**: área entre Senkou A y B, color verde (bullish) o rojo
+    (bearish) por candle (per-candle color, no global). Área muy sutil
+    (alpha 0.08) para no dominar el chart.
+  - **Tenkan/Kijun lines**: thin (1px), semi-transparent, dashed [3,2].
+    Tenkan verde, Kijun azul.
+  - Drawn entre Bollinger y VWAP, bajo EMA55 y precio.
+  - Legend: nuevo item "Ichimoku" con swatch del color de nube.
+  - COLORS ampliados: ichimokuTenkan, ichimokuKijun, ichimokuCloudBull,
+    ichimokuCloudBear.
+- Frontend — `asset-card.tsx`:
+  - Sparkline ahora recibe las 4 series Ichimoku desde data.series.
+- Frontend — `price-alerts-button.tsx` (alert sound toggle):
+  - Estado `soundEnabled` inicializado desde localStorage
+    (`panel:alert-sound`, default true).
+  - `handleToggleSound` guarda el estado en localStorage.
+  - Toggle button en el footer del modal: Volume2 icon (azul) cuando on,
+    VolumeX icon (gris) cuando off. Texto "Sonido on/off".
+  - Footer rediseñado: sound toggle + "Limpiar disparadas" lado a lado.
+- Frontend — `use-price-alerts.tsx`:
+  - `fireAlertToast` ahora verifica localStorage antes de llamar
+    playAlertSound. Si `panel:alert-sound` === "false", no reproduce.
+    Try/catch fallback: si localStorage falla, reproduce el sonido.
+- Lint: 1 iteración (duplicado de `</div>` y `)}` en price-alerts-button
+  por el edit del footer. Corregido. Lint final limpio.
+- Tests: 110/110 passing (sin cambios en tests — Ichimoku series es
+  implementación interna, no nueva función pura).
+- Verificación API: series.ichimoku_senkou_a[120], ichimoku_senkou_b[120],
+  ichimoku_tenkan[120], ichimoku_kijun[120].
+- Verificación agent-browser:
+  - 6 cards renderizadas. Ichimoku cloud visible en sparkline (áreas
+    verde/roja). Ichimoku legend item presente.
+  - Sin errores console/runtime.
+- Verificación VLM: "Ichimoku cloud overlay visible (green/red filled
+  areas) on all sparklines. Ichimoku legend item visible. No critical bugs.
+  Color coding consistent. High density but functional."
+- Verificación mobile (390x844): 6 cards en 1 columna, sin overflow.
+- Verificación footer: docHeight 6458 = footerBottom.
+
+Stage Summary:
+- **Estado:** v19 entregada y verificada. 2 features nuevas (Ichimoku cloud
+  overlay en sparkline + alert sound toggle). 110 tests pasando. Panel ahora
+  tiene 11 indicadores técnicos con Ichimoku visualizado como nube en el
+  sparkline + 7 líneas overlay.
+- **Artefactos producidos:**
+  - `src/lib/indicators.ts` (calculateIchimoku + full series computation)
+  - `src/lib/types.ts` (+series.ichimoku_* 4 fields)
+  - `src/app/api/analysis/route.ts` (+Ichimoku series slicing)
+  - `src/components/panel/sparkline.tsx` (+Ichimoku cloud fill + Tenkan/Kijun
+    lines + legend)
+  - `src/components/panel/asset-card.tsx` (+Ichimoku series props)
+  - `src/components/panel/price-alerts-button.tsx` (+sound toggle)
+  - `src/hooks/use-price-alerts.tsx` (+sound toggle check)
+- **Sparkline overlays (7 líneas + 2 fills):** Precio, EMA55, EMA200,
+  Bollinger (upper/lower + fill), VWAP, Ichimoku Tenkan, Ichimoku Kijun,
+  Ichimoku cloud (Senkou A/B fill verde/rojo).
+- **Alert sound toggle:** persistido en localStorage, checkbox en el footer
+  del modal de PriceAlerts, respetado por el hook use-price-alerts.
+
+## Unresolved Issues / Next-Phase Priorities (round 19)
+
+1. **Custom strategy builder**: permitir al usuario definir sus propias
+   condiciones. Prioridad media.
+2. **Strategy backtesting**: simular rendimiento histórico. Prioridad baja.
+3. **Cross-history filter persistence** (item 2 de round 7). Prioridad baja.
+4. **Scatter plot enhancements**: histogramas marginales. Prioridad baja.
+5. **Export CSV/IMG** (item 7 de round 8). Prioridad baja.
+6. **VWAP intraday reset** (item 8 de round 16). Prioridad baja.
+7. **Ichimoku Tenkan/Kijun cross alert**: detectar cruce de Tenkan sobre
+   Kijun como señal de entrada. Prioridad media.
+8. **Strategy alert sound**: reproducir sonido también en alertas de
+   estrategia (no solo price alerts). Prioridad baja.
+
+## Recommended Next Step (round 20)
+
+Priorizar **custom strategy builder** (item 1) — UI para que el usuario
+combine condiciones (EMA cross + RSI < X + MACD bullish + Stochastic cross +
+Ichimoku above cloud) y guarde su estrategia personalizada en localStorage.
+La estrategia se evalúa igual que las predefinidas y aparece en el
+StrategySelector como opción adicional. Es la feature que más valor da al
+trader: de estrategias predefinidas a personalizables.
+
+En paralelo, **Ichimoku Tenkan/Kijun cross alert** (item 7) — detectar el
+cruce y persistir como evento "ichimoku_cross" + toast. Quick win.
+
+Si sobra ancho de banda, **strategy alert sound** (item 8) — reproducir beep
+también en transiciones de estrategia, respetando el sound toggle.

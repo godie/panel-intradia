@@ -158,8 +158,15 @@ export function usePriceAlerts(livePrices: Record<string, { price: number; time:
 }
 
 function fireAlertToast(alert: PriceAlert, livePrice: number) {
-  // Play a beep sound using Web Audio API (no external file needed).
-  playAlertSound(alert.direction);
+  // Play a beep sound using Web Audio API — but only if the user hasn't
+  // disabled it via the PriceAlerts modal toggle.
+  try {
+    if (localStorage.getItem("panel:alert-sound") !== "false") {
+      playAlertSound(alert.direction);
+    }
+  } catch {
+    playAlertSound(alert.direction);
+  }
 
   const asset = SYMBOL_META[alert.symbol]?.asset ?? alert.symbol;
   const isAbove = alert.direction === "above";
