@@ -136,7 +136,7 @@ export function StrategyConsensus({ data }: Props) {
                 <Icon className="h-3 w-3" style={{ color: meta.color }} aria-hidden />
               </div>
               <span className="flex-1 truncate text-foreground/70">
-                {r.strategy.name.split("·")[0].trim()}
+                {t(`strategy.${r.strategyId === "trend_buy" ? "trendBuy" : r.strategyId === "mean_reversion_buy" ? "meanRevBuy" : r.strategyId === "trend_short" ? "trendShort" : "holdName"}`).split("·")[0].trim()}
               </span>
               <span
                 className="tnum font-medium"

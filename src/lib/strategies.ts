@@ -31,7 +31,8 @@ export type StrategyResult = {
   action: StrategyAction;
   confidence: number; // 0-100
   signals: StrategySignal[];
-  summary: string;
+  summaryKey: string;
+  summaryParams: { conf: number; fired: number; total: number };
 };
 
 export type Strategy = {
@@ -55,26 +56,23 @@ function confidence(signals: StrategySignal[]): number {
   return Math.round((countFired(signals) / signals.length) * 100);
 }
 
-/** Helper: generate summary text in Spanish. */
+/** Helper: generate summary key + params for i18n interpolation. */
 function buildSummary(
   action: StrategyAction,
   conf: number,
   signals: StrategySignal[],
-): string {
+): { key: string; params: { conf: number; fired: number; total: number } } {
   const fired = countFired(signals);
   const total = signals.length;
-  const actionLabel =
+  const key =
     action === "BUY"
-      ? "Comprar"
+      ? "strategy.summaryBuy"
       : action === "SHORT"
-        ? "Vender en corto"
+        ? "strategy.summaryShort"
         : action === "HOLD"
-          ? "Mantener"
-          : "Esperar";
-  if (action === "WAIT") {
-    return `Señales insuficientes (${fired}/${total}). ${actionLabel} — no se cumplen las condiciones de la estrategia.`;
-  }
-  return `${actionLabel} con ${conf}% de confianza (${fired}/${total} señales activas).`;
+          ? "strategy.summaryHold"
+          : "strategy.summaryWait";
+  return { key, params: { conf, fired, total } };
 }
 
 /** Evaluate a strategy and produce a result. */
@@ -86,13 +84,15 @@ export function evaluateStrategy(
   const conf = confidence(signals);
   // The action is the target action if confidence >= 60%, otherwise WAIT.
   const action: StrategyAction = conf >= 60 ? strategy.targetAction : "WAIT";
+  const summary = buildSummary(action, conf, signals);
   return {
     strategyId: strategy.id,
     strategyName: strategy.name,
     action,
     confidence: conf,
     signals,
-    summary: buildSummary(action, conf, signals),
+    summaryKey: summary.key,
+    summaryParams: summary.params,
   };
 }
 

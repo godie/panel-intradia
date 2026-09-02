@@ -115,7 +115,7 @@ export function StrategySelector({ data }: Props) {
           aria-expanded={expanded}
         >
           <span className="truncate font-medium text-foreground/90">
-            {strategy.name}
+            {t(`strategy.${strategy.id === "trend_buy" ? "trendBuy" : strategy.id === "mean_reversion_buy" ? "meanRevBuy" : strategy.id === "trend_short" ? "trendShort" : "holdName"}`)}
           </span>
           <ChevronDown
             className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${
@@ -141,9 +141,11 @@ export function StrategySelector({ data }: Props) {
                     : "border-white/5 bg-black/15 text-muted-foreground hover:text-foreground/80"
                 }`}
               >
-                <div className="font-medium">{s.name}</div>
+                <div className="font-medium">
+                  {t(`strategy.${s.id === "trend_buy" ? "trendBuy" : s.id === "mean_reversion_buy" ? "meanRevBuy" : s.id === "trend_short" ? "trendShort" : "holdName"}`)}
+                </div>
                 <div className="mt-0.5 text-[9px] leading-snug opacity-60">
-                  {s.description}
+                  {t(`strategy.${s.id === "trend_buy" ? "trendBuyDesc" : s.id === "mean_reversion_buy" ? "meanRevBuyDesc" : s.id === "trend_short" ? "trendShortDesc" : "holdDesc"}`)}
                 </div>
               </button>
             ))}
@@ -153,7 +155,7 @@ export function StrategySelector({ data }: Props) {
 
       {/* Description */}
       <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground/70">
-        {strategy.description}
+        {t(`strategy.${strategy.id === "trend_buy" ? "trendBuyDesc" : strategy.id === "mean_reversion_buy" ? "meanRevBuyDesc" : strategy.id === "trend_short" ? "trendShortDesc" : "holdDesc"}`)}
       </p>
 
       {/* Summary */}
@@ -165,7 +167,10 @@ export function StrategySelector({ data }: Props) {
           color: result.action === "WAIT" ? "rgba(230,237,243,0.7)" : actionMeta.color,
         }}
       >
-        {result.summary}
+        {t(result.summaryKey)
+          .replace("{conf}", String(result.summaryParams.conf))
+          .replace("{fired}", String(result.summaryParams.fired))
+          .replace("{total}", String(result.summaryParams.total))}
       </div>
 
       {/* Signals breakdown */}
