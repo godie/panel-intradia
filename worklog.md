@@ -2931,3 +2931,44 @@ Stage Summary:
 ## Recommended Next Step (round 23)
 Custom strategy builder (pendiente desde round 19) — UI para que el usuario
 combine condiciones y guarde su estrategia personalizada en localStorage.
+
+---
+Task ID: round-23
+Agent: cron webDevReview
+Task: Fix broken banners + complete i18n verification.
+
+Work Log:
+- Leído worklog previo: v22 con i18n ~95% completado. 110 tests.
+- QA inicial con agent-browser: detectados bugs en los banners:
+  1. "BREAKOUT ALCISTA · HACE HACE VELA(S)" — "HACE" duplicado, sin count
+  2. "STOCH ↓ BAJISTA · %K 30 · HACE VELA(S)" — sin count de velas
+  3. Banner de cruce EMA usaba `crossDir === "bullish" ? "" : ""` (vacío)
+  4. Falta el número de velas en todos los banners
+- Fix banners en `asset-card.tsx`:
+  - **Cross banner**: cambiado a `{crossDir === "bullish" ? t("banner.crossBullish") : t("banner.crossBearish")} {crossInfo?.candles_since_cross} {t("banner.candles")}` — ahora muestra el número de velas correctamente.
+  - **Breakout banner**: añadido `{data.squeeze_breakout.candles_since_breakout}` antes de `{t("banner.candles")}`.
+  - **Stoch banner**: añadido `{data.stoch_cross.candles_since_cross}` antes de `{t("banner.candles")}`.
+  - Eliminado `{t("common.ago")}` de los banners (era redundante con el key).
+- Fix i18n keys en `i18n.ts`:
+  - `banner.crossBullish`: "Cruce alcista · hace" → "Cruce alcista" (eliminado "· hace")
+  - `banner.crossBearish`: "Cruce bajista · hace" → "Cruce bajista"
+  - `banner.breakoutBull`: "Breakout alcista · hace" → "Breakout alcista"
+  - `banner.breakoutBear`: "Breakout bajista · hace" → "Breakout bajista"
+  - Mismos fixes aplicados a EN/ZH/FR (eliminado "· ago", "· 前", "· il y a").
+- Lint: 0 iteraciones. Limpio.
+- Tests: 110/110 passing.
+- Verificación agent-browser:
+  - ES: "BREAKOUT ALCISTA 2 VELA(S)" + "STOCH ↓ BAJISTA · %K 27 · HACE 1 VELA(S)" ✅
+  - EN: "BULLISH BREAKOUT 2 CANDLE(S)" + "STOCH ↓ BEARISH · %K 27 · AGO 1 CANDLE(S)" ✅
+  - ZH: "看涨突破 2 根K线" + "随机↓ 看跌 · %K 27 · 前 1 根K线" ✅
+  - SPOT PRICE · USD (EN) / 现货价格 · USD (ZH) / PRECIO SPOT · USD (ES) ✅
+  - 6 cards, sin errores console/runtime.
+  - Mobile: 6 cards en 1 columna, sin overflow.
+
+Stage Summary:
+- **Estado:** v23 entregada. Banners arreglados, i18n funcionando en 4 idiomas.
+  110 tests pasando. Los banners ahora muestran el número de velas correctamente
+  en todos los idiomas.
+- **Artefactos:**
+  - `src/components/panel/asset-card.tsx` (banners fix: candle counts added)
+  - `src/lib/i18n.ts` (banner keys limpiados: removed "· hace/ago/前/il y a")

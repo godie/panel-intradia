@@ -258,7 +258,7 @@ export function AssetCard({
           }`}
         >
           <Zap className="h-3 w-3 animate-pulse" aria-hidden />
-          {t("banner.crossBullish")} {crossDir === "bullish" ? "" : ""} {t("common.ago")} {t("banner.candles")}
+          {crossDir === "bullish" ? t("banner.crossBullish") : t("banner.crossBearish")} {crossInfo?.candles_since_cross} {t("banner.candles")}
         </div>
       )}
 
@@ -280,7 +280,7 @@ export function AssetCard({
           }`}
         >
           <Zap className="h-3 w-3 animate-pulse" aria-hidden />
-          {data.squeeze_breakout.direction === "bullish" ? t("banner.breakoutBull") : t("banner.breakoutBear")} {t("common.ago")} {t("banner.candles")}
+          {data.squeeze_breakout.direction === "bullish" ? t("banner.breakoutBull") : t("banner.breakoutBear")} {data.squeeze_breakout.candles_since_breakout} {t("banner.candles")}
         </div>
       )}
 
@@ -294,7 +294,7 @@ export function AssetCard({
           }`}
         >
           <Activity className="h-3 w-3 animate-pulse" aria-hidden />
-          {data.stoch_cross.direction === "bullish" ? t("banner.stochBull") : t("banner.stochBear")} · %K {data.stoch_cross.k_at_cross?.toFixed(0)} · {t("banner.stochLabel")} {t("banner.candles")}
+          {data.stoch_cross.direction === "bullish" ? t("banner.stochBull") : t("banner.stochBear")} · %K {data.stoch_cross.k_at_cross?.toFixed(0)} · {t("banner.stochLabel")} {data.stoch_cross.candles_since_cross} {t("banner.candles")}
         </div>
       )}
 
