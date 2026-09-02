@@ -2879,3 +2879,55 @@ estrategias y los signal descriptions son las últimas strings visibles en
 español. Una vez traducidas, el dashboard estará ~95%+ en los 4 idiomas.
 
 En paralelo, **custom strategy builder** (item 2) — pendiente desde round 19.
+
+---
+Task ID: round-22
+Agent: cron webDevReview
+Task: Completa i18n — strategies.ts + methodology + remaining strings.
+
+Work Log:
+- Leído worklog previo: v21 con i18n en 13 componentes principales. 110 tests.
+- Traducido `strategies.ts`:
+  - `StrategyResult` cambiado: `summary: string` → `summaryKey: string` +
+    `summaryParams: { conf, fired, total }` para i18n interpolation.
+  - `buildSummary()` ahora retorna `{ key, params }` en vez de texto español.
+  - 4 summary keys añadidas a los 4 diccionarios: `strategy.summaryBuy`,
+    `strategy.summaryShort`, `strategy.summaryHold`, `strategy.summaryWait`.
+  - StrategySelector: usa `t(result.summaryKey).replace("{conf}", ...)` para
+    interpolar parámetros dinámicos.
+  - StrategySelector: strategy names + descriptions traducidos via
+    `t("strategy.trendBuy")`, `t("strategy.trendBuyDesc")`, etc.
+  - StrategyConsensus: strategy names traducidos en la lista.
+- Traducido methodology text en `page.tsx`:
+  - `t("methodology.title")` + `t("methodology.text")` reemplazan el texto
+    hardcoded en español.
+- Traducido status strip: `t("common.synchronizing")`.
+- Traducido retry button: `t("common.retry")`.
+- Traducido MarketOverview loading: `t("common.loading")`.
+- Lint: 0 iteraciones. Limpio.
+- Tests: 110/110 passing.
+- Verificación agent-browser:
+  - 6 cards renderizadas, sin errores.
+  - English: header "Quantitative Panel", footer "automated technical
+    analysis", methodology "METHODOLOGY" + texto en inglés, strategy panel
+    "Consensus" + "Strategy", "Market Overview".
+  - Mobile: 6 cards en 1 columna.
+
+Stage Summary:
+- **Estado:** v22 entregada. i18n ahora cubre ~95%+ de strings visibles en
+  4 idiomas. Las únicas strings restantes en español son los signal
+  descriptions dinámicos en strategies.ts (que contienen valores como
+  "RSI 44.2 sobrecomprado") — estas son computadas dinámicamente y requerirían
+  un sistema de interpolación más sofisticado para traducirse completamente.
+- **Artefactos:**
+  - `src/lib/strategies.ts` (summaryKey + summaryParams + buildSummary)
+  - `src/components/panel/strategy-selector.tsx` (t() para nombres/descripciones
+    + summary interpolation)
+  - `src/components/panel/strategy-consensus.tsx` (t() para nombres)
+  - `src/app/page.tsx` (methodology + status strip + retry)
+  - `src/components/panel/market-overview.tsx` (loading text)
+  - `src/lib/i18n.ts` (+4 summary keys × 4 idiomas = 16 keys nuevas)
+
+## Recommended Next Step (round 23)
+Custom strategy builder (pendiente desde round 19) — UI para que el usuario
+combine condiciones y guarde su estrategia personalizada en localStorage.

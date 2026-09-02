@@ -324,7 +324,7 @@ export default function Page() {
                 {anyLoading && (
                   <span className="flex items-center gap-1.5">
                     <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />
-                    Sincronizando con Binance…
+                    {t("common.synchronizing")}
                   </span>
                 )}
                 {SYMBOLS.filter((s) => cells[s].error).map((s) => (
@@ -378,7 +378,7 @@ export default function Page() {
                       className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-foreground hover:bg-white/10"
                     >
                       <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                      Reintentar
+                      {t("common.retry")}
                     </button>
                   </article>
                 );
@@ -435,33 +435,10 @@ export default function Page() {
           {/* Methodology note */}
           <section className="mt-6 rounded-xl border border-white/5 bg-card/40 p-5 text-xs leading-relaxed text-muted-foreground">
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-foreground/70">
-              Metodolog&iacute;a
+              {t("methodology.title")}
             </h2>
             <p>
-              Las <span className="text-[#e8b04b]">EMA 55</span> y{" "}
-              <span className="text-[#4fa8d8]">EMA 200</span> se calculan sobre
-              cierres de 4h (semilla SMA, k = 2/(N+1)). Soporte y resistencia
-              provienen de pivotes de m&aacute;ximos/m&iacute;nimos en las &uacute;ltimas
-              80 velas con ventana sim&eacute;trica de &plusmn;3. El estado del cruce
-              es <span className="text-[#5fbf8f]">ALCISTA</span> si EMA55 &gt; EMA200,{" "}
-              <span className="text-[#e2604f]">BAJISTA</span> si EMA55 &lt; EMA200, y{" "}
-              <span className="text-[#e8b04b]">COMPRIMIDO</span> cuando la diferencia
-              relativa es menor al 0.15%. El{" "}
-              <span className="text-foreground/80">RSI(14)</span> usa el suavizado de
-              Wilder; zonas &gt;70 = sobrecomprado, &lt;30 = sobrevendido. El{" "}
-              <span className="text-foreground/80">MACD(12, 26, 9)</span> usa los
-              defaults de Appel: MACD = EMA12 &minus; EMA26, se&ntilde;al = EMA9 del
-              MACD, histograma = MACD &minus; se&ntilde;al. La
-              detecci&oacute;n de cruce reciente escanea las &uacute;ltimas 30 velas
-              buscando flips de signo en EMA55 &minus; EMA200 y marca como
-              &ldquo;recente&rdquo; si ocurri&oacute; dentro de 10 velas. Los{" "}
-              <span className="text-[#5fbf8f]">precios tick-a-tick</span> provienen de
-              un WebSocket conectado al stream de trades de Binance
-              (mini-service socket.io en puerto 3003, throttled a 1 emit/800ms por
-              s&iacute;mbolo). El an&aacute;lisis EMA/RSI/MACD/S-R se recalcula
-              cada 60s; el precio spot se actualiza en vivo entre refrescos.
-              Los campos que no pueden calcularse se marcan
-              expl&iacute;citamente como &ldquo;Dato no disponible&rdquo;.
+              {t("methodology.text")}
             </p>
           </section>
         </main>

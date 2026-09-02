@@ -48,7 +48,7 @@ export function MarketOverview({ items }: Props) {
       <article className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-xl border border-white/8 bg-card/40 p-8 text-center animate-card-enter">
         <Globe className="h-8 w-8 text-muted-foreground/40" aria-hidden />
         <p className="text-xs text-muted-foreground">
-          Cargando visión de mercado…
+          {t("common.loading")} {t("overview.title").toLowerCase()}…
         </p>
       </article>
     );
