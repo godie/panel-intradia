@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchKlines } from "@/lib/binance";
+import { providerRouter } from "@/lib/providers/router";
 import { getCached, setCached } from "@/lib/cache";
 
 export const runtime = "nodejs";
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
     const results = await Promise.all(
       SYMBOLS.map(async (s) => {
         try {
-          const klines = await fetchKlines(s, interval, limit);
+          const klines = await providerRouter.getKlines(s, interval, limit).then((r) => r.klines);
           return { symbol: s, returns: toReturns(klines.map((k) => k.close)) };
         } catch {
           return { symbol: s, returns: [] };

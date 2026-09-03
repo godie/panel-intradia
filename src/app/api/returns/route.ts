@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchKlines } from "@/lib/binance";
+import { providerRouter } from "@/lib/providers/router";
 import { getCached, setCached } from "@/lib/cache";
 
 export const runtime = "nodejs";
@@ -104,9 +104,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [klinesA, klinesB] = await Promise.all([
-      fetchKlines(symbolA, interval, limit),
-      fetchKlines(symbolB, interval, limit),
+    const [kA, kB] = await Promise.all([
+      providerRouter.getKlines(symbolA, interval, limit).then((r) => r.klines),
+      providerRouter.getKlines(symbolB, interval, limit).then((r) => r.klines),
     ]);
 
     // Convert to returns, paired by index (align lengths).
@@ -119,8 +119,8 @@ export async function GET(req: NextRequest) {
       }
       return r;
     };
-    const returnsA = toReturns(klinesA.map((k) => k.close));
-    const returnsB = toReturns(klinesB.map((k) => k.close));
+    const returnsA = toReturns(kA.map((k) => k.close));
+    const returnsB = toReturns(kB.map((k) => k.close));
     const n = Math.min(returnsA.length, returnsB.length);
     const pairedA = returnsA.slice(0, n);
     const pairedB = returnsB.slice(0, n);
