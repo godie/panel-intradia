@@ -3,7 +3,7 @@
 #
 # Services:
 #   app         Next.js standalone on :3000 (REST + dashboard)
-#   ws-tick     socket.io → Binance trade stream on :3003
+#   tick-stream socket.io → Binance/Bybit trade stream on :3005
 #   order-book  socket.io → Binance L2 depth stream on :3004
 #   caddy       reverse proxy on :81 (routes ?XTransformPort=… → services)
 #
@@ -38,17 +38,17 @@ services:
       retries: 3
       start_period: 20s
 
-  ws-tick:
+  tick-stream:
     image: panelcuantitativo/app:latest
-    container_name: panel_ws_tick
+    container_name: panel_tick_stream
     restart: unless-stopped
-    command: ["bun", "mini-services/ws-tick/index.ts"]
+    command: ["bun", "mini-services/tick-stream/index.ts"]
     environment:
       NODE_ENV: production
     networks:
       - panelnet
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:3003/health"]
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:3005/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -85,7 +85,7 @@ services:
     depends_on:
       app:
         condition: service_healthy
-      ws-tick:
+      tick-stream:
         condition: service_healthy
       order-book:
         condition: service_healthy
