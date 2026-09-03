@@ -60,6 +60,7 @@ let binanceWs: WebSocket | null = null;
 let bybitWs: WebSocket | null = null;
 let activeSource: Source | null = null;
 let binanceFailures = 0;
+let bybitFailures = 0;
 const FAILURE_THRESHOLD = 3;
 
 type Tick = { symbol: string; price: number; time: number };
@@ -131,6 +132,7 @@ function connectBybit(): void {
 
   ws.on("open", () => {
     bybitReady = true;
+    bybitFailures = 0;
     const args = SYMBOLS.map((s) => `publicTrade.${s.toUpperCase()}`);
     ws.send(JSON.stringify({ op: "subscribe", args }));
     setActive("bybit");
@@ -161,7 +163,12 @@ function connectBybit(): void {
   ws.on("close", () => {
     bybitReady = false;
     bybitWs = null;
-    const delay = Math.min(1000 * Math.pow(2, 1), 15000);
+    if (activeSource === "bybit") {
+      activeSource = null;
+      io.emit("ws-status", { connected: false, source: null });
+    }
+    bybitFailures++;
+    const delay = Math.min(1000 * Math.pow(2, bybitFailures), 15000);
     setTimeout(connectBybit, delay);
   });
 }

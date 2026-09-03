@@ -22,14 +22,21 @@ export type ProviderResult<T> = { provider: ProviderId; value: T };
  */
 export function createProviderRouter(providers: MarketDataProvider[]) {
   let activeSource: ProviderId | null = null;
+  const HEALTH_CACHE_TTL_MS = 15_000;
+  let healthCache: { value: Record<ProviderId, boolean>; expires: number } | null = null;
 
   async function runWithFallback<T>(
     label: string,
     fn: (p: MarketDataProvider) => Promise<T>,
   ): Promise<ProviderResult<T>> {
     let lastErr: unknown = null;
+
+    const now = Date.now();
+    const cachedHealth =
+      healthCache && healthCache.expires > now ? healthCache.value : null;
+
     for (const p of providers) {
-      const isHealthy = await p.healthy();
+      const isHealthy = cachedHealth ? cachedHealth[p.id] : await p.healthy();
       if (!isHealthy) {
         lastErr = new Error(`${p.id} is unhealthy`);
         continue;
@@ -42,7 +49,18 @@ export function createProviderRouter(providers: MarketDataProvider[]) {
         lastErr = err;
       }
     }
-    // No provider succeeded — propagate the last error wrapped as UpstreamError.
+
+    // No provider succeeded — refresh health cache and re-throw.
+    if (!cachedHealth) {
+      const fresh: Record<ProviderId, boolean> = {};
+      await Promise.all(
+        providers.map(async (p) => {
+          fresh[p.id] = await p.healthy();
+        }),
+      );
+      healthCache = { value: fresh, expires: now + HEALTH_CACHE_TTL_MS };
+    }
+
     const msg =
       lastErr instanceof Error
         ? `All providers failed for ${label}: ${lastErr.message}`
