@@ -4,14 +4,14 @@ import { useSyncExternalStore } from "react";
 import { io, type Socket } from "socket.io-client";
 
 /**
- * use-tick-stream — subscribe to real-time price ticks from the ws-tick
- * mini-service (socket.io on port 3003, behind the Caddy gateway).
+ * use-tick-stream — subscribe to real-time price ticks from the tick-stream
+ * mini-service (socket.io on port 3005, behind the Caddy gateway).
  *
  * Connection string MUST go through the gateway — the path is "/socket.io/"
  * (the default socket.io path; the previous "/" collided with the /health
  * endpoint of the mini-service) and the port is encoded as a
  * `XTransformPort` query param so Caddy can route it.
- * NEVER connect to `http://localhost:3003` directly (sandbox rule).
+ * NEVER connect to `http://localhost:3005` directly (sandbox rule).
  *
  * The URL is auto-detected at runtime via `buildSocketUrl()`:
  *  - If the page is already served from the gateway (port 81), use a
@@ -109,7 +109,7 @@ function getSnapshot(): TickState {
 // to the matching localhost port. In dev, the page can be served either
 // from the gateway (port 81) or directly from Next.js (port 3000). The
 // socket.io client MUST talk to the gateway so Caddy can forward the
-// WebSocket upgrade to the ws-tick mini-service on port 3003.
+// WebSocket upgrade to the tick-stream mini-service on port 3005.
 const GATEWAY_PORT = "81";
 const TICK_STREAM_PORT = "3005";
 
@@ -124,7 +124,7 @@ function buildSocketUrl(): string {
     return `/?XTransformPort=${TICK_STREAM_PORT}`;
   }
   // Direct Next.js access (e.g. dev port 3000) → point at the gateway
-  // explicitly so socket.io can reach the ws-tick mini-service.
+  // explicitly so socket.io can reach the tick-stream mini-service.
   return `${loc.protocol}//${loc.hostname}:${GATEWAY_PORT}/?XTransformPort=${TICK_STREAM_PORT}`;
 }
 
