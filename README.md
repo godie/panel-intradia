@@ -91,13 +91,33 @@ Mini-services independientes (Bun):
 
 ## Instalación
 
+Para instrucciones detalladas de instalación local (Docker o manual) y
+despliegue en producción, consulta **[INSTALL.md](./INSTALL.md)**.
+
+Resumen rápido (Docker):
+
+```bash
+git clone <repo> intradia_cripto
+cd intradia_cripto
+cp .env.example .env
+docker compose up -d --build
+# abrir http://localhost:81/
+```
+
+Resumen rápido (sin Docker, modo dev):
+
+```bash
+bun install
+bun run db:push
+bun run dev    # http://localhost:3000
+```
+
 ### Requisitos
 
-- **Bun** ≥ 1.3 (gestor de paquetes y runtime de los mini-services)
-- **Node.js** ≥ 20 (solo si quieres ejecutar el build de Next.js fuera de Bun)
+- **Docker** ≥ 24 (recomendado) o **Bun** ≥ 1.3 (manual)
 - Acceso HTTPS saliente a `api.binance.com`, `stream.binance.com` y
   opcionalmente `api.binance.us` si la región bloquea el endpoint principal
-- (Opcional) **Caddy** si vas a servir tras un proxy
+- (Opcional) **Caddy** si vas a servir tras un proxy en modo manual
 
 ### Pasos
 

@@ -1,0 +1,101 @@
+# ----------------------------------------------------------------------------
+# docker-compose for local development / single-host deploy.
+#
+# Services:
+#   app         Next.js standalone on :3000 (REST + dashboard)
+#   ws-tick     socket.io → Binance trade stream on :3003
+#   order-book  socket.io → Binance L2 depth stream on :3004
+#   caddy       reverse proxy on :81 (routes ?XTransformPort=… → services)
+#
+# Usage:
+#   docker compose up --build         # build + start everything
+#   docker compose up -d --build      # detached
+#   docker compose logs -f app        # tail logs
+#   docker compose down               # stop, keep volumes
+#   docker compose down -v            # stop + wipe volumes (loses db)
+# ----------------------------------------------------------------------------
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: panelcuantitativo/app:latest
+    container_name: panel_app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: file:/app/db/custom.db
+    volumes:
+      - app_db:/app/db
+    networks:
+      - panelnet
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  ws-tick:
+    image: panelcuantitativo/app:latest
+    container_name: panel_ws_tick
+    restart: unless-stopped
+    command: ["bun", "mini-services/ws-tick/index.ts"]
+    environment:
+      NODE_ENV: production
+    networks:
+      - panelnet
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  order-book:
+    image: panelcuantitativo/app:latest
+    container_name: panel_order_book
+    restart: unless-stopped
+    command: ["bun", "mini-services/order-book/index.ts"]
+    environment:
+      NODE_ENV: production
+    networks:
+      - panelnet
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: panel_caddy
+    restart: unless-stopped
+    ports:
+      - "81:81"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - panelnet
+    depends_on:
+      app:
+        condition: service_healthy
+      ws-tick:
+        condition: service_healthy
+      order-book:
+        condition: service_healthy
+
+networks:
+  panelnet:
+    driver: bridge
+
+volumes:
+  app_db:
+    name: panel_db
+  caddy_data:
+  caddy_config:
