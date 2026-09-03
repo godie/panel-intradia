@@ -48,6 +48,7 @@ export type TickState = {
   prices: Record<string, TickPrice>;
   connected: boolean;
   binanceLive: boolean;
+  source: "binance" | "bybit" | null;
   lastHeartbeat: number | null;
   tickCount: number;
 };
@@ -63,6 +64,7 @@ const initialState: TickState = {
   prices: {},
   connected: false,
   binanceLive: false,
+  source: null,
   lastHeartbeat: null,
   tickCount: 0,
 };
@@ -77,6 +79,7 @@ function setState(next: TickState): void {
     next === state ||
     (next.connected === state.connected &&
       next.binanceLive === state.binanceLive &&
+      next.source === state.source &&
       next.lastHeartbeat === state.lastHeartbeat &&
       next.tickCount === state.tickCount &&
       next.prices === state.prices)
@@ -108,20 +111,21 @@ function getSnapshot(): TickState {
 // socket.io client MUST talk to the gateway so Caddy can forward the
 // WebSocket upgrade to the ws-tick mini-service on port 3003.
 const GATEWAY_PORT = "81";
+const TICK_STREAM_PORT = "3005";
 
 function buildSocketUrl(): string {
   if (typeof window === "undefined") {
     // SSR safety — return a relative URL; the singleton only inits on client.
-    return "/?XTransformPort=3003";
+    return `/?XTransformPort=${TICK_STREAM_PORT}`;
   }
   const loc = window.location;
   // Already on the gateway → relative URL keeps same origin (cookies, etc).
   if (loc.port === GATEWAY_PORT) {
-    return "/?XTransformPort=3003";
+    return `/?XTransformPort=${TICK_STREAM_PORT}`;
   }
   // Direct Next.js access (e.g. dev port 3000) → point at the gateway
   // explicitly so socket.io can reach the ws-tick mini-service.
-  return `${loc.protocol}//${loc.hostname}:${GATEWAY_PORT}/?XTransformPort=3003`;
+  return `${loc.protocol}//${loc.hostname}:${GATEWAY_PORT}/?XTransformPort=${TICK_STREAM_PORT}`;
 }
 
 function ensureSocket(): Socket {
@@ -145,6 +149,7 @@ function ensureSocket(): Socket {
       ...state,
       connected: false,
       binanceLive: false,
+      source: null,
     });
   });
   sock.on("connect_error", () => {
@@ -163,10 +168,11 @@ function ensureSocket(): Socket {
     });
   });
 
-  sock.on("ws-status", (payload: { connected?: boolean; reconnecting?: boolean }) => {
+  sock.on("ws-status", (payload: { connected?: boolean; reconnecting?: boolean; source?: "binance" | "bybit" }) => {
     setState({
       ...state,
       binanceLive: payload?.connected === true,
+      source: payload?.source ?? (payload?.connected === true ? "binance" : null),
     });
   });
 
