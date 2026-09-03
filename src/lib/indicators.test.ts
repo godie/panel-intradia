@@ -535,6 +535,7 @@ describe("calculateFibonacciRetracement", () => {
     const r = calculateFibonacciRetracement([100], [95]);
     expect(r.available).toBe(false);
     expect(r.levels).toHaveLength(0);
+    expect(r.extensions).toHaveLength(0);
   });
 
   it("returns unavailable when swing high equals swing low (zero range)", () => {
