@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  fetchKlines,
-  fetchTicker24h,
-  BinanceError,
-  type Kline,
-} from "@/lib/binance";
+import { providerRouter } from "@/lib/providers/router";
+import { UpstreamError } from "@/lib/providers/types";
+import { isSupportedSymbol } from "@/lib/providers/symbols";
 import {
   calculateEMA,
   calculateRSI,
@@ -29,15 +26,6 @@ import type { AnalysisResponse } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Whitelisted symbols — anything else is a 400. */
-const ALLOWED_SYMBOLS = new Set([
-  "BTCUSDT",
-  "ETHUSDT",
-  "XRPUSDT",
-  "SOLUSDT",
-  "BNBUSDT",
-]);
-
 const CACHE_TTL_MS = 60_000;
 const SPARK_POINTS = 120;
 
@@ -55,8 +43,9 @@ function decimalsForPrice(price: number): number {
 
 function buildAnalysis(
   symbol: string,
-  klines: Kline[],
-  ticker: Awaited<ReturnType<typeof fetchTicker24h>> | null,
+  klines: import("@/lib/providers/types").Kline[],
+  ticker: Awaited<ReturnType<typeof providerRouter.getTicker24h>>["ticker"],
+  source: import("@/lib/providers/types").ProviderId,
 ): AnalysisResponse {
   const closes = klines.map((k) => k.close);
   const highs = klines.map((k) => k.high);
@@ -262,6 +251,7 @@ function buildAnalysis(
     stochastic: !stochRes.available,
     stoch_cross: !stochRes.available,
     ichimoku: !ichimokuRes.available,
+    source: false,
   };
 
   // Slice the series for the sparkline (last SPARK_POINTS).
@@ -343,6 +333,7 @@ function buildAnalysis(
       ichimoku_kijun: seriesIchKijun,
     },
     updated_at: new Date().toISOString(),
+    source,
   };
 }
 
@@ -451,16 +442,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const symbol = (searchParams.get("symbol") ?? "").toUpperCase().trim();
 
-  if (!symbol || !ALLOWED_SYMBOLS.has(symbol)) {
+  if (!symbol || !isSupportedSymbol(symbol)) {
     return NextResponse.json(
-      {
-        error: `Símbolo inválido. Permitidos: ${[...ALLOWED_SYMBOLS].join(", ")}`,
-      },
+      { error: `Símbolo inválido. Permitidos: BTCUSDT, ETHUSDT, XRPUSDT, SOLUSDT, BNBUSDT` },
       { status: 400 },
     );
   }
 
-  // 60s server-side cache.
   const cacheKey = `analysis:${symbol}`;
   const cached = getCached<AnalysisResponse>(cacheKey);
   if (cached) {
@@ -470,35 +458,31 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch klines + ticker in parallel for speed.
-    const [klines, ticker] = await Promise.all([
-      fetchKlines(symbol, "4h", 500),
-      fetchTicker24h(symbol).catch((e) => {
-        // Ticker failure is soft — we can still compute EMAs from klines.
-        if (e instanceof BinanceError) return null;
+    const [klinesRes, tickerRes] = await Promise.all([
+      providerRouter.getKlines(symbol, "4h", 500),
+      providerRouter.getTicker24h(symbol).catch((e) => {
+        if (e instanceof UpstreamError) return { provider: "binance" as const, ticker: null };
         throw e;
       }),
     ]);
 
-    if (klines.length === 0) {
-      throw new BinanceError("Binance devolvió 0 klines");
+    if (klinesRes.klines.length === 0) {
+      throw new UpstreamError("Provider devolvió 0 klines", klinesRes.provider);
     }
 
-    const payload = buildAnalysis(symbol, klines, ticker);
+    const payload = buildAnalysis(symbol, klinesRes.klines, tickerRes.ticker, klinesRes.provider);
     setCached(cacheKey, payload, CACHE_TTL_MS);
 
-    // Persist any fresh crosses to SQLite (fire-and-forget, non-blocking).
-    // Dedup is handled inside recordCrossIfNew — only NEW crosses are stored.
     persistCrosses(payload).catch((e) => {
       console.error("[analysis] persist crosses error:", e);
     });
 
     return NextResponse.json(payload, {
-      headers: { "x-cache": "MISS", "cache-control": "no-store" },
+      headers: { "x-cache": "MISS", "x-source": klinesRes.provider, "cache-control": "no-store" },
     });
   } catch (err) {
     const message =
-      err instanceof BinanceError
+      err instanceof UpstreamError
         ? err.message
         : err instanceof Error
           ? err.message
