@@ -3010,3 +3010,39 @@ Stage Summary:
   - tick-stream WS router en puerto 3005 con fallback Binance → Bybit
   - UI badge de fuente en header y por card
 - **Report:** `.superpowers/sdd/task-12-report.md`
+
+---
+Task ID: round-24
+Agent: cron webDevReview
+Task: Pull from GitHub + verify provider abstraction + tick-stream integration.
+
+Work Log:
+- Pull desde GitHub: commit `a1a229d` "Feat provider abstraction bybit (#1)".
+- Cambios del PR:
+  - **Provider abstraction**: `src/lib/providers/` con types.ts, binance.ts,
+    bybit.ts, router.ts, symbols.ts + 6 test files (17 tests nuevos = 127 total).
+  - **tick-stream mini-service** (puerto 3005): nuevo service que sustituye
+    a ws-tick con fallback Binance → Bybit. Si Binance WS falla 3 veces en 30s,
+    switcha a Bybit automáticamente.
+  - **use-tick-stream.ts**: actualizado para usar puerto 3005 (tick-stream).
+  - **API routes**: analysis, correlation, returns ahora usan `providerRouter`
+    con fallback Binance → Bybit.
+  - **Docker**: Dockerfile multi-stage + docker-compose.yml (app, tick-stream,
+    order-book, caddy).
+  - **README.md**: documentación completa del proyecto.
+  - **CLAUDE.md**: otro agent guide.
+  - **Provider badge**: "BINANCE" o "BYBIT" visible en cada card.
+- Verificación:
+  - tick-stream service instalado y iniciado en puerto 3005. Health OK,
+    activeSource="binance", binanceConnected=true.
+  - Test funcional: recibidos ticks de BNBUSDT, XRPUSDT, BTCUSDT via tick-stream.
+  - 127 tests pasando (7 test files), lint limpio.
+  - 6 cards renderizadas, provider badge "BINANCE" visible, TICK LIVE activo.
+  - Mobile: 6 cards en 1 columna, sin overflow.
+
+Stage Summary:
+- **Estado:** v24 verificada. Provider abstraction integrada, tick-stream
+  service corriendo en puerto 3005 con fallback Bybit. 127 tests pasando.
+  Docker + README añadidos por el PR.
+- **Servicios activos**: ws-tick (3003), order-book (3004), tick-stream (3005).
+  El frontend usa tick-stream (3005) con fallback automático.
