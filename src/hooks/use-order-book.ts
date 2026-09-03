@@ -17,6 +17,8 @@ export type OrderBookState = {
   snapshots: Record<string, DepthSnapshot>;
   connected: boolean;
   binanceLive: boolean;
+  /** Active data source: "binance" | "bybit" | null */
+  source: "binance" | "bybit" | null;
   lastUpdate: number | null;
 };
 
@@ -51,6 +53,7 @@ export function useOrderBook(enabled: boolean = true): OrderBookState {
     snapshots: {},
     connected: false,
     binanceLive: false,
+    source: null,
     lastUpdate: null,
   });
 
@@ -79,10 +82,11 @@ export function useOrderBook(enabled: boolean = true): OrderBookState {
       setState((s) => ({ ...s, connected: false, binanceLive: false }));
     });
 
-    socket.on("ws-status", (d: { connected?: boolean }) => {
+    socket.on("ws-status", (d: { connected?: boolean; source?: "binance" | "bybit" }) => {
       setState((s) => ({
         ...s,
         binanceLive: d?.connected === true,
+        source: d?.source ?? (d?.connected === true ? "binance" : null),
         connected: true,
       }));
     });

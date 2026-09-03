@@ -1,24 +1,17 @@
 /**
- * order-book — L2 order book depth mini-service.
+ * order-book — L2 order book depth mini-service with Binance → Bybit fallback.
  *
  * Connects to Binance's partial book depth WebSocket (top 20 levels, 1000ms
- * updates) for BTC/ETH/XRP and rebroadcasts snapshots to all browser clients
- * via socket.io. This enriches the dashboard's RangeBar with bid/ask volume
- * context — the single feature that most distinguishes a quantitative panel
- * from a simple price tracker.
+ * updates). If Binance WS drops 3 times in a row within 30s, switches to
+ * Bybit's order book WebSocket. Both upstreams produce normalized
+ * {symbol, bids, asks, time} events to all connected browser clients.
  *
- * Architecture:
- *  - Binance WS (wss://stream.binance.com:9443/stream?streams=...@depth20@1000ms)
- *    → emits JSON {stream, data:{lastUpdateId, bids:[[price,qty]...], asks:[...]}}
- *  - We parse + transform into a compact shape {symbol, bids, asks, time} and
- *    emit "depth" events. Throttled to 1 emit / 1000ms per symbol (matches
- *    the upstream cadence).
- *  - socket.io server on port 3004, path "/socket.io/" (default — required
- *    so the custom /health endpoint on the same httpServer is reachable;
- *    a path of "/" would have socket.io intercept every request).
+ * socket.io on port 3004, path "/socket.io/".
  *
- * Resilience: exponential backoff reconnect (1s→30s), ws-status events on
- * connect/disconnect so the UI can show "LIVE"/"RECONNECTING".
+ * Events:
+ *  - `depth`      { symbol, bids: Level[], asks: Level[], time }
+ *  - `ws-status`  { connected: boolean, source: "binance"|"bybit"|null }
+ *  - `heartbeat`  { time }
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
@@ -27,16 +20,23 @@ import { WebSocket } from "ws";
 
 const PORT = 3004;
 const SYMBOLS = ["btcusdt", "ethusdt", "xrpusdt", "solusdt", "bnbusdt"] as const;
-// depth20 = top 20 levels; @1000ms = 1 update per second.
+type Source = "binance" | "bybit";
+const FAILURE_THRESHOLD = 3;
+
 const BINANCE_WS_URL =
   "wss://stream.binance.com:9443/stream?streams=" +
   SYMBOLS.map((s) => `${s}@depth20@1000ms`).join("/");
 
+// Bybit v5 order book WS: wss://stream.bybit.com/v5/public/spot
+// Subscribe args: "orderbook.20.{SYMBOL}" (e.g. "orderbook.20.BTCUSDT")
+const BYBIT_WS_URL = "wss://stream.bybit.com/v5/public/spot";
+const BYBIT_DEPTH = 20;
+
 type Level = { price: number; qty: number };
 type DepthSnapshot = {
-  symbol: string; // uppercase "BTCUSDT"
-  bids: Level[]; // sorted descending price (best bid first)
-  asks: Level[]; // sorted ascending price (best ask first)
+  symbol: string;
+  bids: Level[];
+  asks: Level[];
   time: number;
 };
 
@@ -48,7 +48,9 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
         ok: true,
         service: "order-book",
         port: PORT,
-        binanceConnected: binanceWsReady,
+        activeSource,
+        binanceConnected: binanceReady,
+        bybitConnected: bybitReady,
         clients: io.engine.clientsCount,
         uptime: process.uptime(),
       }),
@@ -66,53 +68,61 @@ const io = new Server(httpServer, {
   pingInterval: 25000,
 });
 
-let binanceWsReady = false;
+let binanceReady = false;
+let bybitReady = false;
 let binanceWs: WebSocket | null = null;
-let reconnectAttempts = 0;
+let bybitWs: WebSocket | null = null;
+let activeSource: Source | null = null;
+let binanceFailures = 0;
+let bybitFailures = 0;
 let depthMessageCount = 0;
 
-function connectBinance() {
-  console.log(`[binance] connecting to ${BINANCE_WS_URL}`);
+function setActive(source: Source | null): void {
+  if (source === activeSource) return;
+  activeSource = source;
+  io.emit("ws-status", { connected: source !== null, source });
+}
+
+function toLevels(arr: unknown[]): Level[] {
+  return arr
+    .map((entry) => {
+      if (!Array.isArray(entry) || entry.length < 2) return null;
+      const price = Number(entry[0]);
+      const qty = Number(entry[1]);
+      if (!Number.isFinite(price) || !Number.isFinite(qty)) return null;
+      return { price, qty } as Level;
+    })
+    .filter((v): v is Level => v != null);
+}
+
+// ============================================================
+// BINANCE
+// ============================================================
+function connectBinance(): void {
+  console.log(`[binance] connecting to depth stream`);
   const ws = new WebSocket(BINANCE_WS_URL);
   binanceWs = ws;
 
   ws.on("open", () => {
-    binanceWsReady = true;
-    reconnectAttempts = 0;
+    binanceReady = true;
+    binanceFailures = 0;
     console.log("[binance] connected, streaming L2 depth");
-    io.emit("ws-status", { connected: true });
+    setActive("binance");
   });
 
   ws.on("message", (raw: Buffer | string) => {
+    if (activeSource !== "binance") return;
     try {
       const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString());
       const data = msg?.data ?? msg;
-      // Binance partial book depth (combined stream) payload looks like:
-      //   { stream: "btcusdt@depth20@1000ms", data: { lastUpdateId, bids, asks } }
-      // Note: the `data` object has NO `s` field (unlike trade streams) —
-      // the symbol is encoded in the `stream` field. We parse it from there.
-      // For non-combined streams the symbol is also derivable from msg.s.
       const symbolFromStream =
         typeof msg?.stream === "string"
           ? msg.stream.split("@")[0].toUpperCase()
           : "";
-      const symbol =
-        String(data?.s ?? "").toUpperCase() || symbolFromStream;
+      const symbol = String(data?.s ?? "").toUpperCase() || symbolFromStream;
       const rawBids = data?.bids ?? data?.b ?? [];
       const rawAsks = data?.asks ?? data?.a ?? [];
       if (!symbol || !Array.isArray(rawBids) || !Array.isArray(rawAsks)) return;
-
-      // Transform [priceStr, qtyStr] → {price, qty}.
-      const toLevels = (arr: unknown[]): Level[] =>
-        arr
-          .map((entry) => {
-            if (!Array.isArray(entry) || entry.length < 2) return null;
-            const price = Number(entry[0]);
-            const qty = Number(entry[1]);
-            if (!Number.isFinite(price) || !Number.isFinite(qty)) return null;
-            return { price, qty } as Level;
-          })
-          .filter((v): v is Level => v != null);
 
       const snapshot: DepthSnapshot = {
         symbol,
@@ -137,31 +147,95 @@ function connectBinance() {
   });
 
   ws.on("close", () => {
-    binanceWsReady = false;
-    io.emit("ws-status", { connected: false, reconnecting: true });
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-    reconnectAttempts++;
-    console.log(`[binance] disconnected, reconnecting in ${delay}ms`);
-    setTimeout(connectBinance, delay);
+    binanceReady = false;
+    binanceWs = null;
+    if (activeSource === "bybit") return;
+    binanceFailures++;
+    if (binanceFailures >= FAILURE_THRESHOLD) {
+      console.log(`[binance] ${binanceFailures} consecutive failures, activating bybit`);
+      setActive("bybit");
+      connectBybit();
+    } else {
+      const delay = Math.min(1000 * Math.pow(2, binanceFailures), 30000);
+      console.log(`[binance] disconnected, reconnecting in ${delay}ms`);
+      setTimeout(connectBinance, delay);
+    }
   });
 }
 
-// Heartbeat so the UI knows the stream is alive.
+// ============================================================
+// BYBIT
+// ============================================================
+function connectBybit(): void {
+  if (bybitWs) return;
+  console.log(`[bybit] connecting to depth stream`);
+  const ws = new WebSocket(BYBIT_WS_URL);
+  bybitWs = ws;
+
+  ws.on("open", () => {
+    bybitReady = true;
+    bybitFailures = 0;
+    const args = SYMBOLS.map((s) => `orderbook.${BYBIT_DEPTH}.${s.toUpperCase()}`);
+    ws.send(JSON.stringify({ op: "subscribe", args }));
+    setActive("bybit");
+    console.log("[bybit] connected, subscribed to orderbook");
+  });
+
+  ws.on("message", (raw: Buffer | string) => {
+    if (activeSource !== "bybit") return;
+    try {
+      const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString());
+      // Bybit v5 order book: topic "orderbook.20.BTCUSDT", data: {b: [...], a: [...]}
+      if (!msg?.topic?.startsWith("orderbook.")) return;
+      const symbol = msg.topic.split(".").pop()?.toUpperCase();
+      if (!symbol) return;
+      const rawBids = msg?.data?.b ?? [];
+      const rawAsks = msg?.data?.a ?? [];
+      if (!Array.isArray(rawBids) || !Array.isArray(rawAsks)) return;
+
+      // Bybit levels are [price, qty] like Binance.
+      const snapshot: DepthSnapshot = {
+        symbol,
+        bids: toLevels(rawBids),
+        asks: toLevels(rawAsks),
+        time: Date.now(),
+      };
+      depthMessageCount++;
+      io.emit("depth", snapshot);
+    } catch (err) {
+      console.error("[bybit] parse error:", err);
+    }
+  });
+
+  ws.on("error", (err: Error) => {
+    console.error("[bybit] ws error:", err.message);
+  });
+
+  ws.on("close", () => {
+    bybitReady = false;
+    bybitWs = null;
+    if (activeSource === "bybit") {
+      activeSource = null;
+      io.emit("ws-status", { connected: false, source: null });
+    }
+    bybitFailures++;
+    const delay = Math.min(1000 * Math.pow(2, bybitFailures), 15000);
+    console.log(`[bybit] disconnected, reconnecting in ${delay}ms`);
+    setTimeout(connectBybit, delay);
+  });
+}
+
+// Heartbeat
 setInterval(() => {
-  if (binanceWsReady) {
+  if (activeSource) {
     io.emit("heartbeat", { time: Date.now() });
   }
 }, 5000);
 
 io.on("connection", (socket) => {
   console.log(`[client] connected (${socket.id}), total=${io.engine.clientsCount}`);
-  socket.emit("ws-status", { connected: binanceWsReady });
-  socket.on("disconnect", (reason) => {
-    console.log(`[client] disconnected (${socket.id}): ${reason}`);
-  });
-  socket.on("error", (err: Error) => {
-    console.error(`[client] socket error (${socket.id}):`, err.message);
-  });
+  socket.emit("ws-status", { connected: activeSource !== null, source: activeSource });
+  socket.on("disconnect", () => {});
 });
 
 httpServer.listen(PORT, () => {
@@ -171,7 +245,8 @@ httpServer.listen(PORT, () => {
 
 function shutdown(signal: string) {
   console.log(`[order-book] received ${signal}, shutting down...`);
-  if (binanceWs) binanceWs.close();
+  binanceWs?.close();
+  bybitWs?.close();
   io.close(() => {
     httpServer.close(() => {
       console.log("[order-book] closed");
