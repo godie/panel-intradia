@@ -37,6 +37,9 @@ const es: Dict = {
   "header.export": "Exportar",
   "header.alerts": "Alertas",
   "header.shortcuts": "Atajos",
+  "header.source": "Fuente",
+  "header.sourceBinance": "Binance",
+  "header.sourceBybit": "Bybit",
 
   // Ticker tape
   "ticker.loading": "Cargando precios…",
@@ -270,6 +273,9 @@ const en: Dict = {
   "header.export": "Export",
   "header.alerts": "Alerts",
   "header.shortcuts": "Shortcuts",
+  "header.source": "Source",
+  "header.sourceBinance": "Binance",
+  "header.sourceBybit": "Bybit",
 
   "ticker.loading": "Loading prices…",
 
@@ -488,6 +494,9 @@ const zh: Dict = {
   "header.export": "导出",
   "header.alerts": "提醒",
   "header.shortcuts": "快捷键",
+  "header.source": "数据源",
+  "header.sourceBinance": "币安",
+  "header.sourceBybit": "Bybit",
 
   "ticker.loading": "加载价格中…",
 
@@ -706,6 +715,9 @@ const fr: Dict = {
   "header.export": "Exporter",
   "header.alerts": "Alertes",
   "header.shortcuts": "Raccourcis",
+  "header.source": "Source",
+  "header.sourceBinance": "Binance",
+  "header.sourceBybit": "Bybit",
 
   "ticker.loading": "Chargement des prix…",
 
