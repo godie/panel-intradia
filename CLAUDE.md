@@ -1,5 +1,7 @@
 # Panel Cuantitativo // Intradía
 
+**Repository**: https://github.com/godie/panel-intradia.git
+
 Dashboard Next.js de análisis técnico intradía en vivo para pares cripto
 contra USDT (BTC, ETH, XRP, SOL, BNB). Ver `README.md` para la descripción
 completa de features y `INSTALL.md` para despliegue. Este archivo cubre solo

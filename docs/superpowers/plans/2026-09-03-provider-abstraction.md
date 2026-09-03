@@ -1,5 +1,7 @@
 # Provider Abstraction + Bybit Fallback Implementation Plan
 
+**Repository**: https://github.com/godie/panel-intradia.git
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Introduce a `MarketDataProvider` abstraction that lets the dashboard keep working when Binance is unreachable by falling back to Bybit (REST + public WebSocket), and surfaces the active data source to the user in the UI.
