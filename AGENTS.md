@@ -7,7 +7,7 @@
 A crypto quantitative trading dashboard with real-time price ticks, L2 order book, 11 technical indicators, 4 trading strategies, cross-event alerts, and multilanguage support (ES/EN/ZH/FR).
 
 **Live URL**: `http://localhost:3000` (only `/` route is user-visible)
-**Repo**: https://github.com/godie/panel-intradia
+**Repo**: https://github.com/godie/panel-intradia.git
 
 ## Tech Stack (NON-NEGOTIABLE)
 

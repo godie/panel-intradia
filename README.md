@@ -1,5 +1,7 @@
 # Panel Cuantitativo // Intradía
 
+**Repository**: https://github.com/godie/panel-intradia.git
+
 Panel cuantitativo en vivo para análisis técnico intradía de los principales
 pares cripto contra USDT (BTC, ETH, XRP, SOL, BNB). Combina datos en tiempo
 real desde Binance con un pipeline de cálculo de indicadores técnicos, eventos

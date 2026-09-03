@@ -3,6 +3,7 @@
 **Agent:** cron webDevReview (webDevReview)
 **Task ID:** round-3
 **Project:** Panel Cuantitativo // Intradía (Next.js 16 + TypeScript + Tailwind 4)
+**Repository:** https://github.com/godie/panel-intradia.git
 **Path:** `/home/z/my-project`
 
 ## Summary

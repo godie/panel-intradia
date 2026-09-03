@@ -1,5 +1,7 @@
 # INSTALL.md
 
+**Repository**: https://github.com/godie/panel-intradia.git
+
 Guía de instalación y despliegue del **Panel Cuantitativo // Intradía**.
 
 Hay dos caminos:

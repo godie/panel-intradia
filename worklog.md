@@ -1,5 +1,7 @@
 # Worklog — Panel Cuantitativo // Intradía
 
+**Repository**: https://github.com/godie/panel-intradia.git
+
 ## Project Status (as of initial delivery)
 
 **Estado:** Funcional y verificado end-to-end con agent-browser + VLM.
