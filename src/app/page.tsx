@@ -259,6 +259,16 @@ export default function Page() {
                 </span>
               </div>
 
+              {tick.source && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-white/8 bg-black/20 px-3 py-1.5 text-xs"
+                  title={`Proveedor upstream activo: ${tick.source}`}
+                >
+                  <span className="text-muted-foreground">{t("header.source")}:</span>
+                  <span className="font-semibold uppercase tracking-wider">{t(`header.source${tick.source[0].toUpperCase()}${tick.source.slice(1)}` as "header.sourceBinance" | "header.sourceBybit")}</span>
+                </div>
+              )}
+
               <div className="flex items-center gap-1.5 rounded-md border border-white/8 bg-black/20 px-3 py-1.5 text-xs text-muted-foreground">
                 <Clock className="h-3.5 w-3.5" aria-hidden />
                 <span className="tnum">{fmtTime(lastUpdated)}</span>

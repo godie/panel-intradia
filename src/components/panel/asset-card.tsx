@@ -301,11 +301,19 @@ export function AssetCard({
       {/* Header */}
       <div className="flex items-start justify-between gap-3 p-5 pb-3">
         <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
-            <h2 className="tnum text-lg font-semibold tracking-tight text-foreground">
-              {meta.pair}
-            </h2>
-          </div>
+            <div className="flex items-baseline gap-2">
+              <h2 className="tnum text-lg font-semibold tracking-tight text-foreground">
+                {meta.pair}
+              </h2>
+              {data.source && (
+                <span
+                  className="ml-2 inline-flex items-center rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                  title={`Fuente de datos: ${data.source}`}
+                >
+                  {data.source}
+                </span>
+              )}
+            </div>
           <p className="mt-0.5 text-xs text-muted-foreground">{meta.label}</p>
         </div>
         {stateStyle && (

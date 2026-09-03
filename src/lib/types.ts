@@ -4,6 +4,8 @@
  * the type without pulling route-side code into the client bundle.
  */
 
+import type { ProviderId } from "./providers/types";
+
 export type CrossState = "ALCISTA" | "BAJISTA" | "COMPRIMIDO";
 
 export type CrossInfo = {
@@ -140,6 +142,7 @@ export type AnalysisResponse = {
     stochastic: boolean;
     stoch_cross: boolean;
     ichimoku: boolean;
+    source: false;
   };
   series: {
     closes: number[];
@@ -156,6 +159,8 @@ export type AnalysisResponse = {
     ichimoku_kijun: (number | null)[];
   };
   updated_at: string;
+  /** Active data source for this analysis (binance = primary, bybit = fallback). */
+  source: ProviderId | null;
 };
 
 export type AssetError = { error: string };
