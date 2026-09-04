@@ -27,6 +27,17 @@ const BINANCE_WS_URL =
   SYMBOLS.map((s) => `${s}@trade`).join("/");
 
 const BYBIT_WS_URL = "wss://stream.bybit.com/v5/public/spot";
+const DEFAULT_CORS_ORIGINS = [
+  "http://localhost:81",
+  "http://localhost:3000",
+  "http://127.0.0.1:81",
+  "http://127.0.0.1:3000",
+];
+const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = CORS_ORIGINS.length > 0 ? CORS_ORIGINS : DEFAULT_CORS_ORIGINS;
 
 const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
   if (req.url === "/health") {
@@ -49,7 +60,11 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
 
 const io = new Server(httpServer, {
   path: "/socket.io/",
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: false,
+  },
   pingTimeout: 60000,
   pingInterval: 25000,
 });

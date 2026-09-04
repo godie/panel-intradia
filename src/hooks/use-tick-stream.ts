@@ -15,15 +15,15 @@ import { io, type Socket } from "socket.io-client";
  *
  * The URL is auto-detected at runtime via `buildSocketUrl()`:
  *  - If the page is already served from the gateway (port 81), use a
- *    relative URL (`/?XTransformPort=3003`) so the same origin is reused.
+ *    relative URL (`/?XTransformPort=3005`) so the same origin is reused.
  *  - Otherwise (e.g. Next.js dev port 3000), explicitly point the socket
- *    at the gateway (`http://hostname:81/?XTransformPort=3003`).
+ *    at the gateway (`http://hostname:81/?XTransformPort=3005`).
  *
  * The socket.io client `path` option is set to "/socket.io/" so the
  * resulting request URLs become
- *   `http://hostname:81/socket.io/?...&XTransformPort=3003` which Caddy
- * forwards to localhost:3003 and the mini-service handles at its socket.io
- * endpoint.
+ *   `http://hostname:81/socket.io/?...&XTransformPort=3005` which Caddy
+ * forwards to the tick-stream service and the mini-service handles at its
+ * socket.io endpoint.
  *
  * Events from the server:
  *  - `tick`         { symbol, price, time }    — one price update per symbol

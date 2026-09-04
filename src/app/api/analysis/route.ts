@@ -35,6 +35,10 @@ function round(n: number | null, decimals: number): number | null {
   return Math.round(n * f) / f;
 }
 
+function roundFinite(n: number, decimals: number): number {
+  return round(n, decimals) ?? n;
+}
+
 function decimalsForPrice(price: number): number {
   if (price >= 1000) return 2;
   if (price >= 1) return 2;
@@ -215,18 +219,18 @@ function buildAnalysis(
         direction: fibRes.direction,
         levels: fibRes.levels.map((l) => ({
           ratio: l.ratio,
-          price: round(l.price, dec),
+          price: roundFinite(l.price, dec),
           label: l.label,
         })),
         extensions: fibRes.extensions.map((l) => ({
           ratio: l.ratio,
-          price: round(l.price, dec),
+          price: roundFinite(l.price, dec),
           label: l.label,
         })),
       }
     : null;
 
-  const no_disponible = {
+  const no_disponible: AnalysisResponse["no_disponible"] = {
     spot_price: spotPrice == null,
     change_24h_pct: change24h == null,
     ema55_4h: !ema55Res.available,

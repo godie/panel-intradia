@@ -1345,7 +1345,11 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
 
 const io = new Server(httpServer, {
   path: "/socket.io/",
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: {
+    origin: ["http://localhost:81", "http://localhost:3000"],
+    methods: ["GET", "POST"],
+    credentials: false,
+  },
   pingTimeout: 60000,
   pingInterval: 25000,
 });

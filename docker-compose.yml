@@ -5,7 +5,7 @@
 #   app         Next.js standalone on :3000 (REST + dashboard)
 #   tick-stream socket.io → Binance/Bybit trade stream on :3005
 #   order-book  socket.io → Binance L2 depth stream on :3004
-#   caddy       reverse proxy on :81 (routes ?XTransformPort=… → services)
+#   caddy       reverse proxy on :81 (allowlisted ?XTransformPort → services)
 #
 # Usage:
 #   docker compose up --build         # build + start everything
@@ -45,6 +45,7 @@ services:
     command: ["bun", "mini-services/tick-stream/index.ts"]
     environment:
       NODE_ENV: production
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:81,http://localhost:3000}"
     networks:
       - panelnet
     healthcheck:
@@ -61,6 +62,7 @@ services:
     command: ["bun", "mini-services/order-book/index.ts"]
     environment:
       NODE_ENV: production
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:81,http://localhost:3000}"
     networks:
       - panelnet
     healthcheck:
@@ -76,6 +78,10 @@ services:
     restart: unless-stopped
     ports:
       - "81:81"
+    environment:
+      APP_UPSTREAM: app:3000
+      TICK_STREAM_UPSTREAM: tick-stream:3005
+      ORDER_BOOK_UPSTREAM: order-book:3004
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

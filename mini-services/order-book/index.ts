@@ -26,6 +26,17 @@ const FAILURE_THRESHOLD = 3;
 const BINANCE_WS_URL =
   "wss://stream.binance.com:9443/stream?streams=" +
   SYMBOLS.map((s) => `${s}@depth20@1000ms`).join("/");
+const DEFAULT_CORS_ORIGINS = [
+  "http://localhost:81",
+  "http://localhost:3000",
+  "http://127.0.0.1:81",
+  "http://127.0.0.1:3000",
+];
+const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = CORS_ORIGINS.length > 0 ? CORS_ORIGINS : DEFAULT_CORS_ORIGINS;
 
 // Bybit v5 order book WS: wss://stream.bybit.com/v5/public/spot
 // Subscribe args: "orderbook.20.{SYMBOL}" (e.g. "orderbook.20.BTCUSDT")
@@ -63,7 +74,11 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
 
 const io = new Server(httpServer, {
   path: "/socket.io/",
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: false,
+  },
   pingTimeout: 60000,
   pingInterval: 25000,
 });

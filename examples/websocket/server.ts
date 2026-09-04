@@ -2,12 +2,17 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 
 const httpServer = createServer()
+const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean)
 const io = new Server(httpServer, {
   // DO NOT change the path, it is used by Caddy to forward the request to the correct port
   path: '/',
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: false
   },
   pingTimeout: 60000,
   pingInterval: 25000,
