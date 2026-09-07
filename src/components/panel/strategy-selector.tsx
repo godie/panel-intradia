@@ -202,7 +202,7 @@ export function StrategySelector({ data }: Props) {
                 {sig.name}
               </span>
               <span className="ml-1 text-muted-foreground/50">
-                {sig.description}
+                {t(sig.description)}
               </span>
             </div>
           </div>
