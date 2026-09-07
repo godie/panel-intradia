@@ -24,6 +24,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { Server } from "socket.io";
 import { WebSocket } from "ws";
+import {
+  isAllowedWebSocketOrigin,
+  isValidMarketPrice,
+  isValidMarketQuantity,
+} from "../websocket-security";
 
 const PORT = 3004;
 const SYMBOLS = ["btcusdt", "ethusdt", "xrpusdt", "solusdt", "bnbusdt"] as const;
@@ -77,6 +82,12 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
     credentials: false,
   },
+  // CORS headers do not protect WebSocket upgrades; enforce Origin here too.
+  allowRequest: (req, callback) => {
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+    callback(null, isAllowedWebSocketOrigin(origin, allowedOrigins));
+  },
+  maxHttpBufferSize: 64 * 1024,
   pingTimeout: 60000,
   pingInterval: 25000,
 });
@@ -124,7 +135,7 @@ function connectBinance() {
             if (!Array.isArray(entry) || entry.length < 2) return null;
             const price = Number(entry[0]);
             const qty = Number(entry[1]);
-            if (!Number.isFinite(price) || !Number.isFinite(qty)) return null;
+            if (!isValidMarketPrice(price) || !isValidMarketQuantity(qty)) return null;
             return { price, qty } as Level;
           })
           .filter((v): v is Level => v != null);
