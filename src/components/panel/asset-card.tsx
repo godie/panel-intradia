@@ -152,12 +152,14 @@ function MetricRow({
   unavailable,
   color,
   hint,
+  notAvailableLabel,
 }: {
   label: string;
   value: string;
   unavailable: boolean;
   color?: string;
   hint?: string;
+  notAvailableLabel: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-white/5 py-2 last:border-0">
@@ -183,7 +185,7 @@ function MetricRow({
           style={unavailable ? undefined : color ? { color } : undefined}
           title={hint}
         >
-          {unavailable ? t("card.notAvailable") : value}
+          {unavailable ? notAvailableLabel : value}
         </span>
         {hint && !unavailable && (
           <span className="text-[10px] text-muted-foreground/70">{hint}</span>
@@ -210,6 +212,7 @@ export function AssetCard({
     quote: "USD",
   };
   const nd = data.no_disponible;
+  const notAvailableLabel = t("card.notAvailable");
   const state = data.cross_state;
   const stateStyle = state ? STATE_STYLES[state] : null;
 
@@ -491,24 +494,28 @@ export function AssetCard({
           value={`$${fmtPrice(data.ema55_4h)}`}
           unavailable={nd.ema55_4h}
           color="#e8b04b"
+          notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
           label={`${t("card.ema200")} · 4h`}
           value={`$${fmtPrice(data.ema200_4h)}`}
           unavailable={nd.ema200_4h}
           color="#4fa8d8"
+          notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
           label={t("card.resistance") || "Resistencia"}
           value={`$${fmtPrice(data.resistance)}`}
           unavailable={nd.resistance}
           color="#e2604f"
+          notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
           label={t("card.support") || "Soporte"}
           value={`$${fmtPrice(data.support)}`}
           unavailable={nd.support}
           color="#5fbf8f"
+          notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
           label={t("card.atr")}
@@ -516,6 +523,7 @@ export function AssetCard({
           unavailable={nd.atr_14_4h}
           color="#b48cff"
           hint={t("card.atrHint")}
+          notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
           label={t("card.bollingerBw")}
@@ -523,6 +531,7 @@ export function AssetCard({
           unavailable={nd.bollinger}
           color="#b48cff"
           hint={t("card.bollingerBwHint")}
+          notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
           label={t("card.vwapLabel")}
@@ -536,6 +545,7 @@ export function AssetCard({
                 : t("card.vwapBelow")
               : undefined
           }
+          notAvailableLabel={notAvailableLabel}
         />
         {/* RSI gauge (own row, richer) */}
         <RsiGauge
@@ -576,6 +586,7 @@ export function AssetCard({
               ? `Tenkan ${data.ichimoku.tenkan?.toFixed(0)} · Kijun ${data.ichimoku.kijun?.toFixed(0)}`
               : undefined
           }
+          notAvailableLabel={notAvailableLabel}
         />
         {/* Fibonacci retracement levels */}
         <div className="mt-2">

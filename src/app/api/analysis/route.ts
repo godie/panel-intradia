@@ -20,7 +20,6 @@ import {
 } from "@/lib/indicators";
 import { buildStructureText } from "@/lib/structure";
 import { getCached, setCached } from "@/lib/cache";
-import { recordCrossIfNew } from "@/lib/cross-history";
 import type { AnalysisResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -33,6 +32,10 @@ function round(n: number | null, decimals: number): number | null {
   if (n == null || !Number.isFinite(n)) return null;
   const f = Math.pow(10, decimals);
   return Math.round(n * f) / f;
+}
+
+function roundFinite(n: number, decimals: number): number {
+  return round(n, decimals) ?? n;
 }
 
 function decimalsForPrice(price: number): number {
@@ -215,18 +218,18 @@ function buildAnalysis(
         direction: fibRes.direction,
         levels: fibRes.levels.map((l) => ({
           ratio: l.ratio,
-          price: round(l.price, dec),
+          price: roundFinite(l.price, dec),
           label: l.label,
         })),
         extensions: fibRes.extensions.map((l) => ({
           ratio: l.ratio,
-          price: round(l.price, dec),
+          price: roundFinite(l.price, dec),
           label: l.label,
         })),
       }
     : null;
 
-  const no_disponible = {
+  const no_disponible: AnalysisResponse["no_disponible"] = {
     spot_price: spotPrice == null,
     change_24h_pct: change24h == null,
     ema55_4h: !ema55Res.available,
@@ -337,107 +340,6 @@ function buildAnalysis(
   };
 }
 
-/**
- * persistCrosses — record any fresh EMA/MACD/momentum crosses from the
- * analysis payload to SQLite. Only crosses flagged as `happened` (within the
- * recent threshold) are recorded; dedup by symbol+type+direction within a
- * 6h window for EMA/MACD and 2h for momentum. Non-blocking by design.
- */
-async function persistCrosses(payload: AnalysisResponse): Promise<void> {
-  const price = payload.spot_price ?? 0;
-  const tasks: Promise<void>[] = [];
-
-  // EMA55/200 cross.
-  if (payload.cross_info?.happened === true && payload.cross_info.direction) {
-    tasks.push(
-      recordCrossIfNew({
-        symbol: payload.symbol,
-        type: "ema",
-        direction: payload.cross_info.direction,
-        price,
-        candlesAgo: payload.cross_info.candles_since_cross ?? 0,
-      }),
-    );
-  }
-
-  // MACD/signal cross.
-  if (payload.macd_cross?.happened === true && payload.macd_cross.direction) {
-    tasks.push(
-      recordCrossIfNew({
-        symbol: payload.symbol,
-        type: "macd",
-        direction: payload.macd_cross.direction,
-        price,
-        candlesAgo: payload.macd_cross.candles_since_cross ?? 0,
-      }),
-    );
-  }
-
-  // MACD histogram momentum flip.
-  if (
-    payload.macd_cross?.momentum_flip === true &&
-    payload.macd_cross.momentum_flip_direction
-  ) {
-    tasks.push(
-      recordCrossIfNew({
-        symbol: payload.symbol,
-        type: "momentum",
-        direction: payload.macd_cross.momentum_flip_direction,
-        price,
-        candlesAgo: payload.macd_cross.candles_since_flip ?? 0,
-      }),
-    );
-  }
-
-  // Bollinger squeeze event — persisted with direction "neutral" since a
-  // squeeze is direction-agnostic (it signals compressed volatility, not a
-  // directional bias). Dedup window is 12h (squeezes can persist for days).
-  if (payload.bollinger_squeeze?.is_squeezed === true) {
-    tasks.push(
-      recordCrossIfNew({
-        symbol: payload.symbol,
-        type: "squeeze",
-        direction: "neutral",
-        price,
-        candlesAgo: 0,
-      }),
-    );
-  }
-
-  // Squeeze breakout event — when bandwidth expands past the threshold,
-  // persist the directional breakout. Uses 6h dedup (shorter than squeeze
-  // since breakouts are time-sensitive signals).
-  if (
-    payload.squeeze_breakout?.happened === true &&
-    payload.squeeze_breakout.direction
-  ) {
-    tasks.push(
-      recordCrossIfNew({
-        symbol: payload.symbol,
-        type: "squeeze_breakout",
-        direction: payload.squeeze_breakout.direction,
-        price,
-        candlesAgo: payload.squeeze_breakout.candles_since_breakout ?? 0,
-      }),
-    );
-  }
-
-  // Stochastic %K/%D cross event — persisted with 6h dedup.
-  if (payload.stoch_cross?.happened === true && payload.stoch_cross.direction) {
-    tasks.push(
-      recordCrossIfNew({
-        symbol: payload.symbol,
-        type: "stoch_cross",
-        direction: payload.stoch_cross.direction,
-        price,
-        candlesAgo: payload.stoch_cross.candles_since_cross ?? 0,
-      }),
-    );
-  }
-
-  if (tasks.length > 0) await Promise.all(tasks);
-}
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const symbol = (searchParams.get("symbol") ?? "").toUpperCase().trim();
@@ -472,10 +374,6 @@ export async function GET(req: NextRequest) {
 
     const payload = buildAnalysis(symbol, klinesRes.klines, tickerRes.ticker, klinesRes.provider);
     setCached(cacheKey, payload, CACHE_TTL_MS);
-
-    persistCrosses(payload).catch((e) => {
-      console.error("[analysis] persist crosses error:", e);
-    });
 
     return NextResponse.json(payload, {
       headers: { "x-cache": "MISS", "x-source": klinesRes.provider, "cache-control": "no-store" },

@@ -18,7 +18,7 @@ desarrollo). Estable, verificado end-to-end con navegador automatizado y VLM,
 ### Qué incluye hoy
 
 - **5 pares** monitorizados en paralelo (BTC/USDT, ETH/USDT, XRP/USDT, SOL/USDT, BNB/USDT) sobre velas de 4 h.
-- **Tick en tiempo real** vía WebSocket de Binance (mini-service `ws-tick` en puerto 3003) con throttle 800 ms por símbolo, reconexión automática y latido de estado.
+- **Tick en tiempo real** vía WebSocket de Binance/Bybit (mini-service `tick-stream` en puerto 3005) con throttle 800 ms por símbolo, fallback automático, reconexión y latido de estado.
 - **Order book** en vivo (mini-service `order-book` en puerto 3004) con depth bar visual por activo.
 - **Análisis cuantitativo cada 60 s** servido por `GET /api/analysis?symbol=…` (caché TTL 60 s en memoria):
   - EMA 55 / EMA 200 y estado del cruce (`ALCISTA` / `BAJISTA` / `COMPRIMIDO`)
@@ -71,7 +71,7 @@ desarrollo). Estable, verificado end-to-end con navegador automatizado y VLM,
 └──────────────────────────────────────────────────────────────┘
 
 Mini-services independientes (Bun):
-  · ws-tick      :3003  socket.io → ticks Binance en vivo
+  · tick-stream  :3005  socket.io → ticks Binance/Bybit en vivo
   · order-book   :3004  socket.io → depth agregado
 ```
 
@@ -87,8 +87,8 @@ Mini-services independientes (Bun):
 | Validación      | Zod 4                                                          |
 | Tests           | Vitest 4 (110 tests sobre funciones puras de indicadores)      |
 | Lint            | ESLint 9 con `eslint-config-next`                              |
-| Mini-services   | Bun 1.3 (`ws-tick`, `order-book`)                              |
-| Proxy           | Caddy (puerto 81, variable `?XTransformPort=`)                 |
+| Mini-services   | Bun 1.3 (`tick-stream`, `order-book`)                          |
+| Proxy           | Caddy (puerto 81, `?XTransformPort=` allowlisted)              |
 | i18n            | Diccionario estático en `src/lib/i18n.ts` (es/en/zh/fr)        |
 
 ## Instalación
@@ -99,7 +99,7 @@ despliegue en producción, consulta **[INSTALL.md](./INSTALL.md)**.
 Resumen rápido (Docker):
 
 ```bash
-git clone <repo> intradia_cripto
+git clone https://github.com/godie/panel-intradia.git intradia_cripto
 cd intradia_cripto
 cp .env.example .env
 docker compose up -d --build
@@ -117,6 +117,7 @@ bun run dev    # http://localhost:3000
 ### Requisitos
 
 - **Docker** ≥ 24 (recomendado) o **Bun** ≥ 1.3 (manual)
+- `CORS_ORIGINS` opcional: lista separada por comas de orígenes exactos permitidos para los WebSockets (por defecto `http://localhost:81,http://localhost:3000`)
 - Acceso HTTPS saliente a `api.binance.com`, `stream.binance.com` y
   opcionalmente `api.binance.us` si la región bloquea el endpoint principal
 - (Opcional) **Caddy** si vas a servir tras un proxy en modo manual
@@ -125,7 +126,7 @@ bun run dev    # http://localhost:3000
 
 ```bash
 # 1. Clonar e instalar dependencias del dashboard
-git clone <repo> intradia_cripto
+git clone https://github.com/godie/panel-intradia.git intradia_cripto
 cd intradia_cripto
 bun install
 
@@ -142,7 +143,7 @@ bun run dev              # http://localhost:3000
 
 # 5. (Opcional pero recomendado) mini-services de tiempo real
 #    En terminales separadas:
-cd mini-services/ws-tick && bun install && bun run start   # :3003
+cd mini-services/tick-stream && bun install && bun run start   # :3005
 cd mini-services/order-book && bun install && bun run start # :3004
 
 # 6. (Opcional) proxy Caddy para enrutar puertos via ?XTransformPort=

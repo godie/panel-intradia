@@ -20,6 +20,7 @@ Y al final, **[Despliegue en producción](#despliegue-en-producción)** con inst
 ### Requisitos
 
 - **Docker Engine** ≥ 24 + **Docker Compose v2** (incluido en Docker Desktop).
+- `CORS_ORIGINS` opcional: lista separada por comas de orígenes exactos permitidos para los WebSockets (por defecto `http://localhost:81,http://localhost:3000`).
 - ~2 GB de RAM libre para los 4 contenedores.
 - Acceso HTTPS saliente a `api.binance.com`, `stream.binance.com`, `api.binance.us` (si la región bloquea el endpoint principal).
 
@@ -27,7 +28,7 @@ Y al final, **[Despliegue en producción](#despliegue-en-producción)** con inst
 
 ```bash
 # 1. Clonar
-git clone <repo> intradia_cripto
+git clone https://github.com/godie/panel-intradia.git intradia_cripto
 cd intradia_cripto
 
 # 2. (Opcional) configurar variables de entorno
@@ -49,9 +50,9 @@ open http://localhost:81/
 | Servicio | Puerto interno | Puerto público | Función |
 |---|---|---|---|
 | `app` | 3000 | (interno) | Next.js standalone — dashboard + REST API |
-| `ws-tick` | 3003 | (interno) | socket.io → ticks Binance en vivo |
+| `tick-stream` | 3005 | (interno) | socket.io → ticks Binance/Bybit en vivo |
 | `order-book` | 3004 | (interno) | socket.io → order book L2 Binance |
-| `caddy` | 81 | **81** | Reverse proxy con `?XTransformPort=` |
+| `caddy` | 81 | **81** | Reverse proxy con `?XTransformPort=` allowlisted |
 
 > **El frontend SIEMPRE se accede por `:81`** (Caddy), nunca directo al `:3000`. El browser necesita el proxy para que los WebSockets lleguen a los mini-services.
 
@@ -60,7 +61,7 @@ open http://localhost:81/
 ```bash
 docker compose ps                 # estado de los 4 servicios
 docker compose logs -f app        # logs del dashboard
-docker compose logs -f ws-tick    # logs del tick stream
+docker compose logs -f tick-stream # logs del tick stream
 docker compose restart app        # reiniciar solo el dashboard
 docker compose down               # parar (conservar DB y config)
 docker compose down -v            # parar + borrar volúmenes (pierdes el historial de cruces)
@@ -77,7 +78,7 @@ docker compose pull && docker compose up -d --build  # actualizar tras un pull
 **El dashboard no carga datos (queda en "Cargando…" infinito):**
 ```bash
 docker compose logs -f app
-docker compose logs -f ws-tick
+docker compose logs -f tick-stream
 docker compose logs -f order-book
 ```
 Lo más común es que la región del host bloquee `api.binance.com`. Solución:
@@ -118,7 +119,7 @@ Para desarrollo local con HMR y editar el código en caliente.
 
 ```bash
 # 1. Clonar e instalar
-git clone <repo> intradia_cripto
+git clone https://github.com/godie/panel-intradia.git intradia_cripto
 cd intradia_cripto
 bun install
 
@@ -132,12 +133,15 @@ bun run db:push
 # 4. Lanzar el dashboard
 bun run dev    # http://localhost:3000
 
-# 5. (Recomendado) Caddy para enrutar los mini-services
-caddy run --config Caddyfile   # :81 → proxy al dashboard + WS
+# 5. (Recomendado) arrancar los mini-services en terminales separadas
+cd mini-services/tick-stream && bun install && bun run start   # :3005
+cd mini-services/order-book  && bun install && bun run start   # :3004
 
-# 6. (Recomendado) arrancar los mini-services en terminales separadas
-cd mini-services/ws-tick    && bun install && bun run start   # :3003
-cd mini-services/order-book && bun install && bun run start   # :3004
+# 6. (Opcional) Caddy para enrutar los mini-services
+APP_UPSTREAM=localhost:3000 \
+TICK_STREAM_UPSTREAM=localhost:3005 \
+ORDER_BOOK_UPSTREAM=localhost:3004 \
+caddy run --config Caddyfile   # :81 → proxy al dashboard + WS
 ```
 
 ### Acceso
@@ -170,7 +174,7 @@ Funciona en cualquier proveedor que soporte Docker (Hetzner CX22, DigitalOcean D
 
 ```bash
 # En el VPS
-git clone <repo> /opt/intradia_cripto
+git clone https://github.com/godie/panel-intradia.git /opt/intradia_cripto
 cd /opt/intradia_cripto
 cp .env.example .env
 
@@ -187,32 +191,46 @@ docker compose exec app sh -c 'sqlite3 /app/db/custom.db ".backup /app/db/backup
 docker cp panel_app:/app/db/backup-YYYY-MM-DD.db ./backups/
 ```
 
-**HTTPS con Caddy (recomendado):** edita el `Caddyfile` para que Caddy escuche en `:443` y gestione los certificados de Let's Encrypt automáticamente. Un ejemplo para `midominio.com`:
+**HTTPS con Caddy (recomendado):** edita el `Caddyfile` para que Caddy escuche en `:443` y gestione los certificados de Let's Encrypt automáticamente. Configura también `CORS_ORIGINS=https://midominio.com` para autorizar el origen del dashboard. Un ejemplo para `midominio.com`:
 
 ```caddyfile
 midominio.com {
-    reverse_proxy localhost:3000 {
-        header_up Host {host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto https
-        header_up X-Real-IP {remote_host}
+    @transform_port_query {
+        query XTransformPort=*
+    }
+    @ws_t {
+        query XTransformPort=3005
+    }
+    @ws_ob {
+        query XTransformPort=3004
     }
 
-    @ws_t route /*?XTransformPort=3003*
     handle @ws_t {
-        reverse_proxy localhost:3003 {
+        reverse_proxy localhost:3005 {
             header_up Host {host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto https
         }
     }
 
-    @ws_ob route /*?XTransformPort=3004*
     handle @ws_ob {
         reverse_proxy localhost:3004 {
             header_up Host {host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto https
+        }
+    }
+
+    handle @transform_port_query {
+        respond "Unsupported XTransformPort" 404
+    }
+
+    handle {
+        reverse_proxy localhost:3000 {
+            header_up Host {host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up X-Real-IP {remote_host}
         }
     }
 }
@@ -253,7 +271,7 @@ bunx prisma db push
 bun run start    # sirve en :3000
 
 # 4. Mini-services (systemd o pm2)
-pm2 start bun --name ws-tick    -- mini-services/ws-tick/index.ts
+pm2 start bun --name tick-stream -- mini-services/tick-stream/index.ts
 pm2 start bun --name order-book -- mini-services/order-book/index.ts
 
 # 5. Caddy como reverse proxy (misma config que arriba)
@@ -263,7 +281,7 @@ pm2 start bun --name order-book -- mini-services/order-book/index.ts
 
 ⚠️ **No recomendado** para este proyecto por dos razones:
 
-1. **Los WebSockets requieren procesos persistentes.** Los mini-services (`ws-tick`, `order-book`) no corren en funciones serverless. Necesitas un host con procesos long-lived (Docker, Railway con worker, Fly con proceso regular).
+1. **Los WebSockets requieren procesos persistentes.** Los mini-services (`tick-stream`, `order-book`) no corren en funciones serverless. Necesitas un host con procesos long-lived (Docker, Railway con worker, Fly con proceso regular).
 2. **SQLite no funciona en plataformas efímeras** sin un volumen persistente (y muchas no lo ofrecen). Para serverless habría que migrar a Postgres o Turso.
 
 Si aun así quieres ir serverless, el patrón recomendado es:
@@ -305,5 +323,6 @@ docker compose down -v --rmi all
 | `DATABASE_URL` | `file:./db/custom.db` | Ubicación del archivo SQLite. En Docker Compose se monta como volumen. |
 | `NODE_ENV` | (auto) | Forzar `production` en Docker. |
 | `PORT` | `3000` | Puerto del Next.js standalone. No suele necesitar cambio. |
+| `CORS_ORIGINS` | `http://localhost:81,http://localhost:3000` | Orígenes exactos separados por comas autorizados para conectarse a los mini-services Socket.IO. |
 
 El proyecto **no necesita API keys** — todos los endpoints públicos de Binance / Bybit / CoinGecko que usamos son keyless.

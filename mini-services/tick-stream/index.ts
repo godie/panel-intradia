@@ -15,6 +15,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { Server } from "socket.io";
 import { WebSocket } from "ws";
+import {
+  isAllowedWebSocketOrigin,
+  isValidMarketPrice,
+} from "../websocket-security";
 
 const PORT = 3005;
 const SYMBOLS = ["btcusdt", "ethusdt", "xrpusdt", "solusdt", "bnbusdt"] as const;
@@ -27,6 +31,17 @@ const BINANCE_WS_URL =
   SYMBOLS.map((s) => `${s}@trade`).join("/");
 
 const BYBIT_WS_URL = "wss://stream.bybit.com/v5/public/spot";
+const DEFAULT_CORS_ORIGINS = [
+  "http://localhost:81",
+  "http://localhost:3000",
+  "http://127.0.0.1:81",
+  "http://127.0.0.1:3000",
+];
+const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = CORS_ORIGINS.length > 0 ? CORS_ORIGINS : DEFAULT_CORS_ORIGINS;
 
 const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
   if (req.url === "/health") {
@@ -49,7 +64,17 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
 
 const io = new Server(httpServer, {
   path: "/socket.io/",
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: false,
+  },
+  // CORS headers do not protect WebSocket upgrades; enforce Origin here too.
+  allowRequest: (req, callback) => {
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+    callback(null, isAllowedWebSocketOrigin(origin, allowedOrigins));
+  },
+  maxHttpBufferSize: 64 * 1024,
   pingTimeout: 60000,
   pingInterval: 25000,
 });
@@ -98,7 +123,7 @@ function connectBinance(): void {
       const symbol = String(data?.s ?? "").toUpperCase();
       const price = Number(data?.p);
       const time = Number(data?.T ?? Date.now());
-      if (!symbol || !Number.isFinite(price)) return;
+      if (!symbol || !isValidMarketPrice(price) || !Number.isFinite(time)) return;
       emit({ symbol, price, time });
     } catch (err) {
       console.error("[binance] parse error:", err);
@@ -144,11 +169,11 @@ function connectBybit(): void {
       const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString());
       if (msg?.topic?.startsWith("publicTrade.") && Array.isArray(msg.data)) {
         for (const trade of msg.data) {
-          emit({
-            symbol: String(trade.s ?? "").toUpperCase(),
-            price: Number(trade.p),
-            time: Number(trade.T ?? Date.now()),
-          });
+          const symbol = String(trade.s ?? "").toUpperCase();
+          const price = Number(trade.p);
+          const time = Number(trade.T ?? Date.now());
+          if (!symbol || !isValidMarketPrice(price) || !Number.isFinite(time)) continue;
+          emit({ symbol, price, time });
         }
       }
     } catch (err) {

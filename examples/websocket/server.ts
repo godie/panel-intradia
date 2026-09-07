@@ -1,14 +1,29 @@
 import { createServer } from 'http'
 import { Server } from 'socket.io'
+import {
+  isAllowedWebSocketOrigin,
+  isValidChatText,
+} from '../../mini-services/websocket-security'
 
 const httpServer = createServer()
+const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000,http://localhost:3003")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean)
 const io = new Server(httpServer, {
-  // DO NOT change the path, it is used by Caddy to forward the request to the correct port
-  path: '/',
+  // Keep the server and client on the standard Socket.IO endpoint path.
+  path: '/socket.io/',
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: false
   },
+  // CORS headers do not protect WebSocket upgrades; enforce Origin here too.
+  allowRequest: (req, callback) => {
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+    callback(null, isAllowedWebSocketOrigin(origin, allowedOrigins));
+  },
+  maxHttpBufferSize: 64 * 1024,
   pingTimeout: 60000,
   pingInterval: 25000,
 })
@@ -46,26 +61,21 @@ const createUserMessage = (username: string, content: string): Message => ({
   type: 'user'
 })
 
+const MAX_USERNAME_LENGTH = 64
+const MAX_MESSAGE_LENGTH = 2000
+
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`)
 
-  // Add test event handler
-  socket.on('test', (data) => {
-    console.log('Received test message:', data)
-    socket.emit('test-response', { 
-      message: 'Server received test message', 
-      data: data,
-      timestamp: new Date().toISOString()
-    })
-  })
+  socket.on('join', (data: unknown) => {
+    if (!data || typeof data !== 'object' || !('username' in data)) return
+    const username = data.username
+    if (!isValidChatText(username, MAX_USERNAME_LENGTH)) return
 
-  socket.on('join', (data: { username: string }) => {
-    const { username } = data
-    
-    // Create user object
+    // Create user object; all later messages use this server-owned username.
     const user: User = {
       id: socket.id,
-      username
+      username: username.trim()
     }
     
     // Add to user list
@@ -82,14 +92,15 @@ io.on('connection', (socket) => {
     console.log(`${username} joined the chat room, current online users: ${users.size}`)
   })
 
-  socket.on('message', (data: { content: string; username: string }) => {
-    const { content, username } = data
+  socket.on('message', (data: unknown) => {
+    if (!data || typeof data !== 'object' || !('content' in data)) return
+    const content = data.content
     const user = users.get(socket.id)
-    
-    if (user && user.username === username) {
-      const message = createUserMessage(username, content)
+
+    if (user && isValidChatText(content, MAX_MESSAGE_LENGTH)) {
+      const message = createUserMessage(user.username, content.trim())
       io.emit('message', message)
-      console.log(`${username}: ${content}`)
+      console.log(`${user.username}: ${content.trim()}`)
     }
   })
 

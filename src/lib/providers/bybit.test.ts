@@ -19,6 +19,7 @@ describe("parseBybitKlines", () => {
       volume: 100,
       quoteVolume: 3005000,
       closeTime: 1700000000000 + 4 * 60 * 60 * 1000,
+      trades: 0,
     });
     expect(out[1].trades).toBe(0);
   });
@@ -47,6 +48,8 @@ describe("parseBybitTicker", () => {
       volume: 1000,
       quoteVolume: 30000000,
       trades: 0,
+      priceChange: 150.0025,
+      priceChangePercent: 0.5,
     });
     expect(out.priceChange).toBeCloseTo(150.0025, 3);
     expect(out.priceChangePercent).toBeCloseTo(0.5, 5);

@@ -32,8 +32,9 @@ export default function SocketDemo() {
   useEffect(() => {
     // Connect to websocket server
     // Never use PORT in the URL, alyways use XTransformPort
-    // DO NOT change the path, it is used by Caddy to forward the request to the correct port
-    const socketInstance = io('/?XTransformPort=3003', {
+    // Connect to the standalone example service on port 3003.
+    const socketInstance = io('http://localhost:3003', {
+      path: '/socket.io/',
       transports: ['websocket', 'polling'],
       forceNew: true,
       reconnection: true,

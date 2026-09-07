@@ -749,6 +749,7 @@ export function calculateFibonacciRetracement(
       swingLow: 0,
       direction: "up",
       levels: [],
+      extensions: [],
       available: false,
     };
   }
@@ -776,6 +777,7 @@ export function calculateFibonacciRetracement(
       swingLow,
       direction: "up",
       levels: [],
+      extensions: [],
       available: false,
     };
   }

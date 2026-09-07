@@ -8,7 +8,7 @@
 #   - Prisma client + schema
 #
 # Used by `docker-compose.yml` as the base image for the `app`,
-# `ws-tick`, and `order-book` services. The `caddy` service uses the
+# `tick-stream`, and `order-book` services. The `caddy` service uses the
 # official `caddy:2-alpine` image and only mounts the Caddyfile.
 # ----------------------------------------------------------------------------
 
@@ -33,7 +33,7 @@ FROM base AS deps
 
 # Copy only the lockfiles + package.jsons first so this layer caches well.
 COPY package.json bun.lock* ./
-COPY mini-services/ws-tick/package.json ./mini-services/ws-tick/
+COPY mini-services/tick-stream/package.json ./mini-services/tick-stream/
 COPY mini-services/order-book/package.json ./mini-services/order-book/
 COPY prisma ./prisma
 COPY .env* ./
@@ -43,8 +43,8 @@ RUN bun install --frozen-lockfile
 
 # Install mini-service deps in their own folders so they each get a
 # minimal node_modules (socket.io, ws).
-RUN cd mini-services/ws-tick    && bun install --frozen-lockfile
-RUN cd mini-services/order-book && bun install --frozen-lockfile
+RUN cd mini-services/tick-stream && bun install --frozen-lockfile
+RUN cd mini-services/order-book  && bun install --frozen-lockfile
 
 # Generate the Prisma client (needs the schema + DATABASE_URL).
 RUN bunx prisma generate
@@ -56,7 +56,7 @@ FROM base AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/mini-services/ws-tick/node_modules ./mini-services/ws-tick/node_modules
+COPY --from=deps /app/mini-services/tick-stream/node_modules ./mini-services/tick-stream/node_modules
 COPY --from=deps /app/mini-services/order-book/node_modules ./mini-services/order-book/node_modules
 COPY --from=deps /app/prisma ./prisma
 COPY . .
@@ -95,9 +95,9 @@ RUN mkdir -p /app/db && chown -R bun:bun /app/db
 
 USER bun
 
-EXPOSE 3000 3003 3004 3005
+EXPOSE 3000 3004 3005
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget --quiet --spider http://localhost:3000/api/cross-history?symbol=BTCUSDT || exit 1
 
-CMD ["echo", "Use docker compose to start the right service (app / ws-tick / order-book)."]
+CMD ["echo", "Use docker compose to start the right service (app / tick-stream / order-book)."]

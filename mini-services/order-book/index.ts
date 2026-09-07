@@ -17,6 +17,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { Server } from "socket.io";
 import { WebSocket } from "ws";
+import {
+  isAllowedWebSocketOrigin,
+  isValidMarketPrice,
+  isValidMarketQuantity,
+} from "../websocket-security";
 
 const PORT = 3004;
 const SYMBOLS = ["btcusdt", "ethusdt", "xrpusdt", "solusdt", "bnbusdt"] as const;
@@ -26,6 +31,17 @@ const FAILURE_THRESHOLD = 3;
 const BINANCE_WS_URL =
   "wss://stream.binance.com:9443/stream?streams=" +
   SYMBOLS.map((s) => `${s}@depth20@1000ms`).join("/");
+const DEFAULT_CORS_ORIGINS = [
+  "http://localhost:81",
+  "http://localhost:3000",
+  "http://127.0.0.1:81",
+  "http://127.0.0.1:3000",
+];
+const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = CORS_ORIGINS.length > 0 ? CORS_ORIGINS : DEFAULT_CORS_ORIGINS;
 
 // Bybit v5 order book WS: wss://stream.bybit.com/v5/public/spot
 // Subscribe args: "orderbook.20.{SYMBOL}" (e.g. "orderbook.20.BTCUSDT")
@@ -63,7 +79,17 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
 
 const io = new Server(httpServer, {
   path: "/socket.io/",
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: false,
+  },
+  // CORS headers do not protect WebSocket upgrades; enforce Origin here too.
+  allowRequest: (req, callback) => {
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+    callback(null, isAllowedWebSocketOrigin(origin, allowedOrigins));
+  },
+  maxHttpBufferSize: 64 * 1024,
   pingTimeout: 60000,
   pingInterval: 25000,
 });
@@ -123,6 +149,18 @@ function connectBinance(): void {
       const rawBids = data?.bids ?? data?.b ?? [];
       const rawAsks = data?.asks ?? data?.a ?? [];
       if (!symbol || !Array.isArray(rawBids) || !Array.isArray(rawAsks)) return;
+
+      // Transform [priceStr, qtyStr] → {price, qty}.
+      const toLevels = (arr: unknown[]): Level[] =>
+        arr
+          .map((entry) => {
+            if (!Array.isArray(entry) || entry.length < 2) return null;
+            const price = Number(entry[0]);
+            const qty = Number(entry[1]);
+            if (!isValidMarketPrice(price) || !isValidMarketQuantity(qty)) return null;
+            return { price, qty } as Level;
+          })
+          .filter((v): v is Level => v != null);
 
       const snapshot: DepthSnapshot = {
         symbol,

@@ -34,7 +34,7 @@ A crypto quantitative trading dashboard with real-time price ticks, L2 order boo
 - ❌ No `bun run build` — dev server only (`bun run dev`)
 - ❌ No test files in `src/app/` — tests go in `src/lib/*.test.ts`
 - ❌ No hardcoded Spanish strings — use `t()` from `useLanguage()`
-- ❌ No `fetch('http://localhost:3003')` — use `io('/?XTransformPort=3003')`
+- ❌ No direct mini-service fetches — use `io('/?XTransformPort=3005')` through the Caddy gateway
 
 ## Color Palette
 
@@ -108,7 +108,7 @@ src/
     correlation-matrix.tsx  — Pearson correlation heatmap
     collapsible-section.tsx — Collapsible wrapper (localStorage persistence)
 mini-services/
-  ws-tick/                  — Socket.io server (port 3003) → Binance trade stream
+  tick-stream/              — Socket.io server (port 3005) → Binance/Bybit trade stream
   order-book/               — Socket.io server (port 3004) → Binance depth20 stream
 prisma/
   schema.prisma             — CrossEvent model (SQLite)
@@ -196,7 +196,7 @@ Rules:
 
 - Each mini-service is an independent Bun project in `mini-services/`
 - Must define `index.ts` as entry file
-- Must define a specific port (3003 for ws-tick, 3004 for order-book)
+- Must define a specific port (3005 for tick-stream, 3004 for order-book)
 - `bun --hot` for auto-restart on file changes
 - Socket.io `path: "/socket.io/"` (NOT `"/"`)
 - Frontend connects via `io("/?XTransformPort=PORT", { path: "/socket.io/" })`
@@ -240,7 +240,7 @@ Test coverage requirements:
 
 - Canvas charts: redraw only when data changes (useEffect deps)
 - Socket.io: singleton pattern (one connection per service, shared across components)
-- Price tick throttle: 800ms per symbol (ws-tick service)
+- Price tick throttle: 800ms per symbol (tick-stream service)
 - Order book: 1000ms update cadence (Binance depth20@1000ms)
 - Sparkline: max 120 points (sliced from 500 klines)
 - Cache: 60s for analysis, 120s for correlation
@@ -253,7 +253,7 @@ Test coverage requirements:
 - **7 alert types**: EMA cross, MACD cross, momentum flip, Bollinger squeeze, squeeze breakout, Stochastic cross, strategy transitions
 - **4 languages**: Español, English, 中文, Français
 - **110 Vitest tests**
-- **2 mini-services**: ws-tick (port 3003), order-book (port 3004)
+- **2 mini-services**: tick-stream (port 3005), order-book (port 3004)
 
 ## Commands
 
@@ -266,6 +266,6 @@ bun run db:push      # Push Prisma schema to SQLite
 bun run db:generate  # Generate Prisma client
 
 # Mini-services (separate terminals)
-cd mini-services/ws-tick && bun run dev      # Port 3003
-cd mini-services/order-book && bun run dev  # Port 3004
+cd mini-services/tick-stream && bun run dev  # Port 3005
+cd mini-services/order-book && bun run dev   # Port 3004
 ```

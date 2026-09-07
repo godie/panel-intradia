@@ -52,7 +52,7 @@ export function createProviderRouter(providers: MarketDataProvider[]) {
 
     // No provider succeeded — refresh health cache and re-throw.
     if (!cachedHealth) {
-      const fresh: Record<ProviderId, boolean> = {};
+      const fresh = {} as Record<ProviderId, boolean>;
       await Promise.all(
         providers.map(async (p) => {
           fresh[p.id] = await p.healthy();

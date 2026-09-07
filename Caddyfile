@@ -1,10 +1,18 @@
 :81 {
+	# Only the two public Socket.IO services may be selected by the query.
+	# Never proxy a request to a client-supplied upstream address or port.
 	@transform_port_query {
 		query XTransformPort=*
 	}
+	@tick_stream {
+		query XTransformPort=3005
+	}
+	@order_book {
+		query XTransformPort=3004
+	}
 
-	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
+	handle @tick_stream {
+		reverse_proxy {$TICK_STREAM_UPSTREAM:localhost:3005} {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
@@ -12,8 +20,21 @@
 		}
 	}
 
+	handle @order_book {
+		reverse_proxy {$ORDER_BOOK_UPSTREAM:localhost:3004} {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle @transform_port_query {
+		respond "Unsupported XTransformPort" 404
+	}
+
 	handle {
-		reverse_proxy localhost:3000 {
+		reverse_proxy {$APP_UPSTREAM:localhost:3000} {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
