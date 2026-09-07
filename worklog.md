@@ -3046,3 +3046,47 @@ Stage Summary:
   Docker + README añadidos por el PR.
 - **Servicios activos**: ws-tick (3003), order-book (3004), tick-stream (3005).
   El frontend usa tick-stream (3005) con fallback automático.
+
+---
+Task ID: round-25
+Agent: cron webDevReview
+Task: Order-book Bybit fallback + source field in use-order-book hook.
+
+Work Log:
+- Leído worklog previo: v24 con provider abstraction + tick-stream (3005).
+  127 tests, 3 services corriendo.
+- QA inicial: pull de GitHub (already up to date), 127 tests, lint limpio,
+  3 services activos (3003, 3004, 3005).
+- **order-book service** (`mini-services/order-book/index.ts`):
+  - Reescrito para soportar Binance → Bybit fallback (igual que tick-stream).
+  - Bybit WS: `wss://stream.bybit.com/v5/public/spot`, subscribe args
+    `orderbook.20.{SYMBOL}` (ej. "orderbook.20.BTCUSDT").
+  - Bybit depth payload: topic "orderbook.20.BTCUSDT", data: {b: [...], a: [...]}
+    — mismo formato [price, qty] que Binance.
+  - Failure threshold: 3 fallos consecutivos → switch a Bybit.
+  - `ws-status` ahora incluye `source: "binance"|"bybit"|null`.
+  - Health endpoint incluye `activeSource`, `binanceConnected`, `bybitConnected`.
+  - Mismo patrón de setActive() que tick-stream para notificar cambios.
+- **use-order-book hook** (`src/hooks/use-order-book.ts`):
+  - `OrderBookState` ampliado con `source: "binance"|"bybit"|null`.
+  - `ws-status` handler ahora parsea `source` del payload.
+  - Fallback: si `source` no está en el payload, infiere "binance" si connected.
+- Verificación:
+  - order-book service restarteado, health OK: activeSource="binance",
+    binanceConnected=true.
+  - Test funcional: ws-status con source, depth snapshots flowing (SOLUSDT
+    20 bids/20 asks, ETHUSDT 20 bids/20 asks).
+  - 127 tests pasando, lint limpio.
+  - 6 cards renderizadas, header muestra "TICK LIVE" + "Fuente: BINANCE",
+    ORDER BOOK con LIVE badge.
+  - Mobile: 6 cards en 1 columna.
+
+Stage Summary:
+- **Estado:** v25 entregada. Order-book ahora tiene Binance → Bybit fallback.
+  Ambos mini-services de streaming (tick-stream 3005, order-book 3004) tienen
+  fallback automático. 127 tests pasando.
+- **Artefactos:**
+  - `mini-services/order-book/index.ts` (rewritten with Bybit fallback)
+  - `src/hooks/use-order-book.ts` (+source field)
+- **Servicios con fallback**: tick-stream (3005) ✅, order-book (3004) ✅.
+  El REST API ya usa el providerRouter (Binance → Bybit) desde el PR #1.
