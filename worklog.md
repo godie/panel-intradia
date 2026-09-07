@@ -3090,3 +3090,48 @@ Stage Summary:
   - `src/hooks/use-order-book.ts` (+source field)
 - **Servicios con fallback**: tick-stream (3005) ✅, order-book (3004) ✅.
   El REST API ya usa el providerRouter (Binance → Bybit) desde el PR #1.
+
+---
+Task ID: round-27
+Agent: cron webDevReview
+Task: Translate strategy signal descriptions to 4 languages (complete i18n).
+
+Work Log:
+- Leído worklog previo: v25 con provider abstraction + tick-stream + order-book
+  fallback. 127 tests, CI workflow merged.
+- Pull de GitHub: merge PR #6 (ci.yml workflow), fast-forward limpio.
+- QA: 127 tests, lint limpio, 3 services corriendo, 6 cards.
+- **strategies.ts** refactorizado:
+  - Todos los `description` fields en signals ahora retornan i18n keys
+    (`strategy.sig.*`) en vez de texto español hardcoded.
+  - Signal `name` fields mantenidos en inglés (términos técnicos, no son
+    user-facing labels — van con checkmarks).
+  - Strategy `name` y `description` ya eran keys desde round 22.
+- **i18n.ts**: 45 nuevas keys añadidas a los 4 diccionarios:
+  - `strategy.sig.emaBullish/Bearish/Compressed`
+  - `strategy.sig.rsiOverbought/OversoldOpp/Neutral/NA/OversoldBuy/NotOversold/OversoldShort`
+  - `strategy.sig.priceAboveEma/BelowEma/dataInsufficient`
+  - `strategy.sig.macdBullCross/Positive/NoBullConfirm/BearCross/Negative/NoBearConfirm`
+  - `strategy.sig.stochBullCross/NotOverbought/Overbought/BearCross/NotOversold/Oversold/NA/BullConfirmed/NoBullCross`
+  - `strategy.sig.priceNearSupport/supportNA/squeezeActive/volatilityNormal`
+  - `strategy.sig.emaBearishShort/NoBearish/CompressedHold/NotCompressed`
+  - `strategy.sig.squeezeActiveHold/noSqueeze/rsiNeutralZone/rsiExtreme`
+  - `strategy.sig.freshCrosses/noFreshCrosses`
+- **StrategySelector**: `t(sig.description)` traduce cada signal description.
+- Verificación agent-browser:
+  - EN: "Bullish EMA structure" ✅, "No fresh crosses" ✅
+  - ES: "Estructura de medias alcista" ✅, "Sin cruces frescos" ✅
+  - 6 cards, sin errores, mobile 1 columna.
+- 127 tests, lint limpio.
+- Branch pushed: `feat/round-27-strategy-i18n`
+
+Stage Summary:
+- **Estado:** v27 entregada. i18n ahora 100% completo — todas las strings
+  visibles usan `t()` en 4 idiomas (ES/EN/ZH/FR). Las signal descriptions
+  de las estrategias eran las últimas strings en español hardcoded.
+- **Artefactos:**
+  - `src/lib/strategies.ts` (refactor: signal descriptions → i18n keys)
+  - `src/lib/i18n.ts` (+45 keys × 4 idiomas = 180 nuevas keys)
+  - `src/components/panel/strategy-selector.tsx` (t(sig.description))
+- **Branch**: `feat/round-27-strategy-i18n` pushed to GitHub
+- **PR link**: https://github.com/godie/panel-intradia/pull/new/feat/round-27-strategy-i18n
