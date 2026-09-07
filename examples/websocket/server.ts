@@ -7,8 +7,8 @@ const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000")
   .map((origin) => origin.trim())
   .filter(Boolean)
 const io = new Server(httpServer, {
-  // DO NOT change the path, it is used by Caddy to forward the request to the correct port
-  path: '/',
+  // Keep the server and client on the standard Socket.IO endpoint path.
+  path: '/socket.io/',
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],

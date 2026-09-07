@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { io, type Socket } from "socket.io-client";
+import { buildGatewaySocketUrl } from "@/lib/socket-url";
 
 /**
  * use-tick-stream — subscribe to real-time price ticks from the tick-stream
@@ -17,11 +18,11 @@ import { io, type Socket } from "socket.io-client";
  *  - If the page is already served from the gateway (port 81), use a
  *    relative URL (`/?XTransformPort=3005`) so the same origin is reused.
  *  - Otherwise (e.g. Next.js dev port 3000), explicitly point the socket
- *    at the gateway (`http://hostname:81/?XTransformPort=3005`).
+ *    at the gateway while preserving the page protocol.
  *
  * The socket.io client `path` option is set to "/socket.io/" so the
  * resulting request URLs become
- *   `http://hostname:81/socket.io/?...&XTransformPort=3005` which Caddy
+ *   `http(s)://hostname[:81]/socket.io/?...&XTransformPort=3005` which Caddy
  * forwards to the tick-stream service and the mini-service handles at its
  * socket.io endpoint.
  *
@@ -105,27 +106,16 @@ function getSnapshot(): TickState {
   return state;
 }
 
-// Gateway port — Caddy reverse proxy that routes `?XTransformPort=NNNN`
-// to the matching localhost port. In dev, the page can be served either
-// from the gateway (port 81) or directly from Next.js (port 3000). The
-// socket.io client MUST talk to the gateway so Caddy can forward the
-// WebSocket upgrade to the tick-stream mini-service on port 3005.
-const GATEWAY_PORT = "81";
+// Caddy reverse proxy routes `?XTransformPort=NNNN` to the matching
+// mini-service. The shared helper preserves HTTPS for secure deployments.
 const TICK_STREAM_PORT = "3005";
 
 function buildSocketUrl(): string {
   if (typeof window === "undefined") {
     // SSR safety — return a relative URL; the singleton only inits on client.
-    return `/?XTransformPort=${TICK_STREAM_PORT}`;
+    return buildGatewaySocketUrl(TICK_STREAM_PORT);
   }
-  const loc = window.location;
-  // Already on the gateway → relative URL keeps same origin (cookies, etc).
-  if (loc.port === GATEWAY_PORT) {
-    return `/?XTransformPort=${TICK_STREAM_PORT}`;
-  }
-  // Direct Next.js access (e.g. dev port 3000) → point at the gateway
-  // explicitly so socket.io can reach the tick-stream mini-service.
-  return `${loc.protocol}//${loc.hostname}:${GATEWAY_PORT}/?XTransformPort=${TICK_STREAM_PORT}`;
+  return buildGatewaySocketUrl(TICK_STREAM_PORT, window.location);
 }
 
 function ensureSocket(): Socket {

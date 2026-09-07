@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
+import { buildGatewaySocketUrl } from "@/lib/socket-url";
 
 export type OrderLevel = { price: number; qty: number };
 
@@ -25,8 +26,9 @@ export type OrderBookState = {
  * port 3004) and exposes the latest L2 depth snapshot per symbol.
  *
  * Connection: auto-detects gateway vs direct-dev-server (same pattern as
- * useTickStream). Routes through Caddy (port 81) when on dev port 3000,
- * uses relative URL when already behind the gateway.
+ * useTickStream). Routes through Caddy when served directly in development,
+ * preserves HTTPS for secure deployments, and uses a relative URL when already
+ * behind the gateway.
  *
  * The socket.io client `path` is set to "/socket.io/" to match the server
  * side — the previous "/" collided with the mini-service's /health
@@ -37,13 +39,8 @@ export type OrderBookState = {
  * chart, bid/ask imbalance, etc.).
  */
 function buildSocketUrl(): string {
-  if (typeof window === "undefined") return "/";
-  const { hostname, port } = window.location;
-  // Gateway is on port 81. If we're already there, use a relative URL.
-  if (port === "81") return "/?XTransformPort=3004";
-  // Otherwise (dev server on 3000, or any other port), go through Caddy
-  // on port 81 which forwards the WS upgrade to port 3004.
-  return `http://${hostname}:81/?XTransformPort=3004`;
+  if (typeof window === "undefined") return buildGatewaySocketUrl("3004");
+  return buildGatewaySocketUrl("3004", window.location);
 }
 
 export function useOrderBook(enabled: boolean = true): OrderBookState {
