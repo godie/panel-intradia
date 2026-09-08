@@ -8,6 +8,7 @@ import { StopLossSelector } from "./stop-loss-selector";
 import { StochasticRow } from "./stochastic-row";
 import { StrategySelector } from "./strategy-selector";
 import { StrategyConsensus } from "./strategy-consensus";
+import { StrategyBuilder } from "./strategy-builder";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
@@ -611,6 +612,7 @@ export function AssetCard({
         <div className="mt-3 space-y-2">
           <StrategyConsensus data={data} />
           <StrategySelector data={data} />
+          <StrategyBuilder data={data} />
         </div>
 
         {/* ATR-based stop loss suggestion with interactive multiplier */}
