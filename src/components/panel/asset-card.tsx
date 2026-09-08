@@ -79,7 +79,7 @@ const STATE_STYLES: Record<
   }
 > = {
   ALCISTA: {
-    label: "Alcista",
+    label: "card.stateAlcista",
     text: "text-[#5fbf8f]",
     bg: "bg-[#5fbf8f]/12",
     border: "border-[#5fbf8f]/30",
@@ -88,7 +88,7 @@ const STATE_STYLES: Record<
     accent: "#5fbf8f",
   },
   BAJISTA: {
-    label: "Bajista",
+    label: "card.stateBajista",
     text: "text-[#e2604f]",
     bg: "bg-[#e2604f]/12",
     border: "border-[#e2604f]/30",
@@ -97,7 +97,7 @@ const STATE_STYLES: Record<
     accent: "#e2604f",
   },
   COMPRIMIDO: {
-    label: "Comprimido",
+    label: "card.stateComprimido",
     text: "text-[#e8b04b]",
     bg: "bg-[#e8b04b]/12",
     border: "border-[#e8b04b]/30",
@@ -325,7 +325,7 @@ export function AssetCard({
             className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${stateStyle.bg} ${stateStyle.border} ${stateStyle.text}`}
           >
             <stateStyle.icon className="h-3.5 w-3.5" aria-hidden />
-            {stateStyle.label}
+            {t(stateStyle.label)}
           </span>
         )}
         {nd.cross_state && (
