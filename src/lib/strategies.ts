@@ -4,13 +4,8 @@
  * HOLD, SHORT, or WAIT) with a confidence score and a breakdown of which
  * signals fired.
  *
- * Each strategy defines a set of conditions (e.g., EMA55 > EMA200, RSI < 30,
- * MACD cross bullish). The evaluator checks each condition against the
- * analysis payload and returns:
- *  - action: "BUY" | "HOLD" | "SHORT" | "WAIT"
- *  - confidence: 0-100 (percentage of conditions that fired)
- *  - signals: array of {name, fired, description}
- *  - summary: human-readable text explaining the recommendation
+ * All `description` fields in signals are i18n keys (prefixed `strategy.sig.`).
+ * The StrategySelector component translates them with `t()`.
  */
 
 import type { AnalysisResponse } from "./types";
@@ -21,7 +16,8 @@ export type StrategySignal = {
   name: string;
   fired: boolean;
   description: string;
-  /** Optional direction hint for the UI (green/red/neutral). */
+  /** Numeric value to interpolate into description's `{val}` placeholder, if any. */
+  descValue?: string;
   direction?: "bullish" | "bearish" | "neutral";
 };
 
@@ -29,7 +25,7 @@ export type StrategyResult = {
   strategyId: string;
   strategyName: string;
   action: StrategyAction;
-  confidence: number; // 0-100
+  confidence: number;
   signals: StrategySignal[];
   summaryKey: string;
   summaryParams: { conf: number; fired: number; total: number };
@@ -39,24 +35,19 @@ export type Strategy = {
   id: string;
   name: string;
   description: string;
-  /** The action the strategy targets when ALL conditions fire. */
   targetAction: StrategyAction;
-  /** Returns the list of signals with their fired status. */
   evaluate: (data: AnalysisResponse) => StrategySignal[];
 };
 
-/** Helper: count how many signals fired. */
 function countFired(signals: StrategySignal[]): number {
   return signals.filter((s) => s.fired).length;
 }
 
-/** Helper: compute confidence as percentage of fired signals. */
 function confidence(signals: StrategySignal[]): number {
   if (signals.length === 0) return 0;
   return Math.round((countFired(signals) / signals.length) * 100);
 }
 
-/** Helper: generate summary key + params for i18n interpolation. */
 function buildSummary(
   action: StrategyAction,
   conf: number,
@@ -75,14 +66,12 @@ function buildSummary(
   return { key, params: { conf, fired, total } };
 }
 
-/** Evaluate a strategy and produce a result. */
 export function evaluateStrategy(
   strategy: Strategy,
   data: AnalysisResponse,
 ): StrategyResult {
   const signals = strategy.evaluate(data);
   const conf = confidence(signals);
-  // The action is the target action if confidence >= 60%, otherwise WAIT.
   const action: StrategyAction = conf >= 60 ? strategy.targetAction : "WAIT";
   const summary = buildSummary(action, conf, signals);
   return {
@@ -97,89 +86,100 @@ export function evaluateStrategy(
 }
 
 // ============================================================
-// PREDEFINED STRATEGIES
+// PREDEFINED STRATEGIES — descriptions are i18n keys
 // ============================================================
 
-/** Strategy 1: Trend-following BUY (EMA cross + RSI + MACD confirmation). */
 export const TREND_BUY: Strategy = {
   id: "trend_buy",
-  name: "Seguimiento de Tendencia · Compra",
-  description:
-    "Compra cuando la tendencia es alcista (EMA55 > EMA200), RSI no está sobrecomprado, y MACD confirma momentum alcista.",
+  name: "strategy.trendBuy",
+  description: "strategy.trendBuyDesc",
   targetAction: "BUY",
   evaluate: (data) => [
     {
       name: "EMA55 > EMA200",
       fired: data.cross_state === "ALCISTA",
       description: data.cross_state === "ALCISTA"
-        ? "Estructura de medias alcista"
+        ? "strategy.sig.emaBullish"
         : data.cross_state === "BAJISTA"
-          ? "Estructura bajista — no comprar"
-          : "Medias comprimidas — dirección incierta",
+          ? "strategy.sig.emaBearish"
+          : "strategy.sig.emaCompressed",
       direction: data.cross_state === "ALCISTA" ? "bullish" : "bearish",
     },
     {
-      name: "RSI < 70 (no sobrecomprado)",
+      name: "RSI < 70",
       fired: data.rsi_14_4h != null && data.rsi_14_4h < 70,
       description:
         data.rsi_14_4h != null
-          ? `RSI ${data.rsi_14_4h.toFixed(1)} ${data.rsi_14_4h >= 70 ? "sobrecomprado" : data.rsi_14_4h <= 30 ? "sobrevendido (oportunidad)" : "neutral"}`
-          : "RSI no disponible",
+          ? data.rsi_14_4h >= 70
+            ? "strategy.sig.rsiOverbought"
+            : data.rsi_14_4h <= 30
+              ? "strategy.sig.rsiOversoldOpp"
+              : "strategy.sig.rsiNeutral"
+          : "strategy.sig.rsiNA",
+      descValue: data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(1) : undefined,
       direction: data.rsi_14_4h != null && data.rsi_14_4h < 70 ? "bullish" : "bearish",
     },
     {
-      name: "Precio sobre EMA55",
+      name: "Price > EMA55",
       fired: data.spot_price != null && data.ema55_4h != null && data.spot_price > data.ema55_4h,
       description:
         data.spot_price != null && data.ema55_4h != null
-          ? `Precio ${data.spot_price > data.ema55_4h ? "sobre" : "bajo"} EMA55`
-          : "Datos insuficientes",
+          ? data.spot_price > data.ema55_4h
+            ? "strategy.sig.priceAboveEma"
+            : "strategy.sig.priceBelowEma"
+          : "strategy.sig.dataInsufficient",
       direction: data.spot_price != null && data.ema55_4h != null && data.spot_price > data.ema55_4h ? "bullish" : "bearish",
     },
     {
-      name: "MACD cross alcista o histograma positivo",
+      name: "MACD bullish cross or positive histogram",
       fired:
         (data.macd_cross?.happened === true && data.macd_cross.direction === "bullish") ||
         (data.macd.histogram != null && data.macd.histogram > 0),
       description:
         data.macd_cross?.happened === true && data.macd_cross.direction === "bullish"
-          ? "Cruce MACD alcista fresco"
+          ? "strategy.sig.macdBullCross"
           : data.macd.histogram != null && data.macd.histogram > 0
-            ? "Histograma MACD positivo"
-            : "Sin confirmación MACD alcista",
+            ? "strategy.sig.macdPositive"
+            : "strategy.sig.macdNoBullConfirm",
       direction: "bullish",
     },
     {
-      name: "Stochastic no sobrecomprado o cruce alcista fresco",
+      name: "Stochastic not overbought or fresh bullish cross",
       fired:
         (data.stoch_cross?.happened === true && data.stoch_cross.direction === "bullish") ||
         (data.stochastic.k != null && data.stochastic.k < 80),
       description:
         data.stoch_cross?.happened === true && data.stoch_cross.direction === "bullish"
-          ? "Cruce Stochastic alcista fresco"
+          ? "strategy.sig.stochBullCross"
           : data.stochastic.k != null && data.stochastic.k < 80
-            ? `%K ${data.stochastic.k.toFixed(1)} (no sobrecomprado)`
-            : "Stochastic sobrecomprado",
+            ? "strategy.sig.stochNotOverbought"
+            : "strategy.sig.stochOverbought",
+      descValue:
+        !(data.stoch_cross?.happened === true && data.stoch_cross.direction === "bullish") &&
+        data.stochastic.k != null && data.stochastic.k < 80
+          ? data.stochastic.k.toFixed(1)
+          : undefined,
       direction: "bullish",
     },
   ],
 };
 
-/** Strategy 2: Mean reversion BUY (RSI oversold + Stochastic oversold + price near support). */
 export const MEAN_REVERSION_BUY: Strategy = {
   id: "mean_reversion_buy",
-  name: "Reversión a la Media · Compra",
-  description:
-    "Compra cuando el activo está sobrevendido (RSI < 35, Stochastic < 25) y el precio está cerca del soporte.",
+  name: "strategy.meanRevBuy",
+  description: "strategy.meanRevBuyDesc",
   targetAction: "BUY",
   evaluate: (data) => [
     {
-      name: "RSI < 35 (sobrevendido)",
+      name: "RSI < 35 (oversold)",
       fired: data.rsi_14_4h != null && data.rsi_14_4h < 35,
       description:
         data.rsi_14_4h != null
-          ? `RSI ${data.rsi_14_4h.toFixed(1)} ${data.rsi_14_4h < 35 ? "sobrevendido" : "no sobrevendido"}`
-          : "RSI no disponible",
+          ? data.rsi_14_4h < 35
+            ? "strategy.sig.rsiOversoldBuy"
+            : "strategy.sig.rsiNotOversold"
+          : "strategy.sig.rsiNA",
+      descValue: data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(1) : undefined,
       direction: data.rsi_14_4h != null && data.rsi_14_4h < 35 ? "bullish" : "neutral",
     },
     {
@@ -187,153 +187,172 @@ export const MEAN_REVERSION_BUY: Strategy = {
       fired: data.stochastic.k != null && data.stochastic.k < 25,
       description:
         data.stochastic.k != null
-          ? `%K ${data.stochastic.k.toFixed(1)} ${data.stochastic.k < 25 ? "sobrevendido" : "no sobrevendido"}`
-          : "Stochastic no disponible",
+          ? data.stochastic.k < 25
+            ? "strategy.sig.stochOversoldBuy"
+            : "strategy.sig.stochNotOversoldBuy"
+          : "strategy.sig.stochNA",
+      descValue: data.stochastic.k != null ? data.stochastic.k.toFixed(1) : undefined,
       direction: data.stochastic.k != null && data.stochastic.k < 25 ? "bullish" : "neutral",
     },
     {
-      name: "Stochastic cruce alcista fresco",
+      name: "Stochastic fresh bullish cross",
       fired: data.stoch_cross?.happened === true && data.stoch_cross.direction === "bullish",
       description:
         data.stoch_cross?.happened === true && data.stoch_cross.direction === "bullish"
-          ? "Cruce %K/%D alcista confirmado"
-          : "Sin cruce Stochastic alcista fresco",
+          ? "strategy.sig.stochBullConfirmed"
+          : "strategy.sig.stochNoBullCross",
       direction: "bullish",
     },
     {
-      name: "Precio cerca de soporte (< 2% sobre support)",
+      name: "Price near support (< 2% above)",
       fired:
         data.spot_price != null && data.support != null && data.spot_price <= data.support * 1.02,
       description:
         data.spot_price != null && data.support != null
-          ? `Precio ${(((data.spot_price - data.support) / data.support) * 100).toFixed(1)}% sobre soporte`
-          : "Soporte no disponible",
+          ? "strategy.sig.priceNearSupport"
+          : "strategy.sig.supportNA",
+      descValue:
+        data.spot_price != null && data.support != null
+          ? (((data.spot_price - data.support) / data.support) * 100).toFixed(1)
+          : undefined,
       direction: "bullish",
     },
     {
-      name: "No en squeeze (volatilidad normal)",
+      name: "Not in squeeze (normal volatility)",
       fired: data.bollinger_squeeze?.is_squeezed !== true,
       description:
         data.bollinger_squeeze?.is_squeezed === true
-          ? "Squeeze activo — esperar breakout"
-          : "Volatilidad normal — condiciones para revertir",
+          ? "strategy.sig.squeezeActive"
+          : "strategy.sig.volatilityNormal",
       direction: "neutral",
     },
   ],
 };
 
-/** Strategy 3: Trend-following SHORT (EMA bearish + RSI not oversold + MACD bearish). */
 export const TREND_SHORT: Strategy = {
   id: "trend_short",
-  name: "Seguimiento de Tendencia · Short",
-  description:
-    "Vende en corto cuando la tendencia es bajista (EMA55 < EMA200), RSI no está sobrevendido, y MACD confirma momentum bajista.",
+  name: "strategy.trendShort",
+  description: "strategy.trendShortDesc",
   targetAction: "SHORT",
   evaluate: (data) => [
     {
       name: "EMA55 < EMA200",
       fired: data.cross_state === "BAJISTA",
       description: data.cross_state === "BAJISTA"
-        ? "Estructura de medias bajista"
-        : "No hay estructura bajista",
+        ? "strategy.sig.emaBearishShort"
+        : "strategy.sig.emaNoBearish",
       direction: data.cross_state === "BAJISTA" ? "bearish" : "bullish",
     },
     {
-      name: "RSI > 30 (no sobrevendido)",
+      name: "RSI > 30 (not oversold)",
       fired: data.rsi_14_4h != null && data.rsi_14_4h > 30,
       description:
         data.rsi_14_4h != null
-          ? `RSI ${data.rsi_14_4h.toFixed(1)} ${data.rsi_14_4h <= 30 ? "sobrevendido — no cortar" : "no sobrevendido"}`
-          : "RSI no disponible",
+          ? data.rsi_14_4h <= 30
+            ? "strategy.sig.rsiOversoldShort"
+            : "strategy.sig.rsiNotOversold"
+          : "strategy.sig.rsiNA",
+      descValue: data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(1) : undefined,
       direction: data.rsi_14_4h != null && data.rsi_14_4h > 30 ? "bearish" : "bullish",
     },
     {
-      name: "Precio bajo EMA55",
+      name: "Price < EMA55",
       fired: data.spot_price != null && data.ema55_4h != null && data.spot_price < data.ema55_4h,
       description:
         data.spot_price != null && data.ema55_4h != null
-          ? `Precio ${data.spot_price < data.ema55_4h ? "bajo" : "sobre"} EMA55`
-          : "Datos insuficientes",
+          ? data.spot_price < data.ema55_4h
+            ? "strategy.sig.priceBelowEma"
+            : "strategy.sig.priceAboveEma"
+          : "strategy.sig.dataInsufficient",
       direction: data.spot_price != null && data.ema55_4h != null && data.spot_price < data.ema55_4h ? "bearish" : "bullish",
     },
     {
-      name: "MACD cross bajista o histograma negativo",
+      name: "MACD bearish cross or negative histogram",
       fired:
         (data.macd_cross?.happened === true && data.macd_cross.direction === "bearish") ||
         (data.macd.histogram != null && data.macd.histogram < 0),
       description:
         data.macd_cross?.happened === true && data.macd_cross.direction === "bearish"
-          ? "Cruce MACD bajista fresco"
+          ? "strategy.sig.macdBearCross"
           : data.macd.histogram != null && data.macd.histogram < 0
-            ? "Histograma MACD negativo"
-            : "Sin confirmación MACD bajista",
+            ? "strategy.sig.macdNegative"
+            : "strategy.sig.macdNoBearConfirm",
       direction: "bearish",
     },
     {
-      name: "Stochastic no sobrevendido o cruce bajista fresco",
+      name: "Stochastic not oversold or fresh bearish cross",
       fired:
         (data.stoch_cross?.happened === true && data.stoch_cross.direction === "bearish") ||
         (data.stochastic.k != null && data.stochastic.k > 20),
       description:
         data.stoch_cross?.happened === true && data.stoch_cross.direction === "bearish"
-          ? "Cruce Stochastic bajista fresco"
+          ? "strategy.sig.stochBearCross"
           : data.stochastic.k != null && data.stochastic.k > 20
-            ? `%K ${data.stochastic.k.toFixed(1)} (no sobrevendido)`
-            : "Stochastic sobrevendido — no cortar",
+            ? "strategy.sig.stochNotOversold"
+            : "strategy.sig.stochOversold",
+      descValue:
+        !(data.stoch_cross?.happened === true && data.stoch_cross.direction === "bearish") &&
+        data.stochastic.k != null && data.stochastic.k > 20
+          ? data.stochastic.k.toFixed(1)
+          : undefined,
       direction: "bearish",
     },
   ],
 };
 
-/** Strategy 4: HOLD (no action — conditions are mixed or unclear). */
 export const HOLD: Strategy = {
   id: "hold",
-  name: "Mantener · No Operar",
-  description:
-    "Recomienda mantener/no operar cuando las señales son mixtas o el mercado está comprimido sin dirección clara.",
+  name: "strategy.holdName",
+  description: "strategy.holdDesc",
   targetAction: "HOLD",
   evaluate: (data) => [
     {
-      name: "Medias comprimidas o mixtas",
+      name: "EMAs compressed or mixed",
       fired: data.cross_state === "COMPRIMIDO",
       description:
         data.cross_state === "COMPRIMIDO"
-          ? "Medias comprimidas — esperar expansión"
-          : "Medias no comprimidas",
+          ? "strategy.sig.emaCompressedHold"
+          : "strategy.sig.emaNotCompressed",
       direction: "neutral",
     },
     {
-      name: "Bollinger squeeze activo",
+      name: "Bollinger squeeze active",
       fired: data.bollinger_squeeze?.is_squeezed === true,
       description:
         data.bollinger_squeeze?.is_squeezed === true
-          ? `Squeeze activo (${data.bollinger_squeeze.bandwidth?.toFixed(2)}%) — esperar breakout`
-          : "No hay squeeze",
+          ? "strategy.sig.squeezeActiveHold"
+          : "strategy.sig.noSqueeze",
+      descValue:
+        data.bollinger_squeeze?.is_squeezed === true
+          ? data.bollinger_squeeze.bandwidth?.toFixed(2)
+          : undefined,
       direction: "neutral",
     },
     {
-      name: "RSI en zona neutral (35-65)",
+      name: "RSI in neutral zone (35-65)",
       fired: data.rsi_14_4h != null && data.rsi_14_4h >= 35 && data.rsi_14_4h <= 65,
       description:
         data.rsi_14_4h != null
-          ? `RSI ${data.rsi_14_4h.toFixed(1)} ${data.rsi_14_4h >= 35 && data.rsi_14_4h <= 65 ? "neutral" : "extremo"}`
-          : "RSI no disponible",
+          ? data.rsi_14_4h >= 35 && data.rsi_14_4h <= 65
+            ? "strategy.sig.rsiNeutralZone"
+            : "strategy.sig.rsiExtreme"
+          : "strategy.sig.rsiNA",
+      descValue: data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(1) : undefined,
       direction: "neutral",
     },
     {
-      name: "Sin cruces frescos de EMA/MACD",
+      name: "No fresh EMA/MACD crosses",
       fired:
         data.cross_info?.happened !== true && data.macd_cross?.happened !== true,
       description:
         data.cross_info?.happened === true || data.macd_cross?.happened === true
-          ? "Hay cruces frescos — posible señal direccional"
-          : "Sin cruces frescos — sin cambio de momentum",
+          ? "strategy.sig.freshCrosses"
+          : "strategy.sig.noFreshCrosses",
       direction: "neutral",
     },
   ],
 };
 
-/** All predefined strategies, keyed by id. */
 export const STRATEGIES: Record<string, Strategy> = {
   trend_buy: TREND_BUY,
   mean_reversion_buy: MEAN_REVERSION_BUY,
