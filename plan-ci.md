@@ -107,6 +107,69 @@ diagnóstico para fallos de CI.
 **Entregables:** reglas de protección actualizadas, runbook de mantenimiento y
 revisión de aceptación cerrada.
 
+### Fase 7 — Migración de workflows y entorno a Bun 1.4.2
+
+**Objetivo:** actualizar de forma controlada la ejecución de CI y el entorno
+del proyecto para usar Bun 1.4.2, manteniendo instalaciones reproducibles y
+sin cambiar el comportamiento de la aplicación ni de los mini-servicios.
+
+**Alcance:**
+
+- Ejecutar esta fase en una rama y worktree independientes creados desde
+  `origin/main`, con la base sincronizada antes de comenzar.
+- Actualizar las referencias de Bun y los comandos de instalación en
+  `.github/workflows/ci.yml`, `.github/workflows/build.yml`,
+  `.github/workflows/prisma.yml` y `.github/workflows/mini-services.yml`.
+- Revisar `package.json` y actualizar `bun.lock` únicamente si la alineación
+  con Bun 1.4.2 requiere ajustar `bun-types` u otra resolución directamente
+  relacionada.
+- No mezclar cambios de workflows con otras fases ni implementar esta
+  migración hasta que la Fase 7 haya sido aprobada explícitamente.
+
+**Estrategia de validación:**
+
+- Confirmar que `bun install --frozen-lockfile` funciona en la raíz y en cada
+  mini-servicio, sin modificar el lockfile durante la validación.
+- Ejecutar `bun run lint`, `bun test` (o `bun run test`) y `bun run build`.
+- Ejecutar `bun run prisma generate` y `bun run prisma validate` usando los
+  scripts o equivalentes definidos por el proyecto.
+- Validar la instalación, type-checks o tests disponibles de
+  `mini-services/order-book` y `mini-services/tick-stream`, además de sus
+  comandos de arranque o health checks cuando la fase los requiera.
+- Comparar los checks con una ejecución de referencia y revisar
+  `git diff --check` antes de abrir el pull request.
+
+**Compatibilidad:** Bun 1.4.2 debe ser compatible con Next.js, TypeScript,
+Prisma, Vitest, los scripts de `package.json` y ambos mini-servicios. Si
+`bun-types` exige cambios incompatibles o aparece una actualización transitiva
+no relacionada, detener la fase y documentar la decisión antes de ampliar el
+alcance.
+
+**Criterios de aceptación:**
+
+- Todos los workflows afectados declaran o configuran Bun 1.4.2 de forma
+  consistente y usan instalaciones reproducibles.
+- Pasan `bun install --frozen-lockfile`, lint, tests, build, Prisma
+  generate/validate y las validaciones de ambos mini-servicios.
+- `package.json` y `bun.lock` solo cambian cuando son necesarios para alinear
+  `bun-types` o el entorno con Bun 1.4.2.
+- El pull request contiene únicamente los archivos aprobados para esta fase y
+  no activa una implementación anticipada de workflows de fases posteriores.
+- La fase se revisa y aprueba antes de mezclar cualquier cambio de workflow
+  derivado de ella en `main`.
+
+**Rollback:** cerrar o revertir el pull request de la Fase 7 y restaurar los
+workflows, `package.json` y `bun.lock` al estado de `origin/main`. No alterar
+la base compartida ni aplicar una regeneración destructiva de Prisma como
+parte del rollback.
+
+**Riesgos:** cambios de resolución en `bun.lock`, incompatibilidades de
+`bun-types` con TypeScript o Prisma, diferencias de comportamiento entre Bun
+1.4.2 y la versión previa en los mini-servicios, y fallos de caché o
+instalación en runners. Mitigarlos fijando la versión, usando
+`--frozen-lockfile`, validando todas las superficies y manteniendo el rollback
+limitado a los archivos de esta fase.
+
 ## Archivos previstos
 
 La implementación futura podrá añadir o modificar únicamente los archivos
@@ -114,8 +177,12 @@ necesarios, previsiblemente:
 
 - `.github/workflows/ci.yml` — lint, tests y checks generales.
 - `.github/workflows/build.yml` — build de Next.js y validaciones auxiliares.
+- `.github/workflows/prisma.yml` — validaciones de Prisma y generación del
+  cliente.
 - `.github/workflows/mini-services.yml` — checks de los mini-servicios, si la
   Fase 3 confirma que son necesarios.
+- `package.json` — versión, scripts o `bun-types` relacionados con Bun 1.4.2.
+- `bun.lock` — solo si la alineación con `bun-types` requiere actualizarlo.
 - `.github/dependabot.yml` — actualizaciones controladas de acciones y
   dependencias, si se aprueba en la Fase 4.
 - `README.md` o `INSTALL.md` — documentación de uso y diagnóstico de CI, solo
@@ -158,6 +225,8 @@ Validaciones adicionales cuando correspondan a una fase:
 
 ```bash
 bun run build
+bun run prisma generate
+bun run prisma validate
 cd mini-services/order-book && bun install --frozen-lockfile
 cd ../tick-stream && bun install --frozen-lockfile
 ```
@@ -177,6 +246,8 @@ servidor local en un requisito permanente de CI.
 5. `ci: optimize workflow runtime and diagnostics` — implementación de la
    Fase 5.
 6. `ci: document protected checks and maintenance` — cierre de la Fase 6.
+7. `docs: add Bun 1.4.2 migration phase` — planificación de la Fase 7, sin
+   implementar el upgrade ni modificar workflows.
 
 Cada commit debe poder revisarse y revertirse de forma independiente. Los
 mensajes anteriores son propuestas; al crear los commits se conservará la
@@ -194,6 +265,13 @@ convención vigente del repositorio si esta exige un prefijo adicional.
 - [ ] Medir duración, caché, repetición y tasa de fallos.
 - [ ] Documentar diagnóstico y mantenimiento.
 - [ ] Activar protección de `main` solo tras estabilidad comprobada.
+- [ ] Crear una rama y worktree independientes desde `origin/main` para la
+  Fase 7.
+- [ ] Aprobar la Fase 7 antes de mezclar cambios de workflows.
+- [ ] Validar Bun 1.4.2 con instalación congelada, lint, tests, build, Prisma
+  generate/validate y mini-servicios.
+- [ ] Revisar compatibilidad, riesgos y procedimiento de rollback de la
+  migración.
 - [ ] Abrir PR por fase hacia `main`.
 - [ ] Verificar que cada PR contiene únicamente los archivos de su fase.
 - [ ] Mantener este plan como referencia y marcar las fases completadas.
