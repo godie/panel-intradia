@@ -202,7 +202,9 @@ export function StrategySelector({ data }: Props) {
                 {sig.name}
               </span>
               <span className="ml-1 text-muted-foreground/50">
-                {t(sig.description)}
+                {sig.descValue != null
+                  ? t(sig.description).replace("{val}", sig.descValue)
+                  : t(sig.description)}
               </span>
             </div>
           </div>

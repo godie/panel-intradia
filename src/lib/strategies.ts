@@ -16,6 +16,8 @@ export type StrategySignal = {
   name: string;
   fired: boolean;
   description: string;
+  /** Numeric value to interpolate into description's `{val}` placeholder, if any. */
+  descValue?: string;
   direction?: "bullish" | "bearish" | "neutral";
 };
 
@@ -114,6 +116,7 @@ export const TREND_BUY: Strategy = {
               ? "strategy.sig.rsiOversoldOpp"
               : "strategy.sig.rsiNeutral"
           : "strategy.sig.rsiNA",
+      descValue: data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(1) : undefined,
       direction: data.rsi_14_4h != null && data.rsi_14_4h < 70 ? "bullish" : "bearish",
     },
     {
@@ -151,6 +154,11 @@ export const TREND_BUY: Strategy = {
           : data.stochastic.k != null && data.stochastic.k < 80
             ? "strategy.sig.stochNotOverbought"
             : "strategy.sig.stochOverbought",
+      descValue:
+        !(data.stoch_cross?.happened === true && data.stoch_cross.direction === "bullish") &&
+        data.stochastic.k != null && data.stochastic.k < 80
+          ? data.stochastic.k.toFixed(1)
+          : undefined,
       direction: "bullish",
     },
   ],
@@ -171,6 +179,7 @@ export const MEAN_REVERSION_BUY: Strategy = {
             ? "strategy.sig.rsiOversoldBuy"
             : "strategy.sig.rsiNotOversold"
           : "strategy.sig.rsiNA",
+      descValue: data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(1) : undefined,
       direction: data.rsi_14_4h != null && data.rsi_14_4h < 35 ? "bullish" : "neutral",
     },
     {
@@ -182,6 +191,7 @@ export const MEAN_REVERSION_BUY: Strategy = {
             ? "strategy.sig.stochOversoldBuy"
             : "strategy.sig.stochNotOversoldBuy"
           : "strategy.sig.stochNA",
+      descValue: data.stochastic.k != null ? data.stochastic.k.toFixed(1) : undefined,
       direction: data.stochastic.k != null && data.stochastic.k < 25 ? "bullish" : "neutral",
     },
     {
@@ -201,6 +211,10 @@ export const MEAN_REVERSION_BUY: Strategy = {
         data.spot_price != null && data.support != null
           ? "strategy.sig.priceNearSupport"
           : "strategy.sig.supportNA",
+      descValue:
+        data.spot_price != null && data.support != null
+          ? (((data.spot_price - data.support) / data.support) * 100).toFixed(1)
+          : undefined,
       direction: "bullish",
     },
     {
@@ -238,6 +252,7 @@ export const TREND_SHORT: Strategy = {
             ? "strategy.sig.rsiOversoldShort"
             : "strategy.sig.rsiNotOversold"
           : "strategy.sig.rsiNA",
+      descValue: data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(1) : undefined,
       direction: data.rsi_14_4h != null && data.rsi_14_4h > 30 ? "bearish" : "bullish",
     },
     {
@@ -275,6 +290,11 @@ export const TREND_SHORT: Strategy = {
           : data.stochastic.k != null && data.stochastic.k > 20
             ? "strategy.sig.stochNotOversold"
             : "strategy.sig.stochOversold",
+      descValue:
+        !(data.stoch_cross?.happened === true && data.stoch_cross.direction === "bearish") &&
+        data.stochastic.k != null && data.stochastic.k > 20
+          ? data.stochastic.k.toFixed(1)
+          : undefined,
       direction: "bearish",
     },
   ],
@@ -302,6 +322,10 @@ export const HOLD: Strategy = {
         data.bollinger_squeeze?.is_squeezed === true
           ? "strategy.sig.squeezeActiveHold"
           : "strategy.sig.noSqueeze",
+      descValue:
+        data.bollinger_squeeze?.is_squeezed === true
+          ? data.bollinger_squeeze.bandwidth?.toFixed(2)
+          : undefined,
       direction: "neutral",
     },
     {
@@ -313,6 +337,7 @@ export const HOLD: Strategy = {
             ? "strategy.sig.rsiNeutralZone"
             : "strategy.sig.rsiExtreme"
           : "strategy.sig.rsiNA",
+      descValue: data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(1) : undefined,
       direction: "neutral",
     },
     {
