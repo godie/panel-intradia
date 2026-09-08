@@ -2,6 +2,7 @@
 
 import { Zap } from "lucide-react";
 import type { MacdCrossInfo } from "@/lib/types";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   macd: { line: number | null; signal: number | null; histogram: number | null };
@@ -28,10 +29,11 @@ type Props = {
  * The current MACD line / signal / histogram values are labeled to the right.
  */
 export function MacdPanel({ macd, series, unavailable, macdCross, bars = 40 }: Props) {
+  const { t } = useLanguage();
   if (unavailable || macd.line == null) {
     return (
       <div className="rounded-md border border-white/5 bg-black/20 px-3 py-2.5 text-center text-[11px] italic text-muted-foreground/60">
-        MACD no disponible
+        {t("card.notAvailable")} MACD
       </div>
     );
   }
@@ -54,11 +56,11 @@ export function MacdPanel({ macd, series, unavailable, macdCross, bars = 40 }: P
   const trend =
     histValue > 0
       ? hist.length > 1 && (hist[hist.length - 1] ?? 0) < (hist[hist.length - 2] ?? 0)
-        ? "Creciente ↓"
-        : "Alcista ↑"
+        ? t("card.macdGrowing")
+        : t("card.macdBullish")
       : hist.length > 1 && (hist[hist.length - 1] ?? 0) > (hist[hist.length - 2] ?? 0)
-        ? "Recuperando ↑"
-        : "Bajista ↓";
+        ? t("card.macdRecovering")
+        : t("card.macdBearish");
 
   const trendColor =
     histValue > 0 ? "#5fbf8f" : "#e2604f";
