@@ -89,6 +89,7 @@ Mini-services independientes (Bun):
 | Lint            | ESLint 9 con `eslint-config-next`                              |
 | Mini-services   | Bun 1.3 (`tick-stream`, `order-book`)                          |
 | Proxy           | Caddy (puerto 81, enrutamiento por path `/_tick-stream/*` y `/_order-book/*`) |
+| CI               | GitHub Actions: lint, test, build, Prisma validate, mini-services |
 | i18n            | Diccionario estático en `src/lib/i18n.ts` (es/en/zh/fr)        |
 
 ## Instalación
@@ -121,6 +122,7 @@ bun run dev    # http://localhost:3000
 - Acceso HTTPS saliente a `api.binance.com`, `stream.binance.com` y
   opcionalmente `api.binance.us` si la región bloquea el endpoint principal
 - (Opcional) **Caddy** si vas a servir tras un proxy en modo manual
+- **Sin .env en el repo** — se usa `.env.example` como template; copiálo a `.env` y ajustálo si hacés cambio (solo `DATABASE_URL` para SQLite, `CORS_ORIGINS` para los WebSockets)
 
 ### Pasos
 
@@ -130,13 +132,13 @@ git clone https://github.com/godie/panel-intradia.git intradia_cripto
 cd intradia_cripto
 bun install
 
-# 2. Configurar la base de datos local (SQLite vía Prisma)
+# 2. Variables de entorno
+cp .env.example .env
+# editar .env si quieres cambiar la ruta de SQLite (por defecto file:./db/custom.db)
+
+# 3. Configurar la base de datos local (SQLite vía Prisma)
 bun run db:push          # crea el esquema (modelo CrossEvent)
 # opcional: bun run db:generate si editas schema.prisma
-
-# 3. Variables de entorno
-#    .env mínimo (la app funciona con DATABASE_URL apuntando a SQLite local):
-echo 'DATABASE_URL="file:./db/custom.db"' > .env
 
 # 4. Lanzar el dashboard
 bun run dev              # http://localhost:3000
@@ -157,11 +159,12 @@ caddy run --config Caddyfile   # :81
 | `bun run dev`         | Dev server con HMR en puerto 3000                              |
 | `bun run build`       | Build de producción con output standalone                      |
 | `bun run start`       | Sirve el build standalone con Bun                              |
-| `bun run lint`        | ESLint sobre todo el repo                                      |
-| `bun test`            | Ejecuta los 110 tests de Vitest                                |
+| `bun run lint`        | ESLint sobre todo el repo (debe ser 0 errores, 0 warnings)      |
+| `bun test`            | Ejecuta los tests de Vitest (138 tests)                        |
 | `bun run db:push`     | Aplica el esquema Prisma a SQLite                              |
 | `bun run db:migrate`  | Crea una migración nueva                                       |
 | `bun run db:reset`    | Resetea la base de datos (⚠ borra cruces persistidos)          |
+| `bunx prisma validate`| Valida el esquema Prisma (necesita DATABASE_URL en .env)        |
 
 ## Uso
 
