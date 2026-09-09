@@ -43,6 +43,9 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? "")
   .filter(Boolean);
 const allowedOrigins = CORS_ORIGINS.length > 0 ? CORS_ORIGINS : DEFAULT_CORS_ORIGINS;
 
+// Connection cap: prevent memory exhaustion from many concurrent clients.
+const MAX_CLIENTS = 200;
+
 const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
   if (req.url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
@@ -77,6 +80,14 @@ const io = new Server(httpServer, {
   maxHttpBufferSize: 64 * 1024,
   pingTimeout: 60000,
   pingInterval: 25000,
+});
+
+// Reject new connections when the server is at capacity.
+io.use((_socket, next) => {
+  if (io.engine.clientsCount >= MAX_CLIENTS) {
+    return next(new Error("max clients"));
+  }
+  next();
 });
 
 let binanceReady = false;

@@ -9,7 +9,7 @@ describe("buildGatewaySocketUrl", () => {
         hostname: "localhost",
         port: "81",
       }),
-    ).toBe("/?XTransformPort=3004");
+    ).toBe("/_order-book/socket.io/");
   });
 
   it("preserves HTTPS when reaching the gateway from a direct page", () => {
@@ -19,7 +19,7 @@ describe("buildGatewaySocketUrl", () => {
         hostname: "dashboard.example.com",
         port: "443",
       }),
-    ).toBe("https://dashboard.example.com/?XTransformPort=3004");
+    ).toBe("https://dashboard.example.com/_order-book/socket.io/");
   });
 
   it("uses the page hostname for direct development access", () => {
@@ -29,11 +29,11 @@ describe("buildGatewaySocketUrl", () => {
         hostname: "127.0.0.1",
         port: "3000",
       }),
-    ).toBe("http://127.0.0.1:81/?XTransformPort=3005");
+    ).toBe("http://127.0.0.1:81/_tick-stream/socket.io/");
   });
 
   it("returns a relative URL without a browser location", () => {
-    expect(buildGatewaySocketUrl("3005")).toBe("/?XTransformPort=3005");
+    expect(buildGatewaySocketUrl("3005")).toBe("/_tick-stream/socket.io/");
   });
 
   it("supports the default HTTPS port represented by an empty location port", () => {
@@ -43,6 +43,6 @@ describe("buildGatewaySocketUrl", () => {
         hostname: "dashboard.example.com",
         port: "",
       }),
-    ).toBe("https://dashboard.example.com/?XTransformPort=3005");
+    ).toBe("https://dashboard.example.com/_tick-stream/socket.io/");
   });
 });

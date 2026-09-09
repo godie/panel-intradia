@@ -6,23 +6,42 @@ export type SocketLocation = {
 
 const GATEWAY_PORT = "81";
 
+// Path prefixes for each mini-service (fixed — not derived from user input).
+const SERVICE_PATHS: Record<string, string> = {
+  "3005": "/_tick-stream",
+  "3004": "/_order-book",
+};
+
 /**
- * Build the URL used to reach a Socket.IO mini-service through the gateway.
- * HTTPS deployments use the gateway's default secure port instead of an
- * insecure explicit port, avoiding mixed-content WebSocket connections.
+ * Build the base URL used to reach a Socket.IO mini-service through the gateway.
+ * The returned URL includes the Caddy path prefix so that the socket.io
+ * `path: "/socket.io/"` option resolves to `{prefix}/socket.io/`.
+ *
+ * Routing is path-based (not query-param-based) so a client can never
+ * influence which upstream receives its connection.
+ *
+ * Usage:
+ *   io(buildGatewaySocketUrl("3005"), { path: "/socket.io/" }, ...)
  */
 export function buildGatewaySocketUrl(
   servicePort: string,
   location?: SocketLocation,
 ): string {
-  const query = `/?XTransformPort=${servicePort}`;
-  if (!location) return query;
+  const path = SERVICE_PATHS[servicePort] ?? "/";
+  const endpoint = `${path}/socket.io/`;
 
-  if (location.port === GATEWAY_PORT) return query;
-
-  if (location.protocol === "https:") {
-    return `https://${location.hostname}${query}`;
+  if (!location) {
+    // SSR fallback — relative URL reuses the page origin.
+    return endpoint;
   }
 
-  return `${location.protocol}//${location.hostname}:${GATEWAY_PORT}${query}`;
+  if (location.port === GATEWAY_PORT) {
+    return endpoint;
+  }
+
+  if (location.protocol === "https:") {
+    return `https://${location.hostname}${endpoint}`;
+  }
+
+  return `${location.protocol}//${location.hostname}:${GATEWAY_PORT}${endpoint}`;
 }

@@ -29,9 +29,60 @@ export default function SocketDemo() {
   const [isConnected, setIsConnected] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
 
+  // Refs for socket event handlers — avoids calling setState synchronously
+  // inside the effect body (which the lint rule forbids).
+  const isConnectedRef = useRef(isConnected);
+  const isConnectedSetterRef = useRef(setIsConnected);
+  const messagesSetterRef = useRef(setMessages);
+  const usersSetterRef = useRef(setUsers);
+  const isUsernameSetSetterRef = useRef(setIsUsernameSet);
+  const inputMessageSetterRef = useRef(setInputMessage);
+
+  useEffect(() => {
+    isConnectedRef.current = isConnected;
+    isConnectedSetterRef.current = setIsConnected;
+    messagesSetterRef.current = setMessages;
+    usersSetterRef.current = setUsers;
+    isUsernameSetSetterRef.current = setIsUsernameSet;
+    inputMessageSetterRef.current = setInputMessage;
+  });
+
+  const handleConnect = (socketInstance: any) => {
+    isConnectedSetterRef.current(true);
+  };
+
+  const handleDisconnect = () => {
+    isConnectedSetterRef.current(false);
+  };
+
+  const handleMessage = (msg: Message) => {
+    messagesSetterRef.current(prev => [...prev, msg]);
+  };
+
+  const handleUserJoined = (data: { user: User; message: Message }) => {
+    messagesSetterRef.current(prev => [...prev, data.message]);
+    usersSetterRef.current(prev => {
+      if (!prev.find(u => u.id === data.user.id)) {
+        return [...prev, data.user];
+      }
+      return prev;
+    });
+  };
+
+  const handleUserLeft = (data: { user: User; message: Message }) => {
+    messagesSetterRef.current(prev => [...prev, data.message]);
+    usersSetterRef.current(prev => prev.filter(u => u.id !== data.user.id));
+  };
+
+  const handleUsersList = (data: { users: User[] }) => {
+    usersSetterRef.current(data.users);
+  };
+
+  const socketInstanceRef = useRef<any>(null);
+
   useEffect(() => {
     // Connect to websocket server
-    // Never use PORT in the URL, alyways use XTransformPort
+    // Never use PORT in the URL, always use XTransformPort
     // Connect to the standalone example service on port 3003.
     const socketInstance = io('http://localhost:3003', {
       path: '/socket.io/',
@@ -42,39 +93,11 @@ export default function SocketDemo() {
       reconnectionDelay: 1000,
       timeout: 10000
     })
-
-    setSocket(socketInstance);
-
-    socketInstance.on('connect', () => {
-      setIsConnected(true);
-    });
-
-    socketInstance.on('disconnect', () => {
-      setIsConnected(false);
-    });
-
-    socketInstance.on('message', (msg: Message) => {
-      setMessages(prev => [...prev, msg]);
-    });
-
-    socketInstance.on('user-joined', (data: { user: User; message: Message }) => {
-      setMessages(prev => [...prev, data.message]);
-      setUsers(prev => {
-        if (!prev.find(u => u.id === data.user.id)) {
-          return [...prev, data.user];
-        }
-        return prev;
-      });
-    });
-
-    socketInstance.on('user-left', (data: { user: User; message: Message }) => {
-      setMessages(prev => [...prev, data.message]);
-      setUsers(prev => prev.filter(u => u.id !== data.user.id));
-    });
-
-    socketInstance.on('users-list', (data: { users: User[] }) => {
-      setUsers(data.users);
-    });
+    socketInstance.on('disconnect', handleDisconnect);
+    socketInstance.on('message', handleMessage);
+    socketInstance.on('user-joined', handleUserJoined);
+    socketInstance.on('user-left', handleUserLeft);
+    socketInstance.on('users-list', handleUsersList);
 
     return () => {
       socketInstance.disconnect();
@@ -82,19 +105,19 @@ export default function SocketDemo() {
   }, []);
 
   const handleJoin = () => {
-    if (socket && username.trim() && isConnected) {
-      socket.emit('join', { username: username.trim() });
-      setIsUsernameSet(true);
+    if (socketInstanceRef.current && username.trim() && isConnectedRef.current) {
+      socketInstanceRef.current.emit('join', { username: username.trim() });
+      isUsernameSetSetterRef.current(true);
     }
   };
 
   const sendMessage = () => {
-    if (socket && inputMessage.trim() && username.trim()) {
-      socket.emit('message', {
+    if (socketInstanceRef.current && inputMessage.trim() && username.trim()) {
+      socketInstanceRef.current.emit('message', {
         content: inputMessage.trim(),
         username: username.trim()
       });
-      setInputMessage('');
+      inputMessageSetterRef.current('');
     }
   };
 

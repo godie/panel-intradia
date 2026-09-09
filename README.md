@@ -88,7 +88,7 @@ Mini-services independientes (Bun):
 | Tests           | Vitest 4 (110 tests sobre funciones puras de indicadores)      |
 | Lint            | ESLint 9 con `eslint-config-next`                              |
 | Mini-services   | Bun 1.3 (`tick-stream`, `order-book`)                          |
-| Proxy           | Caddy (puerto 81, `?XTransformPort=` allowlisted)              |
+| Proxy           | Caddy (puerto 81, enrutamiento por path `/_tick-stream/*` y `/_order-book/*`) |
 | i18n            | Diccionario estático en `src/lib/i18n.ts` (es/en/zh/fr)        |
 
 ## Instalación
@@ -146,7 +146,7 @@ bun run dev              # http://localhost:3000
 cd mini-services/tick-stream && bun install && bun run start   # :3005
 cd mini-services/order-book && bun install && bun run start # :3004
 
-# 6. (Opcional) proxy Caddy para enrutar puertos via ?XTransformPort=
+# 6. (Opcional) proxy Caddy para enrutar los mini-services por path
 caddy run --config Caddyfile   # :81
 ```
 
