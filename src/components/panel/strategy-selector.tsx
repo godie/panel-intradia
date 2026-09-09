@@ -9,8 +9,9 @@ import {
   type StrategyAction,
 } from "@/lib/strategies";
 import type { AnalysisResponse } from "@/lib/types";
-import { Target, ChevronDown, Check, X, Minus } from "lucide-react";
+import { Target, ChevronDown, Check, X, Minus, BarChart3 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
+import { BacktestModal } from "@/components/panel/backtest-modal";
 
 type Props = {
   data: AnalysisResponse;
@@ -26,6 +27,7 @@ type Props = {
  */
 export function StrategySelector({ data }: Props) {
   const { t } = useLanguage();
+  const [backtestOpen, setBacktestOpen] = useState(false);
 
   const ACTION_META: Record<
     StrategyAction,
@@ -227,6 +229,24 @@ export function StrategySelector({ data }: Props) {
           />
         </div>
       </div>
+
+      {/* Backtest button */}
+      <button
+        type="button"
+        onClick={() => setBacktestOpen(true)}
+        className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-md border border-[#4fa8d8]/30 bg-[#4fa8d8]/8 px-2.5 py-1.5 text-[11px] font-semibold text-[#4fa8d8] transition-colors hover:bg-[#4fa8d8]/15 focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
+      >
+        <BarChart3 className="h-3.5 w-3.5" aria-hidden />
+        {t("backtest.backtestBtn")}
+      </button>
+
+      <BacktestModal
+        strategy={{ id: strategy.id, name: strategy.name, action: strategy.targetAction }}
+        predefined
+        defaultSymbol={data.symbol}
+        open={backtestOpen}
+        onClose={() => setBacktestOpen(false)}
+      />
     </div>
   );
 }

@@ -14,7 +14,8 @@ import {
 import { STRATEGY_LIST, evaluateStrategy, type StrategyAction } from "@/lib/strategies";
 import { useLanguage } from "@/hooks/use-language";
 import type { AnalysisResponse } from "@/lib/types";
-import { Plus, Trash2, Save, Check, Wand2, X } from "lucide-react";
+import { Plus, Trash2, Save, Check, Wand2, X, BarChart3 } from "lucide-react";
+import { BacktestModal } from "@/components/panel/backtest-modal";
 
 type Props = {
   data: AnalysisResponse;
@@ -37,6 +38,7 @@ export function StrategyBuilder({ data }: Props) {
   const [name, setName] = useState("");
   const [action, setAction] = useState<StrategyAction>("BUY");
   const [conditions, setConditions] = useState<CustomCondition[]>([]);
+  const [backtestStrategy, setBacktestStrategy] = useState<CustomStrategy | null>(null);
 
   // No useEffect needed — strategies loaded via useState initializer.
 
@@ -214,6 +216,14 @@ export function StrategyBuilder({ data }: Props) {
                 </span>
                 <button
                   type="button"
+                  onClick={() => setBacktestStrategy(s)}
+                  className="rounded p-0.5 text-muted-foreground/40 hover:text-[#4fa8d8]"
+                  title={t("backtest.backtestBtn")}
+                >
+                  <BarChart3 className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleDelete(s.id)}
                   className="rounded p-0.5 text-muted-foreground/40 hover:text-[#e2604f]"
                   title={t("custom.deleteConfirm")}
@@ -230,6 +240,15 @@ export function StrategyBuilder({ data }: Props) {
         <p className="mt-2 text-[10px] text-muted-foreground/40">
           {t("custom.empty")}
         </p>
+      )}
+
+      {backtestStrategy && (
+        <BacktestModal
+          strategy={backtestStrategy}
+          defaultSymbol={data.symbol}
+          open={!!backtestStrategy}
+          onClose={() => setBacktestStrategy(null)}
+        />
       )}
     </div>
   );

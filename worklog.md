@@ -3135,3 +3135,150 @@ Stage Summary:
   - `src/components/panel/strategy-selector.tsx` (t(sig.description))
 - **Branch**: `feat/round-27-strategy-i18n` pushed to GitHub
 - **PR link**: https://github.com/godie/panel-intradia/pull/new/feat/round-27-strategy-i18n
+
+---
+Task ID: round-30
+Agent: Z.ai Code (continuation from dm/round-29 merge)
+Task: Strategy Backtesting Module + i18n cleanup (broken unicode escapes fix).
+
+Work Log:
+- Restored git state: local main had been reset to sandbox UUID commits;
+  re-added `origin` remote, fetched, reset local main to `origin/main`
+  (4a6848b — PR #14 chore: remove tracked env file). Created branch
+  `dm/round-30` from there.
+- QA baseline: 138 tests passing (9 files), lint clean, dev server on
+  :3000 returns 200, ws-tick (3003), order-book (3004), tick-stream (3005)
+  all healthy. Pre-existing DATABASE_URL env var missing — /api/cross-history
+  returns 500 (not from this round; flagged for next phase).
+- Designed the backtest engine to reuse the existing `Strategy.evaluate()`
+  API so it works with BOTH predefined strategies (TREND_BUY,
+  MEAN_REVERSION_BUY, TREND_SHORT, HOLD) AND custom strategies built via
+  `customStrategyToStrategy()`.
+- Built `src/lib/backtest.ts` (~530 LOC):
+  - `runBacktest(params)` — fetches klines via `providerRouter.getKlines`,
+    computes EMA55/EMA200/RSI14/MACD/Stoch/VWAP/Bollinger/Ichimoku series
+    ONCE, then iterates candles building a per-candle `AnalysisResponse`
+    snapshot with the indicator values + recent-cross detection
+    (MACD_RECENT=6, STOCH_RECENT=3, matching the live /api/analysis).
+  - Trade simulation: enters when strategy confidence >= minConfidence
+    (default 60), exits on stop-loss / take-profit / max-hold / signal-
+    cooled-down / end-of-data. Long for BUY/HOLD, short for SHORT.
+  - Equity curve marked-to-market per candle; tracks peak + max drawdown.
+  - Stats: totalTrades, wins/losses, winRate, totalReturnPct, maxDrawdownPct,
+    profitFactor, avgHoldCandles, bestTradePct, worstTradePct, finalEquity.
+  - Returns `{ error }` inline (HTTP 200) so the client can render upstream
+    failures without a hard HTTP 500.
+- Built `src/app/api/backtest/route.ts` (POST): accepts either
+  `strategyId` (predefined) or `customStrategy` (full object). Validates
+  symbol via `isSupportedSymbol`, interval against 15m/1h/4h/1d, clamps
+  numeric params (limit 50-1000, minConfidence 10-100, stopLoss 0.1-50,
+  takeProfit 0.1-200, maxHold 1-500). Resolves the strategy object via
+  `STRATEGY_LIST.find` or `customStrategyToStrategy()`.
+- Built `src/components/panel/backtest-modal.tsx` (~470 LOC):
+  - Config panel (left, sticky on lg): symbol select (5 assets), interval
+    buttons (15m/1h/4h/1d), candle count buttons (220/500/1000), min
+    confidence, initial capital (USD, default $10k), stop loss %, take
+    profit %, max hold candles. "Run backtest" button.
+  - Results panel (right): 8-tile metric grid (trades, win rate, total
+    return, max drawdown, profit factor, avg hold, best/worst trade),
+    color-coded by tone (positive/negative/neutral).
+  - Equity curve canvas (HiDPI): gridlines, $-labels, initial-capital
+    dashed baseline, in-position shaded regions, equity line colored by
+    direction vs initial capital, final-equity dot marker, timestamp
+    labels on x-axis.
+  - Trade list table: sticky header, scrollable (max-h-72), columns
+    #/entry/exit/price (entry→exit)/PnL%/hold/reason. PnL color-coded
+    green/red. Exit reasons translated via `backtest.reason*` keys.
+- Wired up "Backtest" buttons:
+  - `strategy-selector.tsx`: button appears below the confidence bar; opens
+    the modal in `predefined` mode passing `{ id, name, action }` from the
+    selected predefined strategy.
+  - `strategy-builder.tsx`: a small BarChart3 icon button next to each
+    saved custom strategy; opens the modal in custom mode passing the full
+    CustomStrategy object.
+- i18n cleanup (4 languages × 35 new keys + bug fixes):
+  - Added 35 `backtest.*` keys per language (140 total) covering all UI:
+    title, description, config labels, run/close, metrics, equity curve,
+    trade list columns, exit reasons, error states.
+  - Fixed pre-existing broken unicode escape sequences that were rendering
+    as raw hex in the UI:
+    * ES: `custom.action: "Acci00f3n objetivo"` → "Acción objetivo",
+      `custom.addCondition: "A00f1adir condici00f3n"` → "Añadir condición",
+      `custom.deleteConfirm: "00bfEliminar estrategia?"` → "¿Eliminar estrategia?"
+    * ZH: 26 `custom.*` keys were pure hex dumps (e.g. `7b56756567845efa5668`
+      for "策略构建器"). Decoded all to real Chinese:
+      `custom.title: 策略构建器`, `custom.customStrategy: 自定义策略`,
+      `custom.create: 创建策略`, `custom.name: 名称`,
+      `custom.addCondition: 添加条件`, `custom.delete: 删除`,
+      `custom.saved: 已保存策略`, `custom.threshold: 阈值`,
+      `custom.emaBull: EMA55 > EMA200（看涨）`, `custom.emaBear: ...（看跌）`,
+      `custom.rsiBelow: RSI < 阈值（超卖）`, `custom.rsiAbove: RSI > 阈值（超买）`,
+      `custom.macdBull: MACD 看涨`, `custom.macdBear: MACD 看跌`,
+      `custom.stochBull: 随机指标看涨交叉`, `custom.stochBear: 随机指标看跌交叉`,
+      `custom.priceAboveVwap: 价格 > VWAP`, `custom.priceBelowVwap: 价格 < VWAP`,
+      `custom.bollingerSqueeze: 布林带挤压活跃`,
+      `custom.ichimokuAbove: 价格在云层上方`, `custom.ichimokuBelow: 价格在云层下方`,
+      `custom.deleteConfirm: 删除策略？`, etc.
+    * FR: 7 keys with broken `\u00e9` (é): `Strat00e9gie` → "Stratégie",
+      `Cr00e9er` → "Créer", `personnalis00e9e` → "personnalisée",
+      `enregistr00e9es` → "enregistrées", `surachet00e9` → "suracheté".
+- Bug found + fixed during QA:
+  - Backtest API returned `"Cannot read properties of undefined (reading
+    'length')"` — root cause: I was reading `res.value` from the provider
+    router, but `router.getKlines()` returns `{ provider, klines }`
+    (renamed field). Changed to `res.klines`. Verified with `bun
+    /tmp/test-backtest.mjs`: 500 candles, 8 trades, final equity $11,792
+    (+17.92%) for TREND_BUY on BTCUSDT 4h.
+- Verified end-to-end with agent-browser:
+  - ES (default): modal opens "Backtest de estrategia", "Ejecutar backtest"
+    button, after run shows "OPERACIONES (8)", "62.5% TASA DE ACIERTO",
+    "+17.91% RETORNO TOTAL", "-5.56% MÁX. DRAWDOWN", "CURVA DE CAPITAL"
+    canvas, "FACTOR DE BENEFICIO", trade table with exit reasons
+    ("Tiempo máx.", "Salida por señal", "Take profit", "Fin de datos").
+  - EN: "Strategy Backtest", "Trend Following · Buy · BUY", "Run backtest",
+    "TRADES", "WIN RATE", "TOTAL RETURN", "MAX DRAWDOWN", "PROFIT FACTOR",
+    "EQUITY CURVE", "Candles analyzed", "Source: BINANCE".
+  - ZH: "回测" (Backtest), "创建策略" (Create strategy), strategy builder
+    shows "策略构建器" (Strategy Builder), "我的策略" (My strategy) input,
+    "+ RSI < 阈值（超卖）" condition buttons, "暂无自定义策略。请在上方组合
+    条件创建一个。" empty state. All previously-broken hex strings now
+    render as proper Chinese.
+  - FR: "Backtest", "Créer une stratégie", "CONSTRUCTEUR DE STRATÉGIE",
+    "Ma stratégie" input, "+ EMA55 > EMA200 (haussier)" condition button.
+    All previously-broken `00e9` escapes now render as proper "é".
+- Verified all 4 predefined strategies work via direct engine test:
+  - TREND_BUY (BTCUSDT 4h, 500 candles): 8 trades, 62.5% win, +17.92% return,
+    $11,792 final equity.
+  - TREND_SHORT: 17 trades, 35.3% win, -2.89% return, $9,711 final equity.
+  - HOLD: 14 trades, 42.9% win, -6.49% return, $9,351 final equity.
+  - MEAN_REVERSION_BUY: 9 trades, 88.9% win, +5.18% return, $10,518 final
+    equity, only -0.44% max drawdown (the best performer).
+- Final QA: 138/138 tests pass (no regressions), lint clean, no console
+  errors / no agent-browser errors on the page.
+
+Stage Summary:
+- **Estado:** Round 30 entregada. Strategy Backtesting Module fully
+  functional end-to-end (engine + API + UI + i18n in 4 languages). Bonus:
+  fixed pre-existing broken unicode escape sequences in ZH `custom.*`
+  section (was rendering as raw hex) and FR `custom.*` section (was
+  rendering `00e9` instead of `é`), plus 3 ES strings.
+- **Artefactos:**
+  - `src/lib/backtest.ts` (new, ~530 LOC) — backtest engine
+  - `src/app/api/backtest/route.ts` (new, ~190 LOC) — POST endpoint
+  - `src/components/panel/backtest-modal.tsx` (new, ~470 LOC) — modal UI
+  - `src/components/panel/strategy-selector.tsx` (+Backtest button)
+  - `src/components/panel/strategy-builder.tsx` (+per-strategy Backtest
+    button)
+  - `src/lib/i18n.ts` (+140 backtest.* keys = 35 × 4 languages, + ZH/FR/ES
+    custom.* unicode fixes)
+- **Verification:** 138/138 tests, lint clean, agent-browser verified in all
+  4 languages (ES/EN/ZH/FR). Backtest runs return realistic metrics — e.g.
+  MEAN_REVERSION_BUY on BTCUSDT 4h gives 88.9% win rate, +5.18% return over
+  500 candles.
+- **Branch:** `dm/round-30` created from `origin/main` (4a6848b).
+- **Pre-existing issue (not from this round):** `DATABASE_URL` env var
+  missing → `/api/cross-history` returns 500 with Prisma validation error.
+  The cross-history feature was working in earlier rounds; the env var
+  appears to have been lost when the tracked env file was removed in PR #14.
+  Recommended next-phase fix: re-create a `.env` with `DATABASE_URL` or
+  move to a different persistence strategy.
