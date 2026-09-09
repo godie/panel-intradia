@@ -26,7 +26,12 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { runBacktest, type BacktestParams, type BacktestInterval } from "@/lib/backtest";
+import {
+  runBacktest,
+  type BacktestParams,
+  type BacktestInterval,
+  type PositionSizing,
+} from "@/lib/backtest";
 import type { CustomStrategy } from "@/lib/custom-strategies";
 import { customStrategyToStrategy } from "@/lib/custom-strategies";
 import { STRATEGY_LIST } from "@/lib/strategies";
@@ -38,6 +43,7 @@ export const dynamic = "force-dynamic";
 
 const VALID_INTERVALS: BacktestInterval[] = ["15m", "1h", "4h", "1d"];
 const VALID_ACTIONS: StrategyAction[] = ["BUY", "HOLD", "SHORT", "WAIT"];
+const VALID_SIZING: PositionSizing[] = ["full", "fixed_fractional", "half_kelly", "kelly"];
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -140,6 +146,16 @@ export async function POST(req: NextRequest) {
     typeof body.takeProfitPct === "number" ? clamp(body.takeProfitPct, 0.1, 200) : 10;
   const maxHoldCandles =
     typeof body.maxHoldCandles === "number" ? clamp(body.maxHoldCandles, 1, 500) : 50;
+  const positionSizing: PositionSizing =
+    typeof body.positionSizing === "string" && VALID_SIZING.includes(body.positionSizing as PositionSizing)
+      ? (body.positionSizing as PositionSizing)
+      : "full";
+  const fixedFractionalPct =
+    typeof body.fixedFractionalPct === "number"
+      ? clamp(body.fixedFractionalPct, 1, 100)
+      : 25;
+  const feeBps =
+    typeof body.feeBps === "number" ? clamp(body.feeBps, 0, 500) : 10;
 
   const params: BacktestParams = {
     symbol,
@@ -152,6 +168,9 @@ export async function POST(req: NextRequest) {
     stopLossPct,
     takeProfitPct,
     maxHoldCandles,
+    positionSizing,
+    fixedFractionalPct,
+    feeBps,
   };
 
   try {
@@ -185,9 +204,11 @@ export async function POST(req: NextRequest) {
           bestTradePct: 0,
           worstTradePct: 0,
           finalEquity: initialCapital,
+          totalFees: 0,
+          avgPositionSizePct: 0,
         },
         strategy: { id: strategyIdResolved, name: strategyName, action },
-        params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles },
+        params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
         error: message,
       },
       { status: 200 },
