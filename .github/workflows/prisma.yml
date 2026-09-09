@@ -43,6 +43,9 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           cache-key-suffix: -prisma
 
+      - name: Create .env for Prisma (DATABASE_URL only)
+        run: cp .env.example .env
+
       - name: Generate Prisma client
         run: bunx prisma generate
 
