@@ -10,19 +10,20 @@ import { buildGatewaySocketUrl } from "@/lib/socket-url";
  *
  * Connection string MUST go through the gateway — the path is "/socket.io/"
  * (the default socket.io path; the previous "/" collided with the /health
- * endpoint of the mini-service) and the port is encoded as a
- * `XTransformPort` query param so Caddy can route it.
+ * endpoint of the mini-service). Routing uses a fixed Caddy path prefix
+ * (`/_tick-stream/`) so a client can never influence which upstream receives
+ * its connection.
  * NEVER connect to `http://localhost:3005` directly (sandbox rule).
  *
  * The URL is auto-detected at runtime via `buildSocketUrl()`:
  *  - If the page is already served from the gateway (port 81), use a
- *    relative URL (`/?XTransformPort=3005`) so the same origin is reused.
+ *    relative URL (`/_tick-stream/socket.io/`) so the same origin is reused.
  *  - Otherwise (e.g. Next.js dev port 3000), explicitly point the socket
  *    at the gateway while preserving the page protocol.
  *
  * The socket.io client `path` option is set to "/socket.io/" so the
  * resulting request URLs become
- *   `http(s)://hostname[:81]/socket.io/?...&XTransformPort=3005` which Caddy
+ *   `http(s)://hostname[:81]/_tick-stream/socket.io/` which Caddy
  * forwards to the tick-stream service and the mini-service handles at its
  * socket.io endpoint.
  *
@@ -106,7 +107,7 @@ function getSnapshot(): TickState {
   return state;
 }
 
-// Caddy reverse proxy routes `?XTransformPort=NNNN` to the matching
+// Caddy reverse proxy routes `/_tick-stream/*` to the tick-stream
 // mini-service. The shared helper preserves HTTPS for secure deployments.
 const TICK_STREAM_PORT = "3005";
 

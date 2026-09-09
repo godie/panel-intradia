@@ -52,7 +52,7 @@ open http://localhost:81/
 | `app` | 3000 | (interno) | Next.js standalone — dashboard + REST API |
 | `tick-stream` | 3005 | (interno) | socket.io → ticks Binance/Bybit en vivo |
 | `order-book` | 3004 | (interno) | socket.io → order book L2 Binance |
-| `caddy` | 81 | **81** | Reverse proxy con `?XTransformPort=` allowlisted |
+| `caddy` | 81 | **81** | Reverse proxy con enrutamiento por path (`/_tick-stream/*`, `/_order-book/*`) |
 
 > **El frontend SIEMPRE se accede por `:81`** (Caddy), nunca directo al `:3000`. El browser necesita el proxy para que los WebSockets lleguen a los mini-services.
 
@@ -195,17 +195,7 @@ docker cp panel_app:/app/db/backup-YYYY-MM-DD.db ./backups/
 
 ```caddyfile
 midominio.com {
-    @transform_port_query {
-        query XTransformPort=*
-    }
-    @ws_t {
-        query XTransformPort=3005
-    }
-    @ws_ob {
-        query XTransformPort=3004
-    }
-
-    handle @ws_t {
+    handle /_tick-stream/* {
         reverse_proxy localhost:3005 {
             header_up Host {host}
             header_up X-Forwarded-For {remote_host}
@@ -213,16 +203,12 @@ midominio.com {
         }
     }
 
-    handle @ws_ob {
+    handle /_order-book/* {
         reverse_proxy localhost:3004 {
             header_up Host {host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto https
         }
-    }
-
-    handle @transform_port_query {
-        respond "Unsupported XTransformPort" 404
     }
 
     handle {

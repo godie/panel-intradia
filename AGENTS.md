@@ -34,7 +34,7 @@ A crypto quantitative trading dashboard with real-time price ticks, L2 order boo
 - ❌ No `bun run build` — dev server only (`bun run dev`)
 - ❌ No test files in `src/app/` — tests go in `src/lib/*.test.ts`
 - ❌ No hardcoded Spanish strings — use `t()` from `useLanguage()`
-- ❌ No direct mini-service fetches — use `io('/?XTransformPort=3005')` through the Caddy gateway
+- ❌ No direct mini-service fetches — use `io('/_tick-stream/socket.io/')` through the Caddy gateway
 
 ## Color Palette
 
@@ -199,7 +199,7 @@ Rules:
 - Must define a specific port (3005 for tick-stream, 3004 for order-book)
 - `bun --hot` for auto-restart on file changes
 - Socket.io `path: "/socket.io/"` (NOT `"/"`)
-- Frontend connects via `io("/?XTransformPort=PORT", { path: "/socket.io/" })`
+- Frontend connects via `io("/_tick-stream/socket.io/", { path: "/socket.io/" })` (tick-stream) or `io("/_order-book/socket.io/", { path: "/socket.io/" })` (order-book)
 - Health endpoint at `/health` returns JSON with `binanceConnected` status
 - Background processes started with double-fork pattern:
   ```bash

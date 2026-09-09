@@ -36,6 +36,8 @@ export type OrderBookState = {
  * side — the previous "/" collided with the mini-service's /health
  * endpoint and was intercepted by engine.io with a 400 "Transport unknown".
  *
+ * Caddy routes `/_order-book/*` to this service (path-based, not query-param).
+ *
  * Only the top-of-book (best bid + best ask) is consumed by the RangeBar
  * right now, but the full 20 levels are available for future use (depth
  * chart, bid/ask imbalance, etc.).
