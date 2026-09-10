@@ -11,9 +11,9 @@ estilo *trading-terminal*.
 
 ## Estado del proyecto
 
-**Versión actual:** v23 (rondas 1–23 de iteración continua, ~3 años de
-desarrollo). Estable, verificado end-to-end con navegador automatizado y VLM,
-110/110 tests pasando, lint limpio.
+**Versión actual:** v31 (rondas 1–31 de iteración continua, ~4 años de
+desarrollo). Estable, verificado end-to-end con navegador automatizado (agent-browser)
+en los 4 idiomas soportados, 164/164 tests pasando, lint limpio.
 
 ### Qué incluye hoy
 
@@ -35,12 +35,20 @@ desarrollo). Estable, verificado end-to-end con navegador automatizado y VLM,
 - **Eventos persistidos en SQLite** vía Prisma (`CrossEvent`): cruces EMA, cruces MACD, momentum flip, squeeze y squeeze breakout, cruces estocásticos — cada uno con `dedup` adaptativo y notificación toast.
 - **Historial de cruces** navegable con filtros por símbolo, tipo, dirección y rango temporal (`CrossHistory`).
 - **Alertas de precio** personalizables en `localStorage` con verificación contra el stream de ticks y sonido Web Audio API (tono alcista / bajista) al dispararse.
-- **Sistema de estrategias** predefinidas (hold / buy / short) con consenso agregado y selector por activo.
+- **Sistema de estrategias** predefinidas (Trend Buy / Mean Reversion Buy / Trend Short / Hold) con consenso agregado y selector por activo.
+- **Constructor de estrategia personalizada** (UI completa) — combina 13 tipos de condiciones (EMA cross, RSI thresholds, MACD bullish/bearish, Stochastic cross, price vs VWAP, Bollinger squeeze, Ichimoku above/below), elige acción objetivo (BUY/SHORT/HOLD) y persiste en `localStorage`.
+- **Backtest de estrategias** — evalúa cualquier estrategia (predefinida o personalizada) contra histórico de hasta 1000 velas (intervalos 15m/1h/4h/1d) con simulación de trades realista:
+  - **Position sizing** configurable: 100% completo, fraccional fijo, **medio-Kelly** y **Kelly completo** (fracción de Kelly calculada desde el win rate + payoff realizado)
+  - **Comisiones** configurables en basis points (default 10 bp = 0.10% por lado, Binance spot), descontadas del net PnL
+  - **Exit rules**: stop-loss %, take-profit %, máximo de velas en posición, salida por señal enfriada, fin de datos
+  - **Métricas**: operaciones, win rate, retorno total, máx. drawdown, profit factor, mantención promedio, mejor/peor operación, capital final, comisiones totales, tamaño promedio de posición
+  - **Curva de capital** HiDPI con baseline, regiones en posición sombreadas, marcador de equity final
+  - **Lista de operaciones** con precio entrada/salida, P&L %, velas, razón de salida (stop-loss / take-profit / tiempo máx. / señal / fin de datos)
+- **Backtests guardados + comparación** — persiste resultados en `localStorage` (cap 50, auto-compacción para no llenar la quota), abre el panel de historial y marca 2-3 para **compararlos lado a lado** en una tabla con el mejor valor por métrica resaltado en verde.
 - **Market overview** agregado (sentimiento global, Δ24h promedio, RSI promedio) y matriz de correlación entre pares.
-- **Constructor de estrategia personalizada** (pendiente de UI en rondas siguientes).
 - **Sparkline HiDPI** por activo con precio, EMA55, EMA200, Bollinger upper/lower + fill, y VWAP dashed; etiquetas min/max/eje y precio spot en el borde.
 - **Range bar** con posición del spot en el rango soporte/resistencia + marcadores de EMA55, EMA200, extensiones de Fibonacci (38.2/61.8/78.6 + 🎯 161.8).
-- **i18n completo** en 4 idiomas: Español (por defecto), Inglés, 中文, Français.
+- **i18n completo** en 4 idiomas: Español (por defecto), Inglés, 中文, Français — todas las strings visibles usan `t()` (incluyendo descripciones de señales, banners, modal de backtest, comparación, etc.).
 - **Atajos de teclado**, ayuda modal, exportación de snapshot, selector de stop-loss, scatter-plot modal.
 - **Responsive** verificado a 390 px (móvil): grid de 6 cards en 1 columna sin overflow.
 
@@ -60,7 +68,7 @@ desarrollo). Estable, verificado end-to-end con navegador automatizado y VLM,
 ┌───────────────────────┴──────────────────────────────────────┐
 │  Next.js API routes                                          │
 │   /api/analysis   /api/returns   /api/correlation            │
-│   /api/cross-history                                           │
+│   /api/cross-history   /api/backtest (POST)                  │
 │   Caché 60 s · indicadores puros · persistencia Prisma        │
 └───────────────────────┬──────────────────────────────────────┘
                         │ fetch + WS
@@ -85,9 +93,10 @@ Mini-services independientes (Bun):
 | Datos           | Prisma 6 + SQLite (`CrossEvent`)                               |
 | Tiempo real     | socket.io-client + socket.io                                   |
 | Validación      | Zod 4                                                          |
-| Tests           | Vitest 4 (110 tests sobre funciones puras de indicadores)      |
+| Tests           | Vitest 4 (164 tests sobre funciones puras de indicadores + WebSocket routing)      |
 | Lint            | ESLint 9 con `eslint-config-next`                              |
-| Mini-services   | Bun 1.3 (`tick-stream`, `order-book`)                          |
+| Mini-services   | Bun 1.4.2 (`tick-stream`, `order-book`)                        |
+| Runtime         | Bun 1.4.2 (dev server + mini-services)                         |
 | Proxy           | Caddy (puerto 81, enrutamiento por path `/_tick-stream/*` y `/_order-book/*`) |
 | CI               | GitHub Actions: lint, test, build, Prisma validate, mini-services |
 | i18n            | Diccionario estático en `src/lib/i18n.ts` (es/en/zh/fr)        |
@@ -117,7 +126,7 @@ bun run dev    # http://localhost:3000
 
 ### Requisitos
 
-- **Docker** ≥ 24 (recomendado) o **Bun** ≥ 1.3 (manual)
+- **Docker** ≥ 24 (recomendado) o **Bun** ≥ 1.4.2 (manual)
 - `CORS_ORIGINS` opcional: lista separada por comas de orígenes exactos permitidos para los WebSockets (por defecto `http://localhost:81,http://localhost:3000`)
 - Acceso HTTPS saliente a `api.binance.com`, `stream.binance.com` y
   opcionalmente `api.binance.us` si la región bloquea el endpoint principal
@@ -160,7 +169,7 @@ caddy run --config Caddyfile   # :81
 | `bun run build`       | Build de producción con output standalone                      |
 | `bun run start`       | Sirve el build standalone con Bun                              |
 | `bun run lint`        | ESLint sobre todo el repo (debe ser 0 errores, 0 warnings)      |
-| `bun test`            | Ejecuta los tests de Vitest (138 tests)                        |
+| `bun test`            | Ejecuta los tests de Vitest (164 tests)                        |
 | `bun run db:push`     | Aplica el esquema Prisma a SQLite                              |
 | `bun run db:migrate`  | Crea una migración nueva                                       |
 | `bun run db:reset`    | Resetea la base de datos (⚠ borra cruces persistidos)          |
@@ -171,15 +180,21 @@ caddy run --config Caddyfile   # :81
 ### Endpoints principales
 
 ```http
-GET /api/analysis?symbol={BTCUSDT|ETHUSDT|XRPUSDT|SOLUSDT|BNBUSDT}
-GET /api/returns?symbols=BTCUSDT,ETHUSDT&window=24h
-GET /api/correlation?symbols=BTCUSDT,ETHUSDT,XRPUSDT&window=30d
-GET /api/cross-history?symbol=BTCUSDT&type=ema&since=24h
+GET  /api/analysis?symbol={BTCUSDT|ETHUSDT|XRPUSDT|SOLUSDT|BNBUSDT}
+GET  /api/returns?symbols=BTCUSDT,ETHUSDT&window=24h
+GET  /api/correlation?symbols=BTCUSDT,ETHUSDT,XRPUSDT&window=30d
+GET  /api/cross-history?symbol=BTCUSDT&type=ema&since=24h
+POST /api/backtest
+     body: { symbol, interval, limit, strategyId | customStrategy,
+             minConfidence, initialCapital, stopLossPct, takeProfitPct,
+             maxHoldCandles, positionSizing, fixedFractionalPct, feeBps }
 ```
 
 Todos los símbolos no listados responden `400`. Errores de Binance devuelven
 `502` con detalle; el frontend muestra literalmente `"Dato no disponible"`
-para los campos afectados.
+para los campos afectados. `/api/backtest` devuelve `200` incluso ante
+fallos upstream — el error viaja inline en el campo `error` del JSON para que
+el modal pueda renderizarlo sin HTTP 500.
 
 ### Navegación
 
@@ -187,6 +202,11 @@ para los campos afectados.
 - Botón **Alertas** (campana) en el header → crear alertas de precio por
   símbolo (above/below) con sonido al dispararse.
 - Botón **Exportar** → snapshot JSON del estado actual.
+- Botón **Backtest** (en cada card, dentro del panel de estrategia) → abre
+  el modal de backtest con configuración completa (símbolo, intervalo,
+  tamaño de posición, comisiones, stop-loss/take-profit, capital inicial).
+- Botón **Crear estrategia** (debajo de cada card) → constructor de
+  estrategia personalizada con 13 condiciones.
 - `R` → refrescar manualmente · `?` → ayuda de atajos · idioma: dropdown en
   el header (es/en/zh/fr).
 
@@ -223,16 +243,35 @@ para los campos afectados.
 10. **El historial de cruces vive en SQLite.** El archivo `db/custom.db`
     acumula todos los eventos desde el primer arranque. Si lo borras
     (`db:reset`), pierdes ese registro pero el panel sigue funcionando.
+11. **Backtestea antes de operar.** Usa el modal de backtest para validar
+    tu estrategia contra histórico (hasta 1000 velas). Prueba varios
+    modos de position sizing: **medio-Kelly** suele ser más robusto que
+    100% completo (menos drawdown), y ajusta las comisiones a las de tu
+    exchange (Binance spot ~10 bp, futures ~5 bp).
+12. **Compara backtests guardados.** Marca 2-3 backtests y ábralos en la
+    vista de comparación lado a lado — el mejor valor por métrica se
+    resalta en verde. Útil para elegir entre position sizing o para
+    comparar estrategias predefinidas vs. custom.
+13. **Los backtests guardados viven en `localStorage`.** Si limpias la
+    cache del navegador o usas modo incógnito, los pierdes. El límite es
+    50 entries (las más viejas se descartan).
 
 ## Próximos pasos planificados
 
-- Constructor visual de estrategias personalizadas (UI para combinar
-  condiciones y guardar en `localStorage`).
-- Persistencia de alertas disparadas en el historial de cruces.
-- Modo claro opcional.
-- Tests E2E de los flujos de alertas (actualmente solo hay tests unitarios
-  sobre funciones puras de indicadores).
-- Más pares (SOL, BNB ya incluidos;検討中 SUI, TON).
+- **Walk-forward optimization** para backtests: divide el histórico en
+  ventanas in-sample / out-of-sample para detectar overfitting.
+- **Modo claro opcional.**
+- **Tests E2E** (Playwright o agent-browser) de los flujos de alertas +
+  backtest + comparación (actualmente solo hay tests unitarios sobre
+  funciones puras de indicadores + WebSocket routing).
+- **Más pares** (SOL, BNB ya incluidos; en consideración SUI, TON, AVAX).
+- **Backtest multi-símbolo**: ejecutar la misma estrategia en los 5 pares
+  y agregar el equity curve.
+- **Importar/exportar backtests guardados** como JSON para compartir
+  configuraciones entre navegadores.
+- **Persistencia de alertas disparadas** en el historial de cruces.
+- **Modo de notificaciones push** (Web Push API) para alertas disparadas
+  cuando la pestaña no está visible.
 
 ## Aviso
 
