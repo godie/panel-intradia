@@ -8,7 +8,9 @@ flujo deberá validar los cambios relevantes con Bun, mantener una señal clara
 en los pull requests y dejar preparado el repositorio para ampliar la
 automatización sin duplicar trabajo.
 
-Este documento describe el plan. En esta fase no se implementan workflows.
+Este documento conserva el historial de las decisiones y entregables de cada
+fase. Las Fases 1 a 6 están completadas; la Fase 7 queda planificada y no se
+implementa en este documento.
 
 ## Estado actual
 
@@ -19,6 +21,9 @@ Este documento describe el plan. En esta fase no se implementan workflows.
   requerir validaciones diferenciadas.
 - La validación local prevista por el proyecto es `bun run lint` y `bun test`
   (o `bun run test`).
+- Las Fases 1 a 5 se implementaron y se validaron en pull requests separados.
+- La Fase 6 se cerró con protección de `main`, checks obligatorios y este
+  runbook de mantenimiento.
 
 ## Reglas de ramas y worktrees
 
@@ -40,7 +45,7 @@ Este documento describe el plan. En esta fase no se implementan workflows.
 
 ## Fases
 
-### Fase 1 — Inventario y contrato de CI
+### Fase 1 — Inventario y contrato de CI (completada)
 
 - Confirmar scripts, versiones, lockfiles, estructura de la aplicación y
   requisitos de los mini-servicios.
@@ -50,7 +55,7 @@ Este documento describe el plan. En esta fase no se implementan workflows.
 
 **Entregables:** matriz de checks, contrato de ejecución y lista de riesgos.
 
-### Fase 2 — Workflow base de calidad
+### Fase 2 — Workflow base de calidad (completada)
 
 - Crear el workflow principal para instalar dependencias de forma reproducible.
 - Ejecutar lint y tests con la versión de Bun fijada por el proyecto.
@@ -60,7 +65,7 @@ Este documento describe el plan. En esta fase no se implementan workflows.
 **Entregables:** workflow de calidad, configuración de caché documentada y
 primer conjunto de checks requeridos.
 
-### Fase 3 — Validación de build y superficies auxiliares
+### Fase 3 — Validación de build y superficies auxiliares (completada)
 
 - Añadir una validación de build de Next.js separada del job rápido de calidad.
 - Determinar si los mini-servicios necesitan jobs propios de instalación,
@@ -71,7 +76,7 @@ primer conjunto de checks requeridos.
 **Entregables:** workflow o jobs de build, cobertura de mini-servicios y
 decisión documentada sobre filtros de rutas.
 
-### Fase 4 — Seguridad, permisos y robustez operativa
+### Fase 4 — Seguridad, permisos y robustez operativa (completada)
 
 - Aplicar permisos mínimos de `GITHUB_TOKEN` y evitar secretos innecesarios.
 - Fijar acciones de terceros a versiones revisables y usar lockfiles.
@@ -82,7 +87,7 @@ decisión documentada sobre filtros de rutas.
 **Entregables:** hardening de workflows, política de permisos y checklist de
 seguridad operativa.
 
-### Fase 5 — Rendimiento y experiencia de desarrollo
+### Fase 5 — Rendimiento y experiencia de desarrollo (completada)
 
 - Medir duración y tasa de repetición de los jobs después de la primera
   implementación.
@@ -95,17 +100,79 @@ seguridad operativa.
 **Entregables:** workflow optimizado, métricas comparativas y guía breve de
 diagnóstico para fallos de CI.
 
-### Fase 6 — Activación gradual y mantenimiento
+### Fase 6 — Activación gradual y mantenimiento (completada)
 
-- Activar checks obligatorios en la protección de `main` después de observar
-  ejecuciones estables.
-- Ejecutar una revisión final de permisos, acciones fijadas, tiempos y
+- [x] Activar checks obligatorios en la protección de `main` después de
+  observar ejecuciones estables.
+- [x] Ejecutar una revisión final de permisos, acciones fijadas, tiempos y
   cobertura.
-- Definir propietarios, frecuencia de actualización de acciones y procedimiento
-  para cambiar la matriz de versiones.
+- [x] Definir propietarios, frecuencia de actualización de acciones y
+  procedimiento para cambiar la matriz de versiones.
 
 **Entregables:** reglas de protección actualizadas, runbook de mantenimiento y
 revisión de aceptación cerrada.
+
+**Estado de aceptación:** completada. En `main` se exige pull request, al
+menos una aprobación, dismissal de revisiones obsoletas y los siete checks
+confirmados en ejecuciones exitosas: `Lint`, `Test`, `Production build`,
+`Build Docker image`, `Validate Prisma schema`, `Validate order-book` y
+`Validate tick-stream`. No existe `CODEOWNERS`, por lo que no se exige su
+aprobación específica. La protección no bloquea administradores ni añade
+restricciones de usuarios, equipos, historial lineal o conversación.
+
+### Runbook breve de mantenimiento de CI
+
+**Responsables y frecuencia**
+
+- El equipo mantenedor del repositorio revisa CI semanalmente y después de
+  cada cambio de workflow, runtime o dependencias.
+- Revisar mensualmente las acciones y dependencias, y hacer una revisión
+  trimestral de la matriz de checks y de las reglas de `main`.
+
+**Checks obligatorios y revisión rutinaria**
+
+- Mantener como checks requeridos exactamente los siete nombres documentados
+  arriba. Si se renombra un job, actualizar primero el workflow, observar una
+  ejecución exitosa en un pull request y después reconciliar la protección.
+- Confirmar que los workflows conservan permisos mínimos, timeouts,
+  cancelación de ejecuciones obsoletas, `--frozen-lockfile` y Bun 1.4.2.
+- Revisar duración, tasa de repetición, aciertos de caché y consumo de
+  minutos. Investigar tendencias sostenidas, no solo una ejecución lenta.
+
+**Actualizaciones seguras**
+
+- Actualizar acciones de terceros una por una, fijadas a un SHA completo y
+  con el comentario de versión revisado. Abrir un pull request y confirmar
+  todos los checks antes de fusionar.
+- Actualizar Bun de forma explícita en todos los workflows y mini-servicios;
+  validar instalación, lint, tests, build, Prisma y ambos servicios antes de
+  cambiar la versión protegida.
+- Al cambiar cachés, conservar claves que incluyan lockfile, versión de Bun y
+  superficie (`prisma`, `order-book`, `tick-stream` cuando aplique). Invalidar
+  una caché corrupta cambiando el sufijo de clave, no borrando datos de forma
+  indiscriminada.
+
+**Diagnóstico de fallos**
+
+1. Identificar el workflow, job, commit y primer paso fallido; comprobar si
+   el fallo es reproducible o transitorio.
+2. Comparar la ejecución con la última ejecución exitosa: versión de Bun,
+   SHA de acciones, lockfile, rutas activadoras, caché y variables.
+3. Reproducir localmente con los comandos del job y revisar logs sin exponer
+   secretos. Corregir el origen y volver a ejecutar el pull request.
+4. Si el proveedor o runner está degradado, registrar el incidente y no
+   relajar checks obligatorios como solución temporal.
+
+**Rollback**
+
+- Para un cambio de workflow o runtime, revertir el pull request que lo
+  introdujo y confirmar una ejecución completa en la rama de corrección.
+- Para un cambio de protección, guardar primero la respuesta actual de la API,
+  restaurar la matriz y opciones anteriores con la API de ramas, y verificar
+  inmediatamente `GET /repos/godie/panel-intradia/branches/main/protection`.
+- No desactivar la protección completa ni usar `--admin` para eludir checks;
+  si una emergencia exige una excepción, documentarla y restaurar las reglas
+  en cuanto el incidente termine.
 
 ### Fase 7 — Migración de workflows y entorno a Bun 1.4.2
 
@@ -188,7 +255,9 @@ necesarios, previsiblemente:
 - `README.md` o `INSTALL.md` — documentación de uso y diagnóstico de CI, solo
   si la implementación cambia instrucciones para contribuyentes.
 
-En la fase actual el único archivo previsto y permitido es `plan-ci.md`.
+Para el cierre de la Fase 6 el único archivo modificado es `plan-ci.md`.
+La Fase 7 podrá modificar los workflows y archivos indicados en su propio
+alcance, después de aprobación explícita.
 
 ## Criterios de aceptación
 
@@ -245,7 +314,7 @@ servidor local en un requisito permanente de CI.
    Fase 4.
 5. `ci: optimize workflow runtime and diagnostics` — implementación de la
    Fase 5.
-6. `ci: document protected checks and maintenance` — cierre de la Fase 6.
+6. `ci: enable protected checks and maintenance runbook` — cierre de la Fase 6.
 7. `docs: add Bun 1.4.2 migration phase` — planificación de la Fase 7, sin
    implementar el upgrade ni modificar workflows.
 
@@ -255,16 +324,16 @@ convención vigente del repositorio si esta exige un prefijo adicional.
 
 ## Checklist de seguimiento
 
-- [ ] Confirmar inventario de scripts y versiones desde `origin/main`.
-- [ ] Aprobar la matriz de checks obligatorios y opcionales.
-- [ ] Crear worktree y rama aislados para cada fase implementable.
-- [ ] Implementar el workflow base de calidad.
-- [ ] Añadir y validar el build de Next.js.
-- [ ] Decidir y cubrir los mini-servicios.
-- [ ] Revisar permisos, secretos, acciones fijadas, timeouts y concurrencia.
-- [ ] Medir duración, caché, repetición y tasa de fallos.
-- [ ] Documentar diagnóstico y mantenimiento.
-- [ ] Activar protección de `main` solo tras estabilidad comprobada.
+- [x] Confirmar inventario de scripts y versiones desde `origin/main`.
+- [x] Aprobar la matriz de checks obligatorios y opcionales.
+- [x] Crear worktree y rama aislados para cada fase implementable.
+- [x] Implementar el workflow base de calidad.
+- [x] Añadir y validar el build de Next.js.
+- [x] Decidir y cubrir los mini-servicios.
+- [x] Revisar permisos, secretos, acciones fijadas, timeouts y concurrencia.
+- [x] Medir duración, caché, repetición y tasa de fallos.
+- [x] Documentar diagnóstico y mantenimiento.
+- [x] Activar protección de `main` solo tras estabilidad comprobada.
 - [ ] Crear una rama y worktree independientes desde `origin/main` para la
   Fase 7.
 - [ ] Aprobar la Fase 7 antes de mezclar cambios de workflows.
@@ -272,6 +341,6 @@ convención vigente del repositorio si esta exige un prefijo adicional.
   generate/validate y mini-servicios.
 - [ ] Revisar compatibilidad, riesgos y procedimiento de rollback de la
   migración.
-- [ ] Abrir PR por fase hacia `main`.
-- [ ] Verificar que cada PR contiene únicamente los archivos de su fase.
-- [ ] Mantener este plan como referencia y marcar las fases completadas.
+- [x] Abrir PR por fase hacia `main`.
+- [x] Verificar que cada PR contiene únicamente los archivos de su fase.
+- [x] Mantener este plan como referencia y marcar las fases completadas.
