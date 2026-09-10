@@ -3282,3 +3282,152 @@ Stage Summary:
   appears to have been lost when the tracked env file was removed in PR #14.
   Recommended next-phase fix: re-create a `.env` with `DATABASE_URL` or
   move to a different persistence strategy.
+
+---
+Task ID: round-31
+Agent: Z.ai Code (continuation)
+Task: Pull main + Round 31 — Backtest engine v2 (position sizing + fees) + Saved Backtests + Comparison View + fix DATABASE_URL.
+
+Work Log:
+- Pulled origin main: 2 new commits since round 30 baseline —
+  PR #15 (f69d889, my round 30) merged, PR #16 (3a0ecbc) "Fix/nodejs
+  security findings" added Prisma validation step using .env.example as
+  DATABASE_URL template. Reset local main to origin/main (3a0ecbc),
+  created branch `dm/round-31` from there.
+- High-priority bug fix (pre-existing, carried over from round 30):
+  - DATABASE_URL env var was missing locally → /api/cross-history returned
+    500 with Prisma validation error. Fix:
+    * Copied `.env.example` → `.env` (DATABASE_URL=file:./db/custom.db)
+    * Ran `bun run db:push` to create the SQLite DB + sync the schema +
+      regenerate the Prisma Client.
+    * Restarted the dev server so it picked up the new env file
+      (Next.js loaded "Environments: .env" in the startup log).
+    * Verified /api/cross-history now returns 200; the "Historial de
+      Cruces" panel in the dashboard now renders its empty state
+      ("Sin cruces registrados todavía...") instead of an error.
+- Restarted tick-stream (3005) — its node_modules had no `socket.io`
+  installed; ran `bun install` in mini-services/tick-stream, then started
+  it with `bun --hot index.ts`. Now healthy:
+  activeSource=binance, binanceConnected=true.
+- order-book (3004) also restarted and healthy.
+- ws-tick (3003) is deprecated (frontend uses only 3004+3005 via
+  buildGatewaySocketUrl with path-based Caddy routing); left it down.
+- Wrote a small `start-services.sh` helper to (re)start the dev server +
+  both mini-services with full setsid/nohup detachment (the sandbox kills
+  background processes started by the bash tool when the shell returns;
+  setsid + disown with /usr/local/bin/bun absolute path keeps them alive).
+
+- === Backtest engine v2 (src/lib/backtest.ts) ===
+  Added Position Sizing + Fees:
+  - New PositionSizing type: "full" | "fixed_fractional" | "half_kelly" |
+    "kelly". The Kelly fraction f* = (p*b - q) / b is computed from
+    realized win rate (p) and payoff ratio (b = avgWin/avgLoss) using the
+    first 5+ closed trades as a sample; before that warmup, defaults to
+    100%. Half-Kelly uses f*/2, full Kelly uses f*. Both capped at 100%
+    of equity and floored at 1% (to avoid 0-size trades when edge is
+    negative — we fall back to a minimal 1% in that case).
+  - New feeBps param (default 10 bp = 0.10% per side, Binance spot). Fee
+    is charged on both entry and exit notional. Marked-to-market equity
+    subtracts the entry fee while a position is open. Net PnL = gross -
+    fees. Net PnL% is reported relative to the entryNotional, not total
+    equity, so it's comparable across different position sizing modes.
+  - BacktestTrade extended with `positionSizePct` and `feesPaid` fields.
+  - BacktestStats extended with `totalFees` and `avgPositionSizePct`.
+  - BacktestResult.params extended with the new fields.
+  - Verified directly with `bun /tmp/test-bt-v2.mjs`:
+    * full + 10bp fees: 8 trades, +16.23% return, $170.78 fees
+    * full + 0 fees: 8 trades, +18.08% return (matches, no fees deducted)
+    * fixed_fractional 25%: 8 trades, +4.05% return, $41.01 fees, 25% avg pos
+    * half_kelly: 8 trades, +15.55% return, 71.8% avg pos size (auto-fit)
+    * kelly: 8 trades, +15.67% return, 81.1% avg pos size
+
+- === /api/backtest route updated ===
+  - Added VALID_SIZING list, validation, and pass-through of
+    positionSizing, fixedFractionalPct, feeBps. Updated the catch block
+    to include totalFees + avgPositionSizePct in the empty stats object.
+
+- === Backtest persistence (src/lib/saved-backtests.ts, new) ===
+  - SavedBacktest type: { id, savedAt, label, result }. The result is
+    compacted on save (equityCurve stripped to [], trades truncated to
+    first 100) to stay under the localStorage 5MB quota.
+  - loadSavedBacktests(), saveBacktest(), deleteSavedBacktest(),
+    clearSavedBacktests() helpers. Capped at MAX_SAVED=50 entries.
+  - Auto-generated label: `${strategyName} · ${symbol} ${interval} ·
+    +X.XX%` so the user can tell saved backtests apart at a glance.
+
+- === BacktestModal UI (src/components/panel/backtest-modal.tsx) ===
+  - Config panel: added position sizing mode button grid (2x2: full /
+    fixed_fractional / half_kelly / kelly), conditional fixedFractionalPct
+    input (only shown when fixed_fractional is selected), and feeBps
+    numeric input with "1 bp = 0.01% per side" hint.
+  - Metrics grid: added 2 new tiles — "Total fees" and "Avg position
+    size" — next to the existing 8 (now a 5×2 grid).
+  - Save button + confirmation: a green "Guardar backtest" button below
+    the metrics grid saves the current result; shows a green "Backtest
+    guardado" toast for 2.5s.
+  - "Abrir backtests guardados" button (below Run) toggles the Saved
+    Backtests panel: lists all saved runs with checkbox, label,
+    timestamp, trade count, return %, win rate, and a per-row delete
+    button. Top of the panel has "Comparar seleccionados (n/3)" (enabled
+    when n≥2) and "Borrar todo" (clears all).
+  - Comparison view: when the user selects ≥2 saved backtests and clicks
+    "Comparar seleccionados", a CompareTable renders as a 2-3 column
+    table with metrics as rows (Return, Win rate, Profit factor, Max
+    drawdown, Total trades, Avg hold, Best/Worst trade, Final equity,
+    Total fees, Avg position size). The "best" value per metric is
+    highlighted green (using `higherIsBetter` flags — e.g. higher return
+    is best, lower maxDD is best). Header cells split the label into a
+    short strategy name (top) + symbol/interval/return subline (bottom)
+    so the columns stay compact.
+
+- === i18n (4 languages × 30 new keys = 120 new keys) ===
+  - Added backtest.positionSizing, sizingFull, sizingFixedFractional,
+    sizingHalfKelly, sizingKelly, fixedFractionalPct, feeBps, feeHint,
+    totalFees, avgPositionSize, save, saveTooltip, saved, savedBacktests,
+    savedEmpty, deleteSaved, clearAll, rerun, compare, compareTitle,
+    comparePickHint, compareNone, compareRun, compareClear, metric,
+    selectToCompare, winsLabel, lossesLabel, openSaved — all in
+    ES/EN/ZH/FR. (Caught + fixed one stray literal `\n` that the
+    MultiEdit accidentally inserted inside an ES string — verified clean
+    by re-reading the line with cat -A.)
+
+- QA with agent-browser (all 4 languages):
+  - ES: open modal → "TAMAÑO DE POSICIÓN" grid renders, "Ejecutar
+    backtest" runs 8 trades, new metric tiles "COMISIONES TOTALES" +
+    "TAMAÑO PROMEDIO" render. "Guardar backtest" → "Backtest guardado"
+    toast. "Abrir backtests guardados" → "BACKTESTS GUARDADOS (1)" with
+    the saved entry showing label + timestamp + trades + return + win
+    rate. Selected Half Kelly mode, re-ran, saved → count went to (2).
+    Marked both for comparison → "Comparar seleccionados (2/3)" enabled
+    → clicked → "COMPARAR BACKTESTS" panel rendered with a 2-column
+    table comparing Retorno total, Tasa de acierto, Factor de beneficio,
+    Máx. drawdown, etc. Best value per row highlighted green.
+  - EN: "POSITION SIZING", "Open saved backtests", "Run backtest".
+  - ZH: "仓位大小" (Position sizing), "手续费（BP）" (Fee bp), "打开已保存
+    回测" (Open saved backtests).
+  - FR: "TAILLE DE POSITION", "FRAIS (BP)", "Ouvrir les backtests
+    sauvegardés".
+  - Zero agent-browser errors / zero console errors across all 4 languages.
+  - 138/138 tests pass, lint clean.
+
+Stage Summary:
+- **Estado:** Round 31 entregada. Fixed the pre-existing DATABASE_URL bug
+  (cross-history now works), restarted all live mini-services, and
+  extended the backtest module with 3 major features:
+    1. Position Sizing (full / fixed_fractional / half_kelly / kelly)
+    2. Trading Fees (configurable bps per side, deducted from PnL)
+    3. Saved Backtests persistence + Comparison View (2-3 side-by-side)
+- **Artefactos:**
+  - `src/lib/backtest.ts` (+position sizing +fees, +60 LOC)
+  - `src/app/api/backtest/route.ts` (+new params validation)
+  - `src/lib/saved-backtests.ts` (new, ~100 LOC — persistence)
+  - `src/components/panel/backtest-modal.tsx` (+position sizing controls,
+    +Save button + saved panel + CompareTable, +200 LOC)
+  - `src/lib/i18n.ts` (+120 new keys = 30 × 4 languages)
+  - `.env` (new, from .env.example template — fixes cross-history)
+  - `start-services.sh` (new helper to (re)start dev + mini-services)
+- **Verification:** 138/138 tests pass, lint clean. agent-browser
+  verified end-to-end in all 4 languages: position sizing buttons work,
+  fees are deducted (verified full+10bp = +16.23% vs full+0bp = +18.08%),
+  save/reload/compare flow works for 2 backtests.
+- **Branch:** `dm/round-31` (based on `origin/main` 3a0ecbc).

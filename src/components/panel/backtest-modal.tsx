@@ -3,7 +3,19 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { SYMBOLS, SYMBOL_META } from "@/lib/types";
 import type { CustomStrategy } from "@/lib/custom-strategies";
-import type { BacktestResult, BacktestTrade, BacktestInterval } from "@/lib/backtest";
+import type {
+  BacktestResult,
+  BacktestTrade,
+  BacktestInterval,
+  PositionSizing,
+} from "@/lib/backtest";
+import {
+  loadSavedBacktests,
+  saveBacktest,
+  deleteSavedBacktest,
+  clearSavedBacktests,
+  type SavedBacktest,
+} from "@/lib/saved-backtests";
 import { useLanguage } from "@/hooks/use-language";
 import {
   X,
@@ -15,6 +27,13 @@ import {
   Target,
   AlertTriangle,
   BarChart3,
+  Save,
+  History,
+  Trash2,
+  GitCompareArrows,
+  Check,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 
 type Props = {
@@ -70,10 +89,18 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
   const [stopLossPct, setStopLossPct] = useState<number>(5);
   const [takeProfitPct, setTakeProfitPct] = useState<number>(10);
   const [maxHoldCandles, setMaxHoldCandles] = useState<number>(50);
+  const [positionSizing, setPositionSizing] = useState<PositionSizing>("full");
+  const [fixedFractionalPct, setFixedFractionalPct] = useState<number>(25);
+  const [feeBps, setFeeBps] = useState<number>(10);
 
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [showSaved, setShowSaved] = useState(false);
+  const [saved, setSaved] = useState<SavedBacktest[]>([]);
+  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
+  const [compareView, setCompareView] = useState<SavedBacktest[] | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -88,13 +115,25 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
       setResult(null);
       setError(null);
       setLoading(false);
+      setSaveMsg(null);
+      setShowSaved(false);
+      setCompareIds(new Set());
+      setCompareView(null);
     }
   }, [open]);
+
+  // Load saved backtests when the saved panel is opened.
+  useEffect(() => {
+    if (open && showSaved) {
+      setSaved(loadSavedBacktests());
+    }
+  }, [open, showSaved]);
 
   const runBacktest = useCallback(async () => {
     setLoading(true);
     setError(null);
     setResult(null);
+    setSaveMsg(null);
     try {
       const payload: Record<string, unknown> = {
         symbol,
@@ -105,6 +144,9 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
         stopLossPct,
         takeProfitPct,
         maxHoldCandles,
+        positionSizing,
+        fixedFractionalPct,
+        feeBps,
       };
       if (predefined) {
         payload.strategyId = strategy.id;
@@ -139,7 +181,53 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
     stopLossPct,
     takeProfitPct,
     maxHoldCandles,
+    positionSizing,
+    fixedFractionalPct,
+    feeBps,
   ]);
+
+  const handleSave = useCallback(() => {
+    if (!result) return;
+    const saved_bt = saveBacktest(result);
+    if (saved_bt) {
+      setSaveMsg(t("backtest.saved"));
+      setSaved(loadSavedBacktests());
+      setTimeout(() => setSaveMsg(null), 2500);
+    }
+  }, [result, t]);
+
+  const handleDeleteSaved = useCallback((id: string) => {
+    setSaved(deleteSavedBacktest(id));
+    setCompareIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleClearAll = useCallback(() => {
+    clearSavedBacktests();
+    setSaved([]);
+    setCompareIds(new Set());
+  }, []);
+
+  const toggleCompare = useCallback((id: string) => {
+    setCompareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (next.size < 3) {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const runCompare = useCallback(() => {
+    if (compareIds.size < 2) return;
+    const selected = saved.filter((s) => compareIds.has(s.id));
+    setCompareView(selected);
+  }, [compareIds, saved]);
 
   // Close on Escape.
   useEffect(() => {
@@ -433,6 +521,61 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                 step={5}
               />
 
+              {/* Position sizing mode */}
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                  {t("backtest.positionSizing")}
+                </label>
+                <div className="grid grid-cols-2 gap-1">
+                  {(
+                    [
+                      { value: "full", labelKey: "backtest.sizingFull" },
+                      { value: "fixed_fractional", labelKey: "backtest.sizingFixedFractional" },
+                      { value: "half_kelly", labelKey: "backtest.sizingHalfKelly" },
+                      { value: "kelly", labelKey: "backtest.sizingKelly" },
+                    ] as { value: PositionSizing; labelKey: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPositionSizing(opt.value)}
+                      className={`rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                        positionSizing === opt.value
+                          ? "bg-[#4fa8d8]/20 text-[#4fa8d8] border border-[#4fa8d8]/40"
+                          : "bg-background/40 text-muted-foreground border border-white/8 hover:bg-white/5"
+                      }`}
+                    >
+                      {t(opt.labelKey)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {positionSizing === "fixed_fractional" && (
+                <NumberField
+                  label={t("backtest.fixedFractionalPct")}
+                  value={fixedFractionalPct}
+                  onChange={setFixedFractionalPct}
+                  min={1}
+                  max={100}
+                  step={1}
+                  suffix="%"
+                />
+              )}
+
+              <NumberField
+                label={t("backtest.feeBps")}
+                value={feeBps}
+                onChange={setFeeBps}
+                min={0}
+                max={500}
+                step={1}
+                suffix="bp"
+              />
+              <p className="text-[9px] text-muted-foreground/60 -mt-1.5">
+                {t("backtest.feeHint")}
+              </p>
+
               <button
                 type="button"
                 onClick={runBacktest}
@@ -450,6 +593,15 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                     {t("backtest.run")}
                   </>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSaved((v) => !v)}
+                className="w-full flex items-center justify-center gap-1.5 rounded-md border border-white/10 bg-background/40 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+              >
+                <History className="h-3.5 w-3.5" aria-hidden />
+                {t("backtest.openSaved")}
               </button>
             </div>
 
@@ -568,6 +720,38 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                       icon={TrendingDown}
                       tone="negative"
                     />
+                    <MetricCard
+                      label={t("backtest.totalFees")}
+                      value={`$${formatNumber(stats.totalFees)}`}
+                      icon={Activity}
+                      tone="neutral"
+                    />
+                    <MetricCard
+                      label={t("backtest.avgPositionSize")}
+                      value={`${stats.avgPositionSizePct.toFixed(1)}%`}
+                      icon={Target}
+                      tone="neutral"
+                    />
+                  </div>
+
+                  {/* Save backtest button + status */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={!result}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#5fbf8f]/30 bg-[#5fbf8f]/8 px-3 py-1.5 text-[11px] font-medium text-[#5fbf8f] transition-colors hover:bg-[#5fbf8f]/15 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={t("backtest.saveTooltip")}
+                    >
+                      <Save className="h-3.5 w-3.5" aria-hidden />
+                      {t("backtest.save")}
+                    </button>
+                    {saveMsg && (
+                      <span className="text-[11px] text-[#5fbf8f] flex items-center gap-1 animate-card-enter">
+                        <Check className="h-3 w-3" aria-hidden />
+                        {saveMsg}
+                      </span>
+                    )}
                   </div>
 
                   {/* Equity curve */}
@@ -667,10 +851,224 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                   </div>
                 </>
               )}
+
+              {/* Saved Backtests panel (toggle) */}
+              {showSaved && (
+                <div className="rounded-md border border-white/10 bg-background/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("backtest.savedBacktests")}{" "}
+                      <span className="text-muted-foreground/60 font-normal">
+                        ({saved.length})
+                      </span>
+                    </h4>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={runCompare}
+                        disabled={compareIds.size < 2}
+                        className="inline-flex items-center gap-1 rounded-md border border-[#4fa8d8]/30 bg-[#4fa8d8]/8 px-2 py-0.5 text-[10px] font-medium text-[#4fa8d8] hover:bg-[#4fa8d8]/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <GitCompareArrows className="h-3 w-3" aria-hidden />
+                        {t("backtest.compareRun")} ({compareIds.size}/3)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearAll}
+                        disabled={saved.length === 0}
+                        className="inline-flex items-center gap-1 rounded-md border border-[#e2604f]/30 bg-[#e2604f]/8 px-2 py-0.5 text-[10px] font-medium text-[#e2604f] hover:bg-[#e2604f]/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="h-3 w-3" aria-hidden />
+                        {t("backtest.clearAll")}
+                      </button>
+                    </div>
+                  </div>
+
+                  {saved.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground/70 py-3 text-center">
+                      {t("backtest.savedEmpty")}
+                    </p>
+                  ) : (
+                    <div className="space-y-1 max-h-60 overflow-y-auto custom-scrollbar">
+                      {saved.map((s) => {
+                        const isSel = compareIds.has(s.id);
+                        const r = s.result;
+                        const ret = r.stats.totalReturnPct;
+                        return (
+                          <div
+                            key={s.id}
+                            className="flex items-center gap-2 rounded px-2 py-1.5 text-[11px] hover:bg-white/[0.03] border border-white/5"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleCompare(s.id)}
+                              className={`shrink-0 ${isSel ? "text-[#4fa8d8]" : "text-muted-foreground/40 hover:text-muted-foreground/80"}`}
+                              title={t("backtest.selectToCompare")}
+                              aria-label={t("backtest.selectToCompare")}
+                            >
+                              {isSel ? (
+                                <CheckSquare className="h-4 w-4" aria-hidden />
+                              ) : (
+                                <Square className="h-4 w-4" aria-hidden />
+                              )}
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <div className="truncate text-foreground/80 font-medium">
+                                {s.label}
+                              </div>
+                              <div className="text-[9px] text-muted-foreground/60 font-mono">
+                                {s.savedAt.slice(0, 16).replace("T", " ")} ·{" "}
+                                {r.stats.totalTrades} {t("backtest.trades").toLowerCase()} ·{" "}
+                                <span
+                                  className={
+                                    ret >= 0 ? "text-[#5fbf8f]" : "text-[#e2604f]"
+                                  }
+                                >
+                                  {ret >= 0 ? "+" : ""}
+                                  {ret.toFixed(2)}%
+                                </span>{" "}
+                                · {r.stats.winRate.toFixed(0)}% {t("backtest.winRate").toLowerCase()}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSaved(s.id)}
+                              className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-[#e2604f]"
+                              title={t("backtest.deleteSaved")}
+                              aria-label={t("backtest.deleteSaved")}
+                            >
+                              <Trash2 className="h-3 w-3" aria-hidden />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Comparison view (renders when user selects ≥ 2 saved backtests) */}
+              {compareView && compareView.length >= 2 && (
+                <div className="rounded-md border border-[#4fa8d8]/30 bg-[#4fa8d8]/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wider text-[#4fa8d8]">
+                      <GitCompareArrows className="inline h-3.5 w-3.5 mr-1.5 -mt-0.5" aria-hidden />
+                      {t("backtest.compareTitle")}
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setCompareView(null)}
+                      className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                      aria-label={t("common.close")}
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/70">
+                    {t("backtest.comparePickHint")}
+                  </p>
+                  <CompareTable saved={compareView} t={t} />
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Comparison table — rows are metrics, columns are SavedBacktests. */
+function CompareTable({
+  saved,
+  t,
+}: {
+  saved: SavedBacktest[];
+  t: (key: string) => string;
+}) {
+  // `best` declares which direction to highlight as the best value:
+  // "max" (e.g. return, win rate), "min" (e.g. max drawdown), or undefined
+  // (no highlight — trade count / fees / avg size are not better in either
+  // direction). Note worstTradePct is "max": the least-negative worst trade
+  // is the best outcome.
+  const metrics: {
+    key: keyof SavedBacktest["result"]["stats"];
+    label: string;
+    format: (v: number) => string;
+    best?: "max" | "min";
+  }[] = [
+    { key: "totalReturnPct", label: t("backtest.totalReturn"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, best: "max" },
+    { key: "winRate", label: t("backtest.winRate"), format: (v) => `${v.toFixed(1)}%`, best: "max" },
+    { key: "profitFactor", label: t("backtest.profitFactor"), format: (v) => (Number.isFinite(v) ? v.toFixed(2) : "∞"), best: "max" },
+    { key: "maxDrawdownPct", label: t("backtest.maxDrawdown"), format: (v) => `-${v.toFixed(2)}%`, best: "min" },
+    { key: "totalTrades", label: t("backtest.totalTrades"), format: (v) => String(v) },
+    { key: "avgHoldCandles", label: t("backtest.avgHold"), format: (v) => String(v) },
+    { key: "bestTradePct", label: t("backtest.bestTrade"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, best: "max" },
+    { key: "worstTradePct", label: t("backtest.worstTrade"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, best: "max" },
+    { key: "finalEquity", label: t("backtest.finalEquity"), format: (v) => `$${Math.round(v).toLocaleString("en-US")}`, best: "max" },
+    { key: "totalFees", label: t("backtest.totalFees"), format: (v) => `$${v.toFixed(2)}` },
+    { key: "avgPositionSizePct", label: t("backtest.avgPositionSize"), format: (v) => `${v.toFixed(1)}%` },
+  ];
+
+  const bestByKey: Record<string, string | null> = {};
+  for (const m of metrics) {
+    if (!m.best) {
+      bestByKey[m.key as string] = null;
+      continue;
+    }
+    let best = m.best === "max" ? -Infinity : Infinity;
+    let bestId: string | null = null;
+    for (const s of saved) {
+      const v = s.result.stats[m.key];
+      const better = m.best === "max" ? v > best : v < best;
+      if (better) {
+        best = v;
+        bestId = s.id;
+      }
+    }
+    bestByKey[m.key as string] = bestId;
+  }
+
+  return (
+    <div className="overflow-x-auto custom-scrollbar">
+      <table className="w-full text-[10px] font-mono">
+        <thead>
+          <tr className="text-left text-muted-foreground border-b border-white/8">
+            <th className="px-2 py-1.5 font-medium">{t("backtest.metric")}</th>
+            {saved.map((s) => (
+              <th key={s.id} className="px-2 py-1.5 font-medium min-w-[100px]">
+                <div className="truncate text-foreground/80" title={s.label}>
+                  {s.label.split("·")[0].trim()}
+                </div>
+                <div className="text-[9px] text-muted-foreground/60 font-normal truncate">
+                  {s.label.split("·").slice(1).join("·").trim()}
+                </div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {metrics.map((m) => (
+            <tr key={m.key as string} className="border-b border-white/5 hover:bg-white/[0.02]">
+              <td className="px-2 py-1.5 text-muted-foreground/80">{m.label}</td>
+              {saved.map((s) => {
+                const v = s.result.stats[m.key] as number;
+                const isBest = bestByKey[m.key as string] === s.id;
+                return (
+                  <td
+                    key={s.id}
+                    className={`px-2 py-1.5 ${
+                      isBest ? "text-[#5fbf8f] font-semibold" : "text-foreground/80"
+                    }`}
+                  >
+                    {m.format(v)}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
