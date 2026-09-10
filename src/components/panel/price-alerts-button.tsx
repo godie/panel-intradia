@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Bell, X, Plus, Trash2, Check, Volume2, VolumeX } from "lucide-react";
 import { SYMBOL_META, SYMBOLS, type PriceAlert } from "@/lib/types";
 import { useLanguage } from "@/hooks/use-language";
+import { useLocalStorageString } from "@/hooks/use-local-storage";
 
 type Props = {
   alerts: PriceAlert[];
@@ -35,24 +36,19 @@ export function PriceAlertsButton({
   const [newSymbol, setNewSymbol] = useState<string>("BTCUSDT");
   const [newPrice, setNewPrice] = useState<string>("");
   const [newDirection, setNewDirection] = useState<"above" | "below">("below");
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    try {
-      return localStorage.getItem("panel:alert-sound") !== "false";
-    } catch {
-      return true;
-    }
-  });
+  // Persisted sound preference via useSyncExternalStore — hydration-safe
+  // (SSR renders the default "enabled") and no setState-in-effect. Stored
+  // as "true"/"false"; anything else means enabled.
+  const [storedSound, setStoredSound] = useLocalStorageString(
+    "panel:alert-sound",
+    "true",
+  );
+  const soundEnabled = storedSound !== "false";
 
   const handleToggleSound = () => {
-    const newVal = !soundEnabled;
-    setSoundEnabled(newVal);
-    try {
-      localStorage.setItem("panel:alert-sound", String(newVal));
-    } catch {
-      // ignore
-    }
+    setStoredSound(soundEnabled ? "false" : "true");
   };
+
 
   const activeCount = alerts.filter((a) => !a.triggered).length;
 

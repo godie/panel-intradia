@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useCallback, useMemo, type ReactNode } from "react";
 import { translate, type Lang, LANGUAGES } from "@/lib/i18n";
+import { useLocalStorageString } from "@/hooks/use-local-storage";
 
 type LanguageContextValue = {
   lang: Lang;
@@ -18,30 +19,29 @@ const STORAGE_KEY = "panel:lang";
  * function for translating keys. The selected language is persisted in
  * localStorage and defaults to "es" (Spanish — the original dashboard language).
  *
+ * Hydration safety: the language is stored via `useSyncExternalStore`
+ * (useLocalStorageString). SSR and the hydration render always see the
+ * default "es", so server and client markup match (React error #418); the
+ * persisted choice is picked up right after hydration without any
+ * setState-in-effect.
+ *
  * Usage in a component:
  *   const { t, lang } = useLanguage();
  *   <h1>{t("header.title")}</h1>
  */
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(() => {
-    if (typeof window === "undefined") return "es";
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY) as Lang | null;
-      if (stored && LANGUAGES.some((l) => l.code === stored)) return stored;
-    } catch {
-      // ignore
-    }
-    return "es";
-  });
+  const [storedLang, setStoredLang] = useLocalStorageString(STORAGE_KEY, "es");
 
-  const setLang = useCallback((newLang: Lang) => {
-    setLangState(newLang);
-    try {
-      localStorage.setItem(STORAGE_KEY, newLang);
-    } catch {
-      // ignore
-    }
-  }, []);
+  // Validate the stored value — invalid/corrupt entries fall back to "es".
+  const lang = useMemo<Lang>(
+    () => (LANGUAGES.some((l) => l.code === storedLang) ? (storedLang as Lang) : "es"),
+    [storedLang],
+  );
+
+  const setLang = useCallback(
+    (newLang: Lang) => setStoredLang(newLang),
+    [setStoredLang],
+  );
 
   const t = useCallback(
     (key: string) => translate(lang, key),

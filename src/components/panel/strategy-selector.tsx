@@ -11,6 +11,7 @@ import {
 import type { AnalysisResponse } from "@/lib/types";
 import { Target, ChevronDown, Check, X, Minus, BarChart3 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
+import { useLocalStorageString } from "@/hooks/use-local-storage";
 import { BacktestModal } from "@/components/panel/backtest-modal";
 
 type Props = {
@@ -59,23 +60,16 @@ export function StrategySelector({ data }: Props) {
     },
   };
 
-  const [selectedId, setSelectedId] = useState<string>(() => {
-    if (typeof window === "undefined") return "trend_buy";
-    try {
-      return localStorage.getItem("panel:strategy") || "trend_buy";
-    } catch {
-      return "trend_buy";
-    }
-  });
+  // Persisted choice via useSyncExternalStore — hydration-safe (SSR renders
+  // the default) and no setState-in-effect.
+  const [selectedId, setSelectedId] = useLocalStorageString(
+    "panel:strategy",
+    "trend_buy",
+  );
   const [expanded, setExpanded] = useState(false);
 
   const handleSelect = (id: string) => {
-    setSelectedId(id);
-    try {
-      localStorage.setItem("panel:strategy", id);
-    } catch {
-      // ignore
-    }
+    setSelectedId(id); // persisted through the store
   };
 
   const strategy: Strategy | undefined = STRATEGY_LIST.find(

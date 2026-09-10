@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  loadCustomStrategies,
-  saveCustomStrategies,
   customStrategyToStrategy,
   CONDITION_OPTIONS,
   type CustomStrategy,
@@ -13,6 +11,7 @@ import {
 } from "@/lib/custom-strategies";
 import { STRATEGY_LIST, evaluateStrategy, type StrategyAction } from "@/lib/strategies";
 import { useLanguage } from "@/hooks/use-language";
+import { useLocalStorageString } from "@/hooks/use-local-storage";
 import type { AnalysisResponse } from "@/lib/types";
 import { Plus, Trash2, Save, Check, Wand2, X, BarChart3 } from "lucide-react";
 import { BacktestModal } from "@/components/panel/backtest-modal";
@@ -29,11 +28,22 @@ const ACTIONS: { value: StrategyAction; labelKey: string; color: string }[] = [
 
 export function StrategyBuilder({ data }: Props) {
   const { t } = useLanguage();
-  // Load custom strategies on mount — use useState initializer to avoid
-  // the setState-in-effect lint rule.
-  const [strategies, setStrategies] = useState<CustomStrategy[]>(() =>
-    loadCustomStrategies(),
+  // Custom strategies live in localStorage via useSyncExternalStore —
+  // hydration-safe (SSR renders []) and no setState-in-effect. The stored
+  // JSON string is parsed at render time (memoized); mutations are
+  // write-through.
+  const [rawStrategies, setRawStrategies] = useLocalStorageString(
+    "panel:custom-strategies",
+    "[]",
   );
+  const strategies = useMemo<CustomStrategy[]>(() => {
+    try {
+      const parsed: unknown = JSON.parse(rawStrategies);
+      return Array.isArray(parsed) ? (parsed as CustomStrategy[]) : [];
+    } catch {
+      return [];
+    }
+  }, [rawStrategies]);
   const [showBuilder, setShowBuilder] = useState(false);
   const [name, setName] = useState("");
   const [action, setAction] = useState<StrategyAction>("BUY");
@@ -52,8 +62,7 @@ export function StrategyBuilder({ data }: Props) {
       createdAt: Date.now(),
     };
     const updated = [...strategies, newStrategy];
-    setStrategies(updated);
-    saveCustomStrategies(updated);
+    setRawStrategies(JSON.stringify(updated));
     setName("");
     setConditions([]);
     setAction("BUY");
@@ -62,8 +71,7 @@ export function StrategyBuilder({ data }: Props) {
 
   const handleDelete = (id: string) => {
     const updated = strategies.filter((s) => s.id !== id);
-    setStrategies(updated);
-    saveCustomStrategies(updated);
+    setRawStrategies(JSON.stringify(updated));
   };
 
   const addCondition = (type: ConditionType) => {
