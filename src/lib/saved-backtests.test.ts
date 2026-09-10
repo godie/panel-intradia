@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   loadSavedBacktests,
   saveBacktest,
@@ -63,8 +63,11 @@ function makeResult(overrides?: Partial<BacktestResult>): BacktestResult {
   };
 }
 
-function createStorageMock(): Storage {
+type StorageMock = Storage & { failWrites: () => void };
+
+function createStorageMock(): StorageMock {
   const store = new Map<string, string>();
+  let fail = false;
   return {
     get length() {
       return store.size;
@@ -78,21 +81,30 @@ function createStorageMock(): Storage {
       store.delete(key);
     },
     setItem: (key: string, value: string) => {
+      if (fail) throw new Error("QuotaExceededError");
       store.set(key, value);
     },
-  } as Storage;
+    failWrites: () => {
+      fail = true;
+    },
+  };
 }
 
-let storage: Storage;
+let storage: StorageMock;
 
+// saved-backtests.ts guards on `typeof window === "undefined"`, so expose
+// the DOM globals it reads directly. We set them on globalThis instead of
+// using vi.stubGlobal (Vitest-only) because CI runs the suite with Bun's
+// native test runner (`bun test`), which must also pass.
 beforeEach(() => {
   storage = createStorageMock();
-  vi.stubGlobal("window", {});
-  vi.stubGlobal("localStorage", storage);
+  (globalThis as Record<string, unknown>).window = {};
+  (globalThis as Record<string, unknown>).localStorage = storage;
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  delete (globalThis as Record<string, unknown>).window;
+  delete (globalThis as Record<string, unknown>).localStorage;
 });
 
 describe("saved backtests persistence", () => {
@@ -158,9 +170,7 @@ describe("saved backtests persistence", () => {
   });
 
   it("returns null when the write always fails (quota exceeded)", () => {
-    vi.spyOn(storage, "setItem").mockImplementation(() => {
-      throw new Error("QuotaExceededError");
-    });
+    storage.failWrites();
     expect(saveBacktest(makeResult())).toBeNull();
     expect(loadSavedBacktests()).toEqual([]);
   });
