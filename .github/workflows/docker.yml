@@ -1,0 +1,70 @@
+name: Docker image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".env.example"
+      - "package.json"
+      - "package-lock.json"
+      - "bun.lock"
+      - "src/**"
+      - "public/**"
+      - "prisma/**"
+      - "mini-services/**"
+      - "next.config.*"
+      - "postcss.config.*"
+      - "tailwind.config.*"
+      - "tsconfig.json"
+      - "eslint.config.*"
+      - ".github/workflows/docker.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".env.example"
+      - "package.json"
+      - "package-lock.json"
+      - "bun.lock"
+      - "src/**"
+      - "public/**"
+      - "prisma/**"
+      - "mini-services/**"
+      - "next.config.*"
+      - "postcss.config.*"
+      - "tailwind.config.*"
+      - "tsconfig.json"
+      - "eslint.config.*"
+      - ".github/workflows/docker.yml"
+
+concurrency:
+  group: docker-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build Docker image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: panelcuantitativo/app:ci-${{ github.sha }}
