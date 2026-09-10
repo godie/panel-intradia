@@ -22,13 +22,19 @@ import {
 // ---------------------------------------------------------------------------
 class MemoryStorage implements Storage {
   private map = new Map<string, string>();
+  /** Simulates a corrupted / blocked store (reads throw). */
+  failReads = false;
+  /** Simulates quota exceeded / privacy mode (writes throw). */
+  failWrites = false;
   get length(): number {
     return this.map.size;
   }
   getItem(key: string): string | null {
+    if (this.failReads) throw new Error("read blocked");
     return this.map.has(key) ? (this.map.get(key) as string) : null;
   }
   setItem(key: string, value: string): void {
+    if (this.failWrites) throw new Error("QuotaExceededError");
     this.map.set(String(key), String(value));
   }
   removeItem(key: string): void {
@@ -42,11 +48,17 @@ class MemoryStorage implements Storage {
   }
 }
 const memoryStorage = new MemoryStorage();
-vi.stubGlobal("localStorage", memoryStorage);
-vi.stubGlobal("Storage", MemoryStorage);
+
+// Expose the DOM global the lib reads directly on globalThis rather than via
+// `vi.stubGlobal` (Vitest-only): CI also runs this suite with Bun's native test
+// runner (`bun test`), which must pass too. Same pattern as
+// src/lib/saved-backtests.test.ts.
+(globalThis as Record<string, unknown>).localStorage = memoryStorage;
 
 beforeEach(() => {
   memoryStorage.clear();
+  memoryStorage.failReads = false;
+  memoryStorage.failWrites = false;
 });
 
 describe("readStoredValue", () => {
@@ -65,11 +77,8 @@ describe("readStoredValue", () => {
   });
 
   it("returns null when localStorage throws (corrupted store)", () => {
-    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("boom");
-    });
+    memoryStorage.failReads = true;
     expect(readStoredValue("k3")).toBeNull();
-    spy.mockRestore();
   });
 });
 
@@ -96,11 +105,8 @@ describe("writeStoredValue", () => {
   });
 
   it("silently ignores quota errors", () => {
-    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("quota", "QuotaExceededError");
-    });
+    memoryStorage.failWrites = true;
     expect(() => writeStoredValue("w2", "v2")).not.toThrow();
-    spy.mockRestore();
   });
 });
 
@@ -151,14 +157,11 @@ describe("subscribeToKey", () => {
   });
 
   it("notifies without localStorage (memory fallback)", () => {
+    memoryStorage.failReads = true;
     const listener = vi.fn();
-    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("no storage");
-    });
     const unsub = subscribeToKey("s5", listener);
     writeStoredValue("s5", "mem");
     expect(listener).toHaveBeenCalledWith("mem");
     unsub();
-    spy.mockRestore();
   });
 });
