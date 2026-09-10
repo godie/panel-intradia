@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
+    "db:seed": "bun prisma/seed.ts",
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset"
   },
