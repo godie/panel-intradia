@@ -141,6 +141,8 @@ describe("computeStats", () => {
       10000,
       2,
       25,
+      [],
+      "4h",
     );
     expect(stats.totalTrades).toBe(2);
     expect(stats.wins).toBe(1);
@@ -151,7 +153,7 @@ describe("computeStats", () => {
   });
 
   it("returns empty stats when there are no trades", () => {
-    const stats = computeStats([], 10000, 10000, 0, 0);
+    const stats = computeStats([], 10000, 10000, 0, 0, [], "4h");
     expect(stats.totalTrades).toBe(0);
     expect(stats.totalFees).toBe(0);
     expect(stats.avgPositionSizePct).toBe(0);
@@ -159,7 +161,7 @@ describe("computeStats", () => {
   });
 
   it("rounds avgPositionSizePct to one decimal", () => {
-    const stats = computeStats([trade(10, 10, 33.33), trade(-5, -5, 66.66)], 10050, 10000, 1, 0);
+    const stats = computeStats([trade(10, 10, 33.33), trade(-5, -5, 66.66)], 10050, 10000, 1, 0, [], "4h");
     expect(stats.avgPositionSizePct).toBeCloseTo(50, 0);
   });
 
@@ -170,6 +172,8 @@ describe("computeStats", () => {
       10000,
       0.5,
       0,
+      [],
+      "4h",
     );
     expect(stats.profitFactor).toBeCloseTo(130 / 20, 5);
     expect(stats.bestTradePct).toBe(10);

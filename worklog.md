@@ -3431,3 +3431,113 @@ Stage Summary:
   fees are deducted (verified full+10bp = +16.23% vs full+0bp = +18.08%),
   save/reload/compare flow works for 2 backtests.
 - **Branch:** `dm/round-31` (based on `origin/main` 3a0ecbc).
+
+---
+Task ID: round-32
+Agent: Z.ai Code (continuation)
+Task: Round 32 — Risk-adjusted metrics (Sharpe/Sortino/Calmar) + trade duration distribution + import/export saved backtests + equity curve gradient fill.
+
+Work Log:
+- Pulled origin main (e04c3c9 — PR #24 merged my README v31 update + PR #23
+  merged branch-protection-maintenance CI hardening). Reset local main,
+  created branch `dm/round-32`.
+- QA baseline: 164/164 tests pass, lint clean, dev server 200, all 3
+  mini-services (3000, 3004, 3005) healthy, /api/cross-history returns 200
+  (empty state — no events yet), /api/analysis returns data. agent-browser
+  verified: cards render, backtest modal opens, runs, saves, compares.
+  Zero errors.
+
+- === Risk-adjusted metrics (src/lib/backtest.ts) ===
+  Added 9 new fields to BacktestStats:
+  - sharpeRatio: annualized Sharpe ratio (rf=0). Computed from per-candle
+    equity returns: mean/stddev * sqrt(candlesPerYear). CandlesPerYear
+    varies by interval (15m: 35040, 1h: 8760, 4h: 2190, 1d: 365).
+  - sortinoRatio: annualized Sortino ratio (downside deviation only).
+    Uses downsideDev = sqrt(sum(neg_returns^2) / n_all_returns).
+  - calmarRatio: totalReturnPct / maxDrawdownPct (NaN if maxDD=0).
+  - maxWinStreak / maxLossStreak: longest consecutive win/loss streaks.
+  - avgWinPct / avgLossPct: average winning/losing trade P&L percent.
+  - expectancyPct: avgWin * winRate - |avgLoss| * lossRate (per-trade %).
+  Updated computeStats() signature to accept equityCurve + interval
+  (needed for Sharpe/Sortino annualization). Updated emptyStats() with
+  NaN defaults for ratios.
+  Updated all early-return paths (error, insufficient data) + API catch
+  block to include the new fields.
+
+- === Duration distribution (src/lib/backtest.ts) ===
+  New DurationBucket type + computeDurationBuckets() function. 5 buckets:
+  1-5, 6-10, 11-20, 21-50, 50+ candles. Added `durationBuckets` field to
+  BacktestResult. Updated all return paths + API catch block to include it.
+  Verified: MEAN_REVERSION_BUY on BTCUSDT 4h → all 10 trades in 1-5 bucket
+  (short holds, as expected); TREND_BUY → 1 in 6-10, 3 in 21-50 (longer
+  trend-following holds).
+
+- === Import/Export saved backtests (src/lib/saved-backtests.ts) ===
+  - exportSavedBacktests(): builds a JSON object with format
+    "panel-intradia/saved-backtests/v1", exported_at, count, backtests[].
+    Triggers a browser download via Blob + temporary anchor.
+  - importSavedBacktests(jsonText): parses JSON (accepts either
+    { backtests: [...] } or bare array), filters to well-formed entries,
+    merges with existing saved (dedup by id), caps at MAX_SAVED=50.
+    Returns { imported, skipped, total, backtests }.
+
+- === BacktestModal UI (src/components/panel/backtest-modal.tsx) ===
+  - New "Risk metrics" section (heading + 6-tile compact grid):
+    Sharpe, Sortino, Calmar, Win streak, Loss streak, Expectancy.
+    Color-coded by tone (positive if Sharpe ≥ 1, etc.).
+  - New "Duration distribution" section: DurationDistribution component
+    renders 5 horizontal bars (one per bucket), each colored differently
+    (green/cyan/amber/purple/red), width proportional to count, with
+    label (1-5, 6-10, etc.) + count + % share. Avg hold shown in header.
+  - MetricCard extended with `compact` prop (smaller padding + font for
+    the 6-tile risk grid).
+  - Import/Export buttons in the Saved Backtests panel header:
+    * "Exportar JSON" (green, Download icon) — triggers download
+    * "Importar JSON" (purple, Upload icon) — opens file picker
+    * Hidden <input type="file"> accepts .json
+    * Import shows a toast "{n} backtests imported ({skipped} duplicates)"
+    or error "Import error: invalid file" if the file can't be parsed.
+  - Equity curve canvas: added a gradient fill under the curve (green
+    gradient for positive returns, red for negative), fading from 25%
+    opacity at the top to 1% at the bottom. Makes the equity curve
+    visually pop and instantly communicates direction.
+
+- === i18n (4 languages × 16 new keys = 64 new keys) ===
+  Added: backtest.sharpe, sortino, calmar, maxWinStreak, maxLossStreak,
+  avgWin, avgLoss, expectancy, durationDist, riskMetrics, export, import,
+  imported, importError, importSuccess — all in ES/EN/ZH/FR.
+
+- Fixed backtest.test.ts: 3 tests that called computeStats() with the old
+  5-arg signature broke because I added equityCurve + interval as new
+  required params. Updated all 3 test calls to pass [] and "4h".
+
+- QA with agent-browser (ES + EN):
+  - ES: "MÉTRICAS DE RIESGO" heading + SHARPE 2.34, SORTINO 4.29,
+    CALMAR 2.28, RACHA GANADORA 4, RACHA PERDEDORA 1, EXPECTATIVA +1.89%.
+    "DISTRIBUCIÓN DE DURACIÓN" with avg hold 37.3 + 5 buckets.
+    "Exportar JSON" + "Importar JSON" buttons in saved panel.
+  - EN: "RISK METRICS", "SHARPE/SORTINO/CALMAR", "WIN STREAK/LOSS
+    STREAK", "EXPECTANCY", "DURATION DISTRIBUTION" — all correctly
+    translated.
+  - Zero agent-browser errors, zero console errors across both languages.
+  - 164/164 tests pass, lint clean.
+
+Stage Summary:
+- **Estado:** Round 32 entregada. Extended the backtest module with
+  professional-grade risk-adjusted metrics (Sharpe/Sortino/Calmar),
+  trade duration distribution histogram, import/export saved backtests
+  as JSON, and a gradient-filled equity curve. The backtest modal now
+  reports all the metrics that a serious quant would expect.
+- **Artefactos:**
+  - `src/lib/backtest.ts` (+risk metrics +durationBuckets, +130 LOC)
+  - `src/lib/saved-backtests.ts` (+export +import, +120 LOC)
+  - `src/components/panel/backtest-modal.tsx` (+risk grid +duration chart
+    +import/export buttons +gradient fill +MetricCard compact prop, +280 LOC)
+  - `src/lib/i18n.ts` (+64 keys = 16 × 4 languages)
+  - `src/lib/backtest.test.ts` (fixed 3 tests for new computeStats signature)
+  - `src/app/api/backtest/route.ts` (+new stats fields in catch block)
+- **Verification:** 164/164 tests pass, lint clean. agent-browser verified
+  in ES + EN. Sample: TREND_BUY BTCUSDT 4h 500 candles → Sharpe 2.34,
+  Sortino 4.29, Calmar 2.28, maxWinStreak 4, maxLossStreak 1,
+  expectancy +1.89%.
+- **Branch:** `dm/round-32` (based on `origin/main` e04c3c9).

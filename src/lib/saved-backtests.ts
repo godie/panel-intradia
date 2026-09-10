@@ -130,3 +130,115 @@ export function clearSavedBacktests(): void {
     // ignore
   }
 }
+
+/**
+ * Export all saved backtests as a downloadable JSON file.
+ * Triggers a browser download via a Blob + temporary anchor element.
+ * Returns the exported JSON string (useful for testing / programmatic use).
+ */
+export function exportSavedBacktests(): string {
+  const data = {
+    exported_at: new Date().toISOString(),
+    format: "panel-intradia/saved-backtests/v1",
+    count: 0,
+    backtests: [] as SavedBacktest[],
+  };
+  const existing = loadSavedBacktests();
+  data.backtests = existing;
+  data.count = existing.length;
+  const json = JSON.stringify(data, null, 2);
+  if (typeof window === "undefined") return json;
+  try {
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    a.download = `panel-backtests-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch {
+    // ignore download errors (e.g. headless browser)
+  }
+  return json;
+}
+
+/**
+ * Import saved backtests from a JSON file (uploaded by the user).
+ * Merges with existing saved backtests, skipping duplicates by id.
+ * Returns the new merged list (capped at MAX_SAVED).
+ *
+ * The expected JSON shape:
+ *   { format: "panel-intradia/saved-backtests/v1", backtests: SavedBacktest[] }
+ * or simply an array of SavedBacktest[] (legacy format).
+ */
+export function importSavedBacktests(jsonText: string): {
+  imported: number;
+  skipped: number;
+  total: number;
+  backtests: SavedBacktest[];
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    return { imported: 0, skipped: 0, total: 0, backtests: [] };
+  }
+
+  // Accept either { backtests: [...] } or a bare array.
+  let incoming: SavedBacktest[] = [];
+  if (Array.isArray(parsed)) {
+    incoming = parsed as SavedBacktest[];
+  } else if (parsed && typeof parsed === "object" && Array.isArray((parsed as { backtests?: unknown }).backtests)) {
+    incoming = (parsed as { backtests: SavedBacktest[] }).backtests;
+  } else {
+    return { imported: 0, skipped: 0, total: 0, backtests: [] };
+  }
+
+  // Filter to well-formed entries only.
+  const valid = incoming.filter(
+    (s) =>
+      s &&
+      typeof s.id === "string" &&
+      typeof s.savedAt === "string" &&
+      typeof s.label === "string" &&
+      s.result &&
+      typeof s.result === "object",
+  );
+
+  const existing = loadSavedBacktests();
+  const existingIds = new Set(existing.map((s) => s.id));
+
+  let imported = 0;
+  let skipped = 0;
+  // Merge: prepend imported entries (newest-first), skip duplicates by id.
+  const merged: SavedBacktest[] = [...existing];
+  for (const s of valid) {
+    if (existingIds.has(s.id)) {
+      skipped++;
+    } else {
+      merged.unshift(s);
+      existingIds.add(s.id);
+      imported++;
+    }
+  }
+  const trimmed = merged.slice(0, MAX_SAVED);
+
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+    } catch {
+      // ignore quota — return what we have in memory
+    }
+  }
+
+  return {
+    imported,
+    skipped,
+    total: trimmed.length,
+    backtests: trimmed,
+  };
+}
+
