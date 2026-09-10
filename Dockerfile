@@ -5,7 +5,7 @@
 # Outputs:
 #   - Next.js standalone build (`.next/standalone/`)
 #   - All node_modules / bun-installed deps for the mini-services
-#   - Prisma client + schema
+#   - Prisma client + schema + prisma CLI (used at startup to create/push the DB)
 #
 # Used by `docker-compose.yml` as the base image for the `app`,
 # `tick-stream`, and `order-book` services. The `caddy` service uses the
@@ -62,7 +62,10 @@ COPY --from=deps /app/prisma ./prisma
 COPY . .
 
 # Build Next.js (next.config.ts already has `output: "standalone"`).
+# HOSTNAME=0.0.0.0 is required: Next standalone defaults to binding
+# 0.0.0.0 only in some setups; be explicit so other containers can reach it.
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
 RUN bun run build
 
 # =============================================================================
@@ -74,6 +77,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+# Next.js standalone server binds to HOSTNAME; default may be localhost.
+ENV HOSTNAME=0.0.0.0
 
 # Copy the standalone bundle + static assets + public.
 COPY --from=builder --chown=bun:bun /app/.next/standalone ./
@@ -84,11 +89,19 @@ COPY --from=builder --chown=bun:bun /app/public ./public
 # from this image by docker-compose.
 COPY --from=builder --chown=bun:bun /app/mini-services ./mini-services
 
-# Copy Prisma schema + generated client so `prisma generate` doesn't need
-# to run again at startup.
+# Copy Prisma schema + full node_modules from the deps stage so the app
+# (generated client + query engine) and the startup script (prisma CLI via
+# `bunx prisma db push`) both work at runtime without re-installing anything.
+# Cherry-picking only prisma/@prisma breaks the CLI (transitive deps like
+# `effect` would be missing).
 COPY --from=builder --chown=bun:bun /app/prisma ./prisma
-COPY --from=deps    --chown=bun:bun /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=deps    --chown=bun:bun /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=deps    --chown=bun:bun /app/node_modules ./node_modules
+
+# Startup script: initialize the SQLite DB if needed, then exec the
+# standalone Next.js server. If a legacy DB already has tables, db push
+# is a no-op; if the volume is fresh, it creates the schema.
+COPY --chown=bun:bun docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Persistent SQLite directory — bind-mount a volume here in compose.
 RUN mkdir -p /app/db && chown -R bun:bun /app/db
@@ -97,7 +110,13 @@ USER bun
 
 EXPOSE 3000 3004 3005
 
+# Note: the `app` service overrides the healthcheck in docker-compose.yml
+# (it targets the dashboard root); the mini-services override it too.
+# This default just probes the app port so a bare `docker run` is sane.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --quiet --spider http://localhost:3000/api/cross-history?symbol=BTCUSDT || exit 1
+  CMD wget --quiet --spider http://127.0.0.1:${PORT:-3000}/ || exit 1
 
-CMD ["echo", "Use docker compose to start the right service (app / tick-stream / order-book)."]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# Default command: the Next.js standalone server. docker-compose overrides
+# it for the tick-stream / order-book services.
+CMD ["bun", "server.js"]
