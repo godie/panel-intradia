@@ -50,52 +50,62 @@ function compactResult(result: BacktestResult): BacktestResult {
   };
 }
 
+/** Guard that a parsed entry actually has the SavedBacktest shape (defensive
+ *  against stale/corrupt data written by older versions of the app). */
+function isSavedBacktest(v: unknown): v is SavedBacktest {
+  if (typeof v !== "object" || v === null) return false;
+  const s = v as Record<string, unknown>;
+  const result = s.result as Record<string, unknown> | null | undefined;
+  return (
+    typeof s.id === "string" &&
+    typeof s.savedAt === "string" &&
+    typeof s.label === "string" &&
+    typeof result === "object" &&
+    result !== null &&
+    typeof result.stats === "object" &&
+    result.stats !== null
+  );
+}
+
 /** Load all saved backtests from localStorage. Returns [] on any error. */
 export function loadSavedBacktests(): SavedBacktest[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as SavedBacktest[];
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed;
+    return parsed.filter(isSavedBacktest);
   } catch {
     return [];
   }
 }
 
 /** Save a new backtest result. Returns the new SavedBacktest. The list is
- *  capped at MAX_SAVED entries (oldest dropped). */
+ *  capped at MAX_SAVED entries (oldest dropped). If the write exceeds the
+ *  localStorage quota, the oldest entries are dropped progressively until
+ *  the write fits. */
 export function saveBacktest(result: BacktestResult): SavedBacktest | null {
   if (typeof window === "undefined") return null;
-  try {
-    const existing = loadSavedBacktests();
-    const saved: SavedBacktest = {
-      id: generateId(),
-      savedAt: new Date().toISOString(),
-      label: generateLabel(result),
-      result: compactResult(result),
-    };
-    const updated = [saved, ...existing].slice(0, MAX_SAVED);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    return saved;
-  } catch {
-    // Likely quota exceeded — try dropping the oldest entry and retry once.
+  const saved: SavedBacktest = {
+    id: generateId(),
+    savedAt: new Date().toISOString(),
+    label: generateLabel(result),
+    result: compactResult(result),
+  };
+  const existing = loadSavedBacktests();
+  for (let drop = 0; drop <= MAX_SAVED; drop++) {
+    // Newest-first with the 50-entry cap; on quota failure progressively
+    // drop more of the oldest entries until the write fits.
+    const kept = existing.slice(0, MAX_SAVED - 1 - drop);
     try {
-      const existing = loadSavedBacktests();
-      const saved: SavedBacktest = {
-        id: generateId(),
-        savedAt: new Date().toISOString(),
-        label: generateLabel(result),
-        result: compactResult(result),
-      };
-      const trimmed = [saved, ...existing.slice(0, MAX_SAVED - 1)];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([saved, ...kept]));
       return saved;
     } catch {
-      return null;
+      // Quota exceeded — drop one more old entry and retry.
     }
   }
+  return null;
 }
 
 /** Delete a saved backtest by id. Returns the new list. */

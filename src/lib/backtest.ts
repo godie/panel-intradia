@@ -428,7 +428,66 @@ function entrySignalFires(
   return result.confidence >= minConfidence;
 }
 
-/** Run a backtest. Returns the full result (no error thrown on data quality). */
+/**
+ * Position size (% of equity) for the next trade under a given sizing mode.
+ *
+ * - "full": 100%.
+ * - "fixed_fractional": clamped fixedFractionalPct (1-100).
+ * - "kelly" / "half_kelly": Kelly fraction f* = (p*b - q)/b estimated from
+ *   realized trades (p = win rate, b = avgWin/avgLoss). Needs at least 5
+ *   closed trades as a warmup sample (otherwise 100%). A non-positive edge
+ *   falls back to the 1% floor. Half-Kelly sizes at half of the kelly
+ *   fraction.
+ */
+export function calculatePositionSizePct(
+  sizing: PositionSizing,
+  closedTrades: Pick<BacktestTrade, "pnl" | "pnlPct">[],
+  fixedFractionalPct: number,
+): number {
+  if (sizing === "full") return 100;
+  if (sizing === "fixed_fractional") {
+    return Math.max(1, Math.min(100, fixedFractionalPct));
+  }
+  // Kelly / half_kelly — need at least a few trades to estimate.
+  if (closedTrades.length < 5) return 100; // warmup: full size until stats stabilize
+  const wins = closedTrades.filter((t) => t.pnl > 0);
+  const losses = closedTrades.filter((t) => t.pnl <= 0);
+  if (wins.length === 0 || losses.length === 0) return 100;
+  const winRate = wins.length / closedTrades.length;
+  const avgWin = wins.reduce((s, t) => s + t.pnlPct, 0) / wins.length;
+  const avgLoss = Math.abs(losses.reduce((s, t) => s + t.pnlPct, 0) / losses.length);
+  if (avgLoss === 0) return 100;
+  const payoff = avgWin / avgLoss; // win/loss ratio
+  // Kelly fraction f* = (p*b - q) / b  where p=win rate, q=1-p, b=payoff
+  const kellyFrac = (winRate * payoff - (1 - winRate)) / payoff;
+  if (kellyFrac <= 0) return 1; // edge negative — minimal size
+  // Convert Kelly fraction (0-1) to % of equity, capped at 100%.
+  const rawPct = sizing === "kelly" ? kellyFrac * 100 : kellyFrac * 50;
+  return Math.max(1, Math.min(100, rawPct));
+}
+
+/**
+ * PnL and fees for a single closed trade. Fees are charged on both the
+ * entry notional and the exit notional (exit notional = entry notional
+ * × exitPrice/entryPrice).
+ */
+export function computeTradePnl(input: {
+  entryPrice: number;
+  exitPrice: number;
+  positionDirection: 1 | -1;
+  entryNotional: number;
+  feePerSide: number;
+}): { grossPnl: number; netPnl: number; netPnlPct: number; feesPaid: number } {
+  const { entryPrice, exitPrice, positionDirection, entryNotional, feePerSide } = input;
+  const grossPnlPct = ((exitPrice - entryPrice) / entryPrice) * 100 * positionDirection;
+  const exitNotional = entryNotional * (exitPrice / entryPrice);
+  const feesPaid = entryNotional * feePerSide + exitNotional * feePerSide;
+  const grossPnl = (entryNotional * grossPnlPct) / 100;
+  const netPnl = grossPnl - feesPaid;
+  const netPnlPct = (netPnl / entryNotional) * 100;
+  return { grossPnl, netPnl, netPnlPct, feesPaid };
+}
+
 export async function runBacktest(params: BacktestParams): Promise<BacktestResult> {
   const {
     symbol,
@@ -503,6 +562,7 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
   let entryTime = 0;
   let tradeAction = action;
   let positionSizePct = 100;  // % of equity allocated to the current trade
+  let entryEquity = 0;        // equity snapshot when the position opened
 
   // Long for BUY/HOLD/WAIT (defensive), short for SHORT.
   const isShortStrategy = action === "SHORT";
@@ -510,33 +570,6 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
 
   // Fee per side in decimal (e.g. 10 bp = 0.001).
   const feePerSide = feeBps / 10_000;
-
-  /** Calculate position size (% of equity) for the next trade based on
-   *  positionSizing mode. Kelly / half-Kelly use realized stats from
-   *  closed trades; before any trades, fall back to 100%. */
-  function calcPositionSize(): number {
-    if (positionSizing === "full") return 100;
-    if (positionSizing === "fixed_fractional") {
-      return Math.max(1, Math.min(100, fixedFractionalPct));
-    }
-    // Kelly / half_kelly — need at least a few trades to estimate.
-    const closed = trades.length;
-    if (closed < 5) return 100;  // warmup: use full size until stats stabilize
-    const wins_ = trades.filter((t) => t.pnl > 0);
-    const losses_ = trades.filter((t) => t.pnl <= 0);
-    if (wins_.length === 0 || losses_.length === 0) return 100;
-    const winRate_ = wins_.length / closed;
-    const avgWin = wins_.reduce((s, t) => s + t.pnlPct, 0) / wins_.length;
-    const avgLoss = Math.abs(losses_.reduce((s, t) => s + t.pnlPct, 0) / losses_.length);
-    if (avgLoss === 0) return 100;
-    const payoff = avgWin / avgLoss;  // win/loss ratio
-    // Kelly fraction f* = (p*b - q) / b  where p=win rate, q=1-p, b=payoff
-    const kellyFrac = (winRate_ * payoff - (1 - winRate_)) / payoff;
-    if (kellyFrac <= 0) return 1;  // edge negative — minimal size
-    // Convert Kelly fraction (0-1) to % of equity, capped at 100%.
-    const rawPct = positionSizing === "kelly" ? kellyFrac * 100 : kellyFrac * 50;
-    return Math.max(1, Math.min(100, rawPct));
-  }
 
   for (let i = 0; i < snapshots.length; i++) {
     const snap = snapshots[i];
@@ -557,35 +590,19 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
 
       if (exitReason !== null) {
         const exitPrice = snap.close;
-        // Position notional = equity at entry * (positionSizePct / 100).
-        // We track equity_at_entry implicitly: it's `equity` before the
-        // trade's PnL was added. But since `equity` is updated AFTER the
-        // exit, we need the equity at the time the position was opened.
-        // We stored it implicitly via positionSizePct + the fact that we
-        // use `equity` (current, pre-PnL) as the base. To be correct we
-        // should snapshot equity at entry; we track it via the entry equity
-        // captured at entry time below (entryEquity variable).
-        // For simplicity we re-derive: positionNotional = entryEquity * positionSizePct/100.
-        // We use the equity value at entry (captured below).
-        // Compute gross PnL (before fees):
-        const grossPnlPct = ((exitPrice - entryPrice) / entryPrice) * 100 * positionDirection;
-        // Fees: entry fee + exit fee (each = notional * feePerSide).
-        // The entry notional was `entryEquity * positionSizePct/100`.
-        // The exit notional is `entryNotional * (exitPrice / entryPrice)`.
-        const entryNotional = (equity * positionSizePct) / 100;
-        const exitNotional = entryNotional * (exitPrice / entryPrice);
-        const entryFee = entryNotional * feePerSide;
-        const exitFee = exitNotional * feePerSide;
-        const feesPaid = entryFee + exitFee;
+        // Notional is based on the equity snapshot at entry time, so PnL
+        // and fees stay consistent even if the sizing mode changes later.
+        const entryNotional = (entryEquity * positionSizePct) / 100;
+        const { netPnl, netPnlPct, feesPaid } = computeTradePnl({
+          entryPrice,
+          exitPrice,
+          positionDirection,
+          entryNotional,
+          feePerSide,
+        });
         totalFees += feesPaid;
-        // Net PnL = grossPnl - fees. PnL in USD: entryNotional * grossPnlPct/100 - feesPaid.
-        const grossPnl = (entryNotional * grossPnlPct) / 100;
-        const netPnl = grossPnl - feesPaid;
         equity += netPnl;
         if (equity < 0) equity = 0;
-
-        // Net PnL percent (relative to entryNotional, not total equity):
-        const netPnlPct = (netPnl / entryNotional) * 100;
 
         trades.push({
           entryIndex,
@@ -617,7 +634,8 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
         entryPrice = snap.close;
         entryTime = snap.time;
         tradeAction = action;
-        positionSizePct = calcPositionSize();
+        positionSizePct = calculatePositionSizePct(positionSizing, trades, fixedFractionalPct);
+        entryEquity = equity;
       }
     }
 
@@ -625,7 +643,7 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     // contribution to equity is `(equity * positionSizePct/100) * openPnlPct/100`.
     let markedEquity = equity;
     if (inPosition) {
-      const entryNotional = (equity * positionSizePct) / 100;
+      const entryNotional = (entryEquity * positionSizePct) / 100;
       const openPnlPct = ((snap.close - entryPrice) / entryPrice) * 100 * positionDirection;
       // Subtract the entry fee from the marked equity (we already paid it).
       const entryFeePaid = entryNotional * feePerSide;
@@ -678,7 +696,7 @@ function emptyStats(initialCapital: number): BacktestStats {
   };
 }
 
-function computeStats(
+export function computeStats(
   trades: BacktestTrade[],
   finalEquity: number,
   initialCapital: number,

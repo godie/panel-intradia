@@ -986,47 +986,44 @@ function CompareTable({
   saved: SavedBacktest[];
   t: (key: string) => string;
 }) {
+  // `best` declares which direction to highlight as the best value:
+  // "max" (e.g. return, win rate), "min" (e.g. max drawdown), or undefined
+  // (no highlight — trade count / fees / avg size are not better in either
+  // direction). Note worstTradePct is "max": the least-negative worst trade
+  // is the best outcome.
   const metrics: {
     key: keyof SavedBacktest["result"]["stats"];
     label: string;
     format: (v: number) => string;
-    higherIsBetter?: boolean;
+    best?: "max" | "min";
   }[] = [
-    { key: "totalReturnPct", label: t("backtest.totalReturn"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, higherIsBetter: true },
-    { key: "winRate", label: t("backtest.winRate"), format: (v) => `${v.toFixed(1)}%`, higherIsBetter: true },
-    { key: "profitFactor", label: t("backtest.profitFactor"), format: (v) => (Number.isFinite(v) ? v.toFixed(2) : "∞"), higherIsBetter: true },
-    { key: "maxDrawdownPct", label: t("backtest.maxDrawdown"), format: (v) => `-${v.toFixed(2)}%`, higherIsBetter: false },
+    { key: "totalReturnPct", label: t("backtest.totalReturn"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, best: "max" },
+    { key: "winRate", label: t("backtest.winRate"), format: (v) => `${v.toFixed(1)}%`, best: "max" },
+    { key: "profitFactor", label: t("backtest.profitFactor"), format: (v) => (Number.isFinite(v) ? v.toFixed(2) : "∞"), best: "max" },
+    { key: "maxDrawdownPct", label: t("backtest.maxDrawdown"), format: (v) => `-${v.toFixed(2)}%`, best: "min" },
     { key: "totalTrades", label: t("backtest.totalTrades"), format: (v) => String(v) },
     { key: "avgHoldCandles", label: t("backtest.avgHold"), format: (v) => String(v) },
-    { key: "bestTradePct", label: t("backtest.bestTrade"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, higherIsBetter: true },
-    { key: "worstTradePct", label: t("backtest.worstTrade"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, higherIsBetter: false },
-    { key: "finalEquity", label: t("backtest.finalEquity"), format: (v) => `$${Math.round(v).toLocaleString("en-US")}`, higherIsBetter: true },
+    { key: "bestTradePct", label: t("backtest.bestTrade"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, best: "max" },
+    { key: "worstTradePct", label: t("backtest.worstTrade"), format: (v) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`, best: "max" },
+    { key: "finalEquity", label: t("backtest.finalEquity"), format: (v) => `$${Math.round(v).toLocaleString("en-US")}`, best: "max" },
     { key: "totalFees", label: t("backtest.totalFees"), format: (v) => `$${v.toFixed(2)}` },
     { key: "avgPositionSizePct", label: t("backtest.avgPositionSize"), format: (v) => `${v.toFixed(1)}%` },
   ];
 
-  // For "higherIsBetter" rows, find the best value to highlight green.
-  // For "higherIsBetter=false" (maxDD, worstTrade), find the best (smallest abs) to highlight.
   const bestByKey: Record<string, string | null> = {};
   for (const m of metrics) {
-    if (m.higherIsBetter === undefined) {
+    if (!m.best) {
       bestByKey[m.key as string] = null;
       continue;
     }
-    let best = m.higherIsBetter ? -Infinity : Infinity;
+    let best = m.best === "max" ? -Infinity : Infinity;
     let bestId: string | null = null;
     for (const s of saved) {
       const v = s.result.stats[m.key];
-      if (m.higherIsBetter) {
-        if (v > best) {
-          best = v;
-          bestId = s.id;
-        }
-      } else {
-        if (v < best) {
-          best = v;
-          bestId = s.id;
-        }
+      const better = m.best === "max" ? v > best : v < best;
+      if (better) {
+        best = v;
+        bestId = s.id;
       }
     }
     bestByKey[m.key as string] = bestId;
@@ -1061,11 +1058,7 @@ function CompareTable({
                   <td
                     key={s.id}
                     className={`px-2 py-1.5 ${
-                      isBest
-                        ? m.higherIsBetter
-                          ? "text-[#5fbf8f] font-semibold"
-                          : "text-[#5fbf8f] font-semibold"
-                        : "text-foreground/80"
+                      isBest ? "text-[#5fbf8f] font-semibold" : "text-foreground/80"
                     }`}
                   >
                     {m.format(v)}
