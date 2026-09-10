@@ -50,10 +50,29 @@ RUN cd mini-services/order-book  && bun install --frozen-lockfile
 RUN bunx prisma generate
 
 # =============================================================================
+# Node.js runtime for the Next.js build.
+#
+# Why: the oven/bun image ships a `node` shim
+# (/usr/local/bun-node-fallback-bin/node) that runs `next build` on Bun's
+# runtime. There it intermittently dies with SIGILL (exit code 132, "core
+# dumped") while tearing down its build workers — see oven-sh/bun#24397,
+# #26863 and #39568 (still broken as of 1.3.14). Node is the runtime Next.js
+# officially supports, so the builder gets the real thing; it lands in
+# /usr/local/bin, which wins the PATH lookup over the fallback-bin shim.
+# Used by the builder stage only — the runner still serves the bundle with
+# Bun (CMD ["bun", "server.js"]).
+# =============================================================================
+FROM node:${NODE_VERSION}-bookworm-slim AS node-bin
+
+# =============================================================================
 # Stage 3: builder — build the Next.js standalone bundle.
 # =============================================================================
 FROM base AS builder
 WORKDIR /app
+
+COPY --from=node-bin /usr/local/bin/node /usr/local/bin/node
+# Verify the shim did not win: `Bun` is only defined inside the Bun runtime.
+RUN node -e "if (typeof Bun !== 'undefined') { console.error('FATAL: node resolves to the Bun shim, not Node'); process.exit(1); } console.log('next build will run on Node ' + process.versions.node)"
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/mini-services/tick-stream/node_modules ./mini-services/tick-stream/node_modules
