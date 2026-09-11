@@ -5,16 +5,20 @@ import { getCached, setCached } from "@/lib/cache";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ALLOWED_SYMBOLS = new Set([
-  "BTCUSDT",
-  "ETHUSDT",
-  "XRPUSDT",
-  "SOLUSDT",
-  "BNBUSDT",
-]);
 const ALLOWED_INTERVALS = new Set(["1h", "4h", "1d"]);
 const ALLOWED_LIMITS = new Set([100, 500, 1000]);
 const CACHE_TTL_MS = 120_000;
+
+/**
+ * Validate that a symbol string is a plausible Binance USDT spot pair.
+ * Uppercase letters, ends with "USDT", 6-16 chars total, base 2-12 letters.
+ */
+export function isValidSymbolFormat(symbol: string): boolean {
+  if (!symbol) return false;
+  if (!/^[A-Z]{2,12}USDT$/.test(symbol)) return false;
+  if (symbol.length < 6 || symbol.length > 16) return false;
+  return true;
+}
 
 /**
  * Compute Pearson correlation + linear regression between two return arrays.
@@ -73,15 +77,15 @@ export async function GET(req: NextRequest) {
   const interval = searchParams.get("interval") ?? "4h";
   const limitRaw = Number(searchParams.get("limit") ?? "500");
 
-  if (!symbolA || !ALLOWED_SYMBOLS.has(symbolA)) {
+  if (!symbolA || !isValidSymbolFormat(symbolA)) {
     return NextResponse.json(
-      { error: `symbolA inválido. Permitidos: ${[...ALLOWED_SYMBOLS].join(", ")}` },
+      { error: "symbolA inválido. Debe ser un par USDT válido." },
       { status: 400 },
     );
   }
-  if (!symbolB || !ALLOWED_SYMBOLS.has(symbolB)) {
+  if (!symbolB || !isValidSymbolFormat(symbolB)) {
     return NextResponse.json(
-      { error: `symbolB inválido. Permitidos: ${[...ALLOWED_SYMBOLS].join(", ")}` },
+      { error: "symbolB inválido. Debe ser un par USDT válido." },
       { status: 400 },
     );
   }

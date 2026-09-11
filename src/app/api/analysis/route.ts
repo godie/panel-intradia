@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { providerRouter } from "@/lib/providers/router";
 import { UpstreamError } from "@/lib/providers/types";
-import { isSupportedSymbol } from "@/lib/providers/symbols";
 import {
   calculateEMA,
   calculateRSI,
@@ -27,6 +26,21 @@ export const dynamic = "force-dynamic";
 
 const CACHE_TTL_MS = 60_000;
 const SPARK_POINTS = 120;
+
+/**
+ * Validate that a symbol string is a plausible Binance USDT spot pair.
+ *
+ * The actual existence of the trading pair on Binance is validated lazily
+ * by the upstream klines fetch (which returns an empty array or HTTP 400
+ * for unknown pairs). Here we just check the shape: uppercase letters,
+ * ends with "USDT", total length 6-16 chars, base asset 2-12 letters.
+ */
+export function isValidSymbolFormat(symbol: string): boolean {
+  if (!symbol) return false;
+  if (!/^[A-Z]{2,12}USDT$/.test(symbol)) return false;
+  if (symbol.length < 6 || symbol.length > 16) return false;
+  return true;
+}
 
 function round(n: number | null, decimals: number): number | null {
   if (n == null || !Number.isFinite(n)) return null;
@@ -344,9 +358,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const symbol = (searchParams.get("symbol") ?? "").toUpperCase().trim();
 
-  if (!symbol || !isSupportedSymbol(symbol)) {
+  if (!symbol || !isValidSymbolFormat(symbol)) {
     return NextResponse.json(
-      { error: `Símbolo inválido. Permitidos: BTCUSDT, ETHUSDT, XRPUSDT, SOLUSDT, BNBUSDT` },
+      { error: "Símbolo inválido. Debe ser un par USDT válido (ej. BTCUSDT, ADAUSDT)." },
       { status: 400 },
     );
   }

@@ -3541,3 +3541,119 @@ Stage Summary:
   Sortino 4.29, Calmar 2.28, maxWinStreak 4, maxLossStreak 1,
   expectancy +1.89%.
 - **Branch:** `dm/round-32` (based on `origin/main` e04c3c9).
+
+---
+
+## Round 33 — Dynamic ticker (symbol) management (Task ID 1)
+
+**Estado:** Round 33 entregada. Implemented dynamic ticker (symbol) management:
+users can now add/remove any Binance USDT pair to/from their watchlist
+(persisted to localStorage via the pre-existing `src/lib/symbol-manager.ts`)
+and open a per-symbol detail modal that surfaces every indicator we compute.
+
+### Files modified
+
+- **`src/lib/types.ts`** — Added `SymbolMeta` type, changed `SYMBOL_META`
+  record to `Record<string, SymbolMeta>`, and exported a new
+  `getSymbolMeta(symbol: string)` helper. For known symbols (in SYMBOL_META)
+  it returns the stored metadata; for unknown symbols (e.g. ADAUSDT) it
+  derives a fallback: label = base asset (strip "USDT"), pair = "{BASE} / USD",
+  asset = base, quote = "USD".
+- **`src/app/api/analysis/route.ts`** — Replaced the `isSupportedSymbol`
+  whitelist check with a new `isValidSymbolFormat(symbol)` helper that
+  validates `/^[A-Z]{2,12}USDT$/` + length 6-16. Updated the 400 error
+  message to "Símbolo inválido. Debe ser un par USDT válido (ej. BTCUSDT,
+  ADAUSDT)." Any plausible USDT pair can now be analyzed (the upstream
+  klines fetch lazily validates existence on Binance/Bybit).
+- **`src/app/api/returns/route.ts`** — Replaced the `ALLOWED_SYMBOLS` Set
+  with `isValidSymbolFormat`. Error messages now read "symbolA inválido.
+  Debe ser un par USDT válido." / "symbolB inválido. Debe ser un par USDT
+  válido."
+- **`src/app/api/correlation/route.ts`** — Renamed the local `SYMBOLS`
+  array to `DEFAULT_SYMBOLS` (still sourced from `lib/types`). Accepts an
+  optional `symbols=BTCUSDT,ETHUSDT,...` query param — splits, validates
+  (each via `isValidSymbolFormat`), dedupes, requires ≥2 symbols. Cache
+  key now includes the symbols list so different sets don't collide.
+  Payload's `symbols` field reflects the dynamic list.
+- **`src/app/page.tsx`** — Replaced the hardcoded `SYMBOLS` const with a
+  `symbols` useState (seeded from `loadWatchlist()`, so SSR + first client
+  render match — the stored list is reconciled in a mount effect). The
+  stable `fetchAll` callback reads the latest symbols via a `symbolsRef`
+  ref. A new effect reconciles `cells` when `symbols` changes (seed
+  loading entries for new symbols, prune removed) and triggers a refetch.
+  Added an "Add ticker" button (Plus icon, green accent) in the header
+  next to the Export button. Wired `onRemove` (with a `window.confirm`)
+  and `onDetail` callbacks to each `<AssetCard>`. Renders the two new
+  modals at the end. `SYMBOL_META[s]` → `getSymbolMeta(s)` everywhere.
+- **`src/components/panel/asset-card.tsx`** — Switched from `SYMBOL_META`
+  to `getSymbolMeta(data.symbol)`. Added `onRemove?: () => void` and
+  `onDetail?: () => void` props. The card header now has a small action
+  group (top-right) with a `Maximize2` details button and an `X` remove
+  button — both subtle (h-6 w-6, muted color, only rendered when the
+  callback is provided). The state badge + N/D badge sit next to them
+  inside the same flex row.
+- **`src/components/panel/ticker-tape.tsx`** — Switched from
+  `SYMBOL_META[data.symbol]` to `getSymbolMeta(data.symbol)`.
+
+### Files created
+
+- **`src/components/panel/add-ticker-modal.tsx`** — Modal with title,
+  description, symbol input (uppercase, autoCapitalize), validate button,
+  common-suggestion chips (ADAUSDT/DOTUSDT/LINKUSDT/AVAXUSDT/DOGEUSDT/
+  TRXUSDT/LTCUSDT/ATOMUSDT/NEARUSDT/ARBUSDT), and three status states
+  (validating spinner / valid ✓ / invalid ✗ with localized message).
+  Validate calls `/api/analysis?symbol=X` and on success invokes `onAdd`
+  after a 350ms success flash. Escape closes. State is reset via React's
+  "adjust state during render" pattern (track prev `open`) so we don't
+  trip the `react-hooks/set-state-in-effect` lint rule.
+- **`src/components/panel/ticker-detail-modal.tsx`** — Full indicator
+  breakdown modal. Header shows the pair (via `getSymbolMeta`), UTC
+  updated_at timestamp, and source badge. Body renders a larger
+  sparkline (`h=192`, full EMA55/EMA200/Bollinger/VWAP/Ichimoku overlays
+  via the existing `<Sparkline>`). Below, a 2/3-column grid surfaces all
+  indicator values: EMA55/EMA200, RSI, ATR, S/R, MACD line/signal/hist,
+  Bollinger U/M/L + bandwidth, VWAP, Stochastic %K/%D, Ichimoku
+  Tenkan/Kijun/Senkou A/Senkou B/cloud color/price-vs-cloud, volume 24h,
+  trades 24h, high/low 24h. Fibonacci retracement levels + extensions
+  rendered as a separate grid. Structure text in a framed paragraph.
+  Recent cross events fetched from
+  `/api/cross-history?symbol=X&limit=10` with loading/error/empty states
+  and per-event icon + direction color. Escape closes. Same render-phase
+  pattern for resetting cross state on symbol change.
+
+### i18n
+
+Added 16 new keys to all 4 languages (ES/EN/ZH/FR) under the `ticker.*`
+namespace: `add`, `addDesc`, `symbol`, `placeholder` (= "ADAUSDT"),
+`validate`, `validating`, `valid`, `invalid`, `alreadyAdded`,
+`suggestions`, `remove`, `removeConfirm` (uses `{symbol}` placeholder),
+`detail`, `detailTitle` (uses `{symbol}` placeholder), `allIndicators`,
+`recentCrosses`, `noCrosses`.
+
+### Verification
+
+- `bun run lint` — clean.
+- `bun run typecheck` — only pre-existing `skills/*` errors remain (unrelated
+  to this task; out of scope).
+- `bun run test` — 210/210 tests pass (no test code was added or modified
+  per the task's "DO NOT write test code" rule).
+- The `isSupportedSymbol` helper in `src/lib/providers/symbols.ts` is left
+  intact because `/api/backtest` and `symbols.test.ts` still depend on it.
+
+### Notes / known limitations
+
+- The tick-stream + order-book mini-services (ports 3004/3005) still
+  subscribe to a fixed set of symbols on the server side, so newly added
+  tickers won't have live-tick flashing or L2 depth until the
+  mini-services are extended. The REST `/api/analysis` endpoint fully
+  supports any valid USDT pair.
+- Removing a symbol requires confirmation (`window.confirm` with the
+  localized `ticker.removeConfirm` prompt). The last symbol can't be
+  removed (the `removeSymbol` helper enforces a minimum of 1).
+- `SYMBOL_META` is still exported (for backward compatibility with
+  `market-overview.tsx`, `correlation-matrix.tsx`, `cross-history.tsx`,
+  and `backtest-modal.tsx` which all read it with the
+  `?? fallback` pattern). The new `getSymbolMeta` is preferred for new
+  code.
+
+- **Branch:** `dm/round-33` (based on `origin/main`).

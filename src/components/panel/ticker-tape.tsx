@@ -1,6 +1,6 @@
 "use client";
 
-import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
+import { getSymbolMeta, type AnalysisResponse } from "@/lib/types";
 import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
@@ -16,16 +16,16 @@ function fmtPrice(n: number | null): string {
 }
 
 function TickerItem({ data }: { data: AnalysisResponse }) {
-  const meta = SYMBOL_META[data.symbol];
+  const meta = getSymbolMeta(data.symbol);
   const change = data.change_24h_pct;
   const positive = (change ?? 0) >= 0;
   const unavailable = data.no_disponible.change_24h_pct;
   return (
     <div className="flex items-center gap-2 px-6">
       <span className="text-xs font-semibold uppercase tracking-wider text-foreground/90">
-        {meta?.asset ?? data.symbol}
+        {meta.asset}
       </span>
-      <span className="text-xs text-muted-foreground">/ {meta?.quote ?? "USD"}</span>
+      <span className="text-xs text-muted-foreground">/ {meta.quote}</span>
       <span className="tnum text-sm font-medium text-foreground">
         ${fmtPrice(data.spot_price)}
       </span>

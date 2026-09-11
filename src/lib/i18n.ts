@@ -419,6 +419,25 @@ const es: Dict = {
   "strategy.sig.rsiExtreme": "RSI {val} extremo",
   "strategy.sig.freshCrosses": "Hay cruces frescos — posible señal direccional",
   "strategy.sig.noFreshCrosses": "Sin cruces frescos — sin cambio de momentum",
+
+  // Ticker manager — add/remove tickers + detail modal
+  "ticker.add": "Añadir ticker",
+  "ticker.addDesc": "Ingresa un par USDT de Binance (ej. ADAUSDT)",
+  "ticker.symbol": "Símbolo",
+  "ticker.placeholder": "ADAUSDT",
+  "ticker.validate": "Validar",
+  "ticker.validating": "Validando...",
+  "ticker.valid": "Símbolo válido",
+  "ticker.invalid": "Símbolo no encontrado en Binance",
+  "ticker.alreadyAdded": "Este ticker ya está en tu watchlist",
+  "ticker.suggestions": "Sugerencias",
+  "ticker.remove": "Eliminar ticker",
+  "ticker.removeConfirm": "¿Eliminar {symbol} del watchlist?",
+  "ticker.detail": "Detalle",
+  "ticker.detailTitle": "Detalle de {symbol}",
+  "ticker.allIndicators": "Todos los indicadores",
+  "ticker.recentCrosses": "Cruces recientes",
+  "ticker.noCrosses": "Sin cruces recientes",
 };
 
 // ============================================================
@@ -803,6 +822,25 @@ const en: Dict = {
   "strategy.sig.rsiExtreme": "RSI {val} extreme",
   "strategy.sig.freshCrosses": "Fresh crosses — possible directional signal",
   "strategy.sig.noFreshCrosses": "No fresh crosses — no momentum change",
+
+  // Ticker manager — add/remove tickers + detail modal
+  "ticker.add": "Add ticker",
+  "ticker.addDesc": "Enter a Binance USDT pair (e.g. ADAUSDT)",
+  "ticker.symbol": "Symbol",
+  "ticker.placeholder": "ADAUSDT",
+  "ticker.validate": "Validate",
+  "ticker.validating": "Validating...",
+  "ticker.valid": "Valid symbol",
+  "ticker.invalid": "Symbol not found on Binance",
+  "ticker.alreadyAdded": "This ticker is already in your watchlist",
+  "ticker.suggestions": "Suggestions",
+  "ticker.remove": "Remove ticker",
+  "ticker.removeConfirm": "Remove {symbol} from watchlist?",
+  "ticker.detail": "Detail",
+  "ticker.detailTitle": "{symbol} detail",
+  "ticker.allIndicators": "All indicators",
+  "ticker.recentCrosses": "Recent crosses",
+  "ticker.noCrosses": "No recent crosses",
 };
 
 // ============================================================
@@ -1187,6 +1225,25 @@ const zh: Dict = {
   "strategy.sig.rsiExtreme": "RSI {val} 极端",
   "strategy.sig.freshCrosses": "有新交叉 — 可能的方向信号",
   "strategy.sig.noFreshCrosses": "无新交叉 — 无动量变化",
+
+  // Ticker manager — add/remove tickers + detail modal
+  "ticker.add": "添加交易对",
+  "ticker.addDesc": "输入Binance USDT交易对（如 ADAUSDT）",
+  "ticker.symbol": "符号",
+  "ticker.placeholder": "ADAUSDT",
+  "ticker.validate": "验证",
+  "ticker.validating": "验证中...",
+  "ticker.valid": "符号有效",
+  "ticker.invalid": "在Binance未找到该符号",
+  "ticker.alreadyAdded": "该交易对已在你的关注列表中",
+  "ticker.suggestions": "建议",
+  "ticker.remove": "移除交易对",
+  "ticker.removeConfirm": "从关注列表中移除 {symbol}？",
+  "ticker.detail": "详情",
+  "ticker.detailTitle": "{symbol} 详情",
+  "ticker.allIndicators": "所有指标",
+  "ticker.recentCrosses": "近期交叉",
+  "ticker.noCrosses": "无近期交叉",
 };
 
 // ============================================================
@@ -1568,6 +1625,25 @@ const fr: Dict = {
   "strategy.sig.rsiExtreme": "RSI {val} extrême",
   "strategy.sig.freshCrosses": "Croisements frais — signal directionnel possible",
   "strategy.sig.noFreshCrosses": "Pas de croisements frais — pas de changement de momentum",
+
+  // Ticker manager — add/remove tickers + detail modal
+  "ticker.add": "Ajouter un ticker",
+  "ticker.addDesc": "Entrez une paire USDT Binance (ex. ADAUSDT)",
+  "ticker.symbol": "Symbole",
+  "ticker.placeholder": "ADAUSDT",
+  "ticker.validate": "Valider",
+  "ticker.validating": "Validation...",
+  "ticker.valid": "Symbole valide",
+  "ticker.invalid": "Symbole introuvable sur Binance",
+  "ticker.alreadyAdded": "Ce ticker est déjà dans votre watchlist",
+  "ticker.suggestions": "Suggestions",
+  "ticker.remove": "Retirer le ticker",
+  "ticker.removeConfirm": "Retirer {symbol} de la watchlist?",
+  "ticker.detail": "Détail",
+  "ticker.detailTitle": "Détail de {symbol}",
+  "ticker.allIndicators": "Tous les indicateurs",
+  "ticker.recentCrosses": "Croisements récents",
+  "ticker.noCrosses": "Pas de croisements récents",
 };
 
 export const dictionaries: Record<Lang, Dict> = { es, en, zh, fr };
