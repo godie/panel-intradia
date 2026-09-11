@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
+import { useLocalStorageString } from "@/hooks/use-local-storage";
 
 type Props = {
   /** Title label shown on the trigger button. */
@@ -27,6 +28,10 @@ type Props = {
  * Listens for global "panel:collapse-all" and "panel:expand-all" CustomEvents
  * (dispatched by the useKeyboardShortcuts hook on C / E keypress) so the user
  * can collapse/expand ALL sections across ALL cards at once.
+ *
+ * Persistence: open/closed state is stored per label in localStorage
+ * ("panel:collapse:<label>") via useSyncExternalStore — hydration-safe (SSR
+ * renders defaultOpen) and no setState-in-effect.
  */
 export function CollapsibleSection({
   label,
@@ -35,45 +40,34 @@ export function CollapsibleSection({
   defaultOpen = true,
   accent = "#8b96a5",
 }: Props) {
-  // Persist open/closed state per label in localStorage so the user's
-  // preference survives page reloads. Key is the label text (unique per
-  // section type: "MACD · 12/26/9 · 4h", "Order Book · L2", etc.).
   const storageKey = `panel:collapse:${label}`;
-  const [open, setOpen] = useState(() => {
-    if (typeof window === "undefined") return defaultOpen;
-    try {
-      const stored = localStorage.getItem(storageKey);
-      return stored === null ? defaultOpen : stored === "true";
-    } catch {
-      return defaultOpen;
-    }
-  });
+  const [stored, setStored] = useLocalStorageString(
+    storageKey,
+    defaultOpen ? "true" : "false",
+  );
+  // A malformed stored value falls back to defaultOpen at render time.
+  const open =
+    stored === "true" ? true : stored === "false" ? false : defaultOpen;
 
-  // Persist on change + listen for global collapse/expand events.
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, String(open));
-    } catch {
-      // Ignore quota / privacy mode errors.
-    }
-  }, [open, storageKey]);
+  const toggleOpen = () => setStored(String(!open));
 
+  // Listen for global collapse/expand events (keyboard shortcuts C / E).
   useEffect(() => {
-    const onCollapse = () => setOpen(false);
-    const onExpand = () => setOpen(true);
+    const onCollapse = () => setStored("false");
+    const onExpand = () => setStored("true");
     window.addEventListener("panel:collapse-all", onCollapse);
     window.addEventListener("panel:expand-all", onExpand);
     return () => {
       window.removeEventListener("panel:collapse-all", onCollapse);
       window.removeEventListener("panel:expand-all", onExpand);
     };
-  }, []);
+  }, [setStored]);
 
   return (
     <div className="px-5 pb-3">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         className="mb-1.5 flex w-full items-center justify-between gap-2 rounded-md border border-white/5 bg-black/15 px-2.5 py-1.5 text-left transition-colors hover:bg-black/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
         aria-expanded={open}
       >

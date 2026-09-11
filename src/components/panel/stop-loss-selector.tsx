@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocalStorageString } from "@/hooks/use-local-storage";
 import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
@@ -40,23 +41,20 @@ export function StopLossSelector({
   // preference survives page reloads. Key is global (not per-symbol) since
   // risk tolerance is a personal preference.
   const STORAGE_KEY = "panel:stop-multiplier";
-  const [multiplier, setMultiplier] = useState<number>(() => {
-    if (typeof window === "undefined") return defaultMultiplier;
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? Number(stored) : defaultMultiplier;
-    } catch {
-      return defaultMultiplier;
-    }
-  });
+  // Persisted multiplier via useSyncExternalStore — hydration-safe (SSR
+  // renders the default) and no setState-in-effect. Stored as a string; the
+  // numeric conversion + whitelist validation happen at render time.
+  const [storedMultiplier, setStoredMultiplier] = useLocalStorageString(
+    STORAGE_KEY,
+    String(defaultMultiplier),
+  );
+  const parsedMultiplier = Number(storedMultiplier);
+  const multiplier = MULTIPLIERS.some((m) => m === parsedMultiplier)
+    ? parsedMultiplier
+    : defaultMultiplier;
 
   const handleMultiplierChange = (m: number) => {
-    setMultiplier(m);
-    try {
-      localStorage.setItem(STORAGE_KEY, String(m));
-    } catch {
-      // Ignore quota / privacy mode errors.
-    }
+    setStoredMultiplier(String(m));
   };
 
   if (spotPrice == null || atr == null) {

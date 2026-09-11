@@ -59,3 +59,49 @@ jobs:
 
       - name: Run tests
         run: bun test
+
+  # Keeps prisma/seed.ts working: pushes the schema to a fresh SQLite file,
+  # seeds it, proves the seed is idempotent (no-op re-run), exercises the
+  # --reset path, and asserts the exact seeded row count (5 symbols × 24).
+  seed:
+    name: Seed (Prisma + SQLite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: file:/tmp/panel-ci-seed.db
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+
+      - name: Set up Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Generate Prisma client
+        run: bun run db:generate
+
+      - name: Create fresh SQLite schema
+        run: bun run db:push
+
+      - name: Seed a fresh database
+        run: bun prisma/seed.ts
+
+      - name: Re-run seed (idempotency — must be a no-op)
+        run: bun prisma/seed.ts
+
+      - name: Re-seed with --reset
+        run: bun prisma/seed.ts --reset
+
+      # Runs the same queries as GET /api/cross-history against the seeded DB
+      # and asserts the full response contract: event field types, allowed
+      # symbol/type/direction enums, newest-first ordering, stats consistency,
+      # and the exact 120-row seeded count.
+      - name: Validate cross-history JSON shape against seeded DB
+        run: bun prisma/validate-cross-history.ts
+
+      - name: Assert seeded row count (5 symbols × 24 = 120)
+        run: |
+          bun -e 'const {PrismaClient}=require("@prisma/client");const db=new PrismaClient();db.crossEvent.count().then((c)=>{if(c!==120){console.error("expected 120 rows, got "+c);process.exit(1);}console.log("seed OK: 120 rows");return db.$disconnect();}).catch((e)=>{console.error(e);process.exit(1);})'

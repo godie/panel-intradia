@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { Bell, BellRing, TrendingUp, TrendingDown } from "lucide-react";
 import { SYMBOL_META } from "@/lib/types";
+import { readStoredJson } from "@/lib/storage-store";
+import { useLocalStorageString } from "@/hooks/use-local-storage";
 
 export type PriceAlert = {
   id: string;
@@ -17,25 +19,6 @@ export type PriceAlert = {
 
 const STORAGE_KEY = "panel:price-alerts";
 
-function loadAlerts(): PriceAlert[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as PriceAlert[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveAlerts(alerts: PriceAlert[]) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
-  } catch {
-    // Ignore quota / privacy mode errors.
-  }
-}
-
 /**
  * usePriceAlerts — manages user-defined price alerts per symbol.
  *
@@ -48,7 +31,29 @@ function saveAlerts(alerts: PriceAlert[]) {
  * Triggered alerts are auto-removed after 24h to keep the list clean.
  */
 export function usePriceAlerts(livePrices: Record<string, { price: number; time: number }>) {
-  const [alerts, setAlerts] = useState<PriceAlert[]>(() => loadAlerts());
+  // The alert list lives in localStorage through useSyncExternalStore —
+  // hydration-safe (SSR renders []) and no setState-in-effect. `raw` is the
+  // stored JSON string; the parsed array is memoized so identity is stable
+  // between changes.
+  const [raw, setRaw] = useLocalStorageString(STORAGE_KEY, "[]");
+  const alerts = useMemo<PriceAlert[]>(() => {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as PriceAlert[]) : [];
+    } catch {
+      return [];
+    }
+  }, [raw]);
+
+  /** Write-through mutation of the persisted alert list. */
+  const mutateAlerts = useCallback(
+    (fn: (prev: PriceAlert[]) => PriceAlert[]) => {
+      const next = fn(readStoredJson<PriceAlert[]>(STORAGE_KEY, []));
+      setRaw(JSON.stringify(next));
+    },
+    [setRaw],
+  );
+
   const checkedRef = useRef<Set<string>>(new Set());
   // Keep a ref of alerts updated via effect (not during render) so the
   // live-price check effect can read the latest alerts without depending on
@@ -63,10 +68,7 @@ export function usePriceAlerts(livePrices: Record<string, { price: number; time:
     livePricesRef.current = livePrices;
   }, [livePrices]);
 
-  // Persist alerts on every change.
-  useEffect(() => {
-    saveAlerts(alerts);
-  }, [alerts]);
+  // (Persistence is write-through via mutateAlerts — no save effect needed.)
 
   // Check alerts against live prices on an interval (every 2s). This avoids
   // the set-state-in-effect lint rule by not running inside a useEffect that
@@ -95,7 +97,7 @@ export function usePriceAlerts(livePrices: Record<string, { price: number; time:
         }
       }
       if (anyTriggered) {
-        setAlerts((prev) =>
+        mutateAlerts((prev) =>
           prev.map((a) => {
             if (a.triggered) return a;
             const tick = livePricesRef.current[a.symbol];
@@ -111,13 +113,13 @@ export function usePriceAlerts(livePrices: Record<string, { price: number; time:
     };
     const id = setInterval(check, 2000);
     return () => clearInterval(id);
-  }, []);
+  }, [mutateAlerts]);
 
   // Clean up triggered alerts older than 24h.
   useEffect(() => {
     const cleanup = setInterval(() => {
       const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-      setAlerts((prev) => {
+      mutateAlerts((prev) => {
         const filtered = prev.filter(
           (a) => !a.triggered || a.createdAt > cutoff,
         );
@@ -125,7 +127,7 @@ export function usePriceAlerts(livePrices: Record<string, { price: number; time:
       });
     }, 60_000);
     return () => clearInterval(cleanup);
-  }, []);
+  }, [mutateAlerts]);
 
   const addAlert = useCallback(
     (symbol: string, price: number, direction: "above" | "below") => {
@@ -137,22 +139,25 @@ export function usePriceAlerts(livePrices: Record<string, { price: number; time:
         createdAt: Date.now(),
         triggered: false,
       };
-      setAlerts((prev) => [...prev, alert]);
+      mutateAlerts((prev) => [...prev, alert]);
       toast.success(
         `Alerta creada: ${SYMBOL_META[symbol]?.asset ?? symbol} ${direction === "above" ? "≥" : "≤"} $${price}`,
         { duration: 4000 },
       );
     },
-    [],
+    [mutateAlerts],
   );
 
-  const removeAlert = useCallback((id: string) => {
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
-  }, []);
+  const removeAlert = useCallback(
+    (id: string) => {
+      mutateAlerts((prev) => prev.filter((a) => a.id !== id));
+    },
+    [mutateAlerts],
+  );
 
   const clearTriggered = useCallback(() => {
-    setAlerts((prev) => prev.filter((a) => !a.triggered));
-  }, []);
+    mutateAlerts((prev) => prev.filter((a) => !a.triggered));
+  }, [mutateAlerts]);
 
   return { alerts, addAlert, removeAlert, clearTriggered };
 }
