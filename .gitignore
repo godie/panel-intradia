@@ -22,6 +22,10 @@ node_modules
 
 # misc
 .DS_Store
+
+# secrets / keys — nunca commitear claves privadas ni públicas
+*.key
+*.pub
 *.pem
 
 # debug
