@@ -252,12 +252,16 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
           setError(t("backtest.importError"));
           return;
         }
+        // A successful import clears a previous failure message.
+        setError(null);
         setSaved(result.backtests);
-        setSaveMsg(
-          t("backtest.imported")
-            .replace("{n}", String(result.imported))
-            .replace("{skipped}", String(result.skipped)),
-        );
+        let msg = t("backtest.imported")
+          .replace("{n}", String(result.imported))
+          .replace("{skipped}", String(result.skipped));
+        if (result.dropped > 0) {
+          msg += ` · ${t("backtest.importDropped").replace("{n}", String(result.dropped))}`;
+        }
+        setSaveMsg(msg);
         setTimeout(() => setSaveMsg(null), 3500);
       };
       reader.onerror = () => setError(t("backtest.importError"));

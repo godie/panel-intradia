@@ -3,6 +3,8 @@ import {
   calculatePositionSizePct,
   computeTradePnl,
   computeStats,
+  computeDurationBuckets,
+  emptyStats,
   type BacktestTrade,
 } from "./backtest";
 
@@ -22,6 +24,16 @@ function trade(pnl: number, pnlPct: number, positionSizePct = 100): BacktestTrad
     positionSizePct,
     feesPaid: 0,
   };
+}
+
+/** A trade whose only meaningful field is its hold duration. */
+function tradeHold(holdCandles: number): BacktestTrade {
+  return { ...trade(1, 1), holdCandles };
+}
+
+/** Build an equity curve from a list of equity values (one point per candle). */
+function equityCurve(equities: number[]): { candleIndex: number; time: number; equity: number; inPosition: boolean }[] {
+  return equities.map((equity, i) => ({ candleIndex: i, time: i, equity, inPosition: false }));
 }
 
 describe("calculatePositionSizePct", () => {
@@ -179,5 +191,124 @@ describe("computeStats", () => {
     expect(stats.bestTradePct).toBe(10);
     expect(stats.worstTradePct).toBe(-2);
     expect(stats.avgHoldCandles).toBe(5);
+  });
+});
+
+describe("emptyStats", () => {
+  it("uses the unavailable contract for ratios and zeroes for counters", () => {
+    const stats = emptyStats(10000);
+    expect(Number.isNaN(stats.sharpeRatio)).toBe(true);
+    expect(Number.isNaN(stats.sortinoRatio)).toBe(true);
+    expect(Number.isNaN(stats.calmarRatio)).toBe(true);
+    expect(stats.maxWinStreak).toBe(0);
+    expect(stats.maxLossStreak).toBe(0);
+    expect(stats.avgWinPct).toBe(0);
+    expect(stats.avgLossPct).toBe(0);
+    expect(stats.expectancyPct).toBe(0);
+    expect(stats.finalEquity).toBe(10000);
+  });
+});
+
+describe("computeStats — risk metrics", () => {
+  // 100 → 110 → 132 → 118.8 gives per-candle returns of +0.1, +0.2, -0.1.
+  const curve = equityCurve([100, 110, 132, 118.8]);
+
+  it("annualizes Sharpe/Sortino from per-candle equity returns", () => {
+    const stats = computeStats([trade(10, 10)], 118.8, 100, 5, 0, curve, "1d");
+    expect(stats.sharpeRatio).toBeCloseTo(10.21, 2);
+    expect(stats.sortinoRatio).toBeCloseTo(22.06, 2);
+  });
+
+  it("scales Sharpe with the interval's candles-per-year", () => {
+    const daily = computeStats([trade(10, 10)], 118.8, 100, 5, 0, curve, "1d");
+    const hourly = computeStats([trade(10, 10)], 118.8, 100, 5, 0, curve, "1h");
+    // sqrt(8760 / 365) = sqrt(24)
+    expect(hourly.sharpeRatio).toBeCloseTo(daily.sharpeRatio * Math.sqrt(24), 1);
+  });
+
+  it("falls back to the 1d annualization for unknown intervals", () => {
+    const daily = computeStats([trade(10, 10)], 118.8, 100, 5, 0, curve, "1d");
+    const unknown = computeStats([trade(10, 10)], 118.8, 100, 5, 0, curve, "7m");
+    expect(unknown.sharpeRatio).toBe(daily.sharpeRatio);
+  });
+
+  it("leaves Sharpe/Sortino undefined for a flat or constant-return series", () => {
+    const flat = computeStats([trade(10, 10)], 100, 100, 0, 0, equityCurve([100, 100, 100]), "1d");
+    expect(Number.isNaN(flat.sharpeRatio)).toBe(true);
+    expect(Number.isNaN(flat.sortinoRatio)).toBe(true);
+    expect(Number.isNaN(flat.calmarRatio)).toBe(true); // maxDrawdown 0
+
+    // Doubling every candle gives bit-identical returns (+1), so stddev is 0.
+    const constant = computeStats([trade(10, 10)], 800, 100, 0, 0, equityCurve([100, 200, 400, 800]), "1d");
+    expect(Number.isNaN(constant.sharpeRatio)).toBe(true); // stddev 0
+    expect(Number.isNaN(constant.sortinoRatio)).toBe(true); // no downside returns
+  });
+
+  it("computes Calmar as total return over max drawdown", () => {
+    const stats = computeStats([trade(1250, 12.5)], 11250, 10000, 4, 0, equityCurve([100, 100]), "1d");
+    expect(stats.calmarRatio).toBeCloseTo(3.13, 2); // 12.5 / 4
+  });
+
+  it("returns a negative Calmar when the strategy loses money", () => {
+    const stats = computeStats([trade(-1000, -10)], 9000, 10000, 10, 0, equityCurve([100, 100]), "1d");
+    expect(stats.calmarRatio).toBeCloseTo(-1, 2);
+  });
+
+  it("tracks the longest win/loss streaks in trade order", () => {
+    const stats = computeStats(
+      [trade(1, 1), trade(1, 1), trade(1, 1), trade(-1, -1), trade(-1, -1), trade(1, 1)],
+      10000,
+      10000,
+      5,
+      0,
+      equityCurve([100, 100]),
+      "1d",
+    );
+    expect(stats.maxWinStreak).toBe(3);
+    expect(stats.maxLossStreak).toBe(2);
+  });
+
+  it("computes average win/loss percent and expectancy", () => {
+    const stats = computeStats(
+      [trade(100, 10), trade(200, 20), trade(300, 30), trade(-50, -10)],
+      10000,
+      10000,
+      5,
+      0,
+      equityCurve([100, 100]),
+      "1d",
+    );
+    expect(stats.avgWinPct).toBe(20);
+    expect(stats.avgLossPct).toBe(-10);
+    expect(stats.expectancyPct).toBeCloseTo(12.5, 2); // 20 * 0.75 - 10 * 0.25
+  });
+});
+
+describe("computeDurationBuckets", () => {
+  it("returns the five labeled buckets, all empty by default", () => {
+    const buckets = computeDurationBuckets([]);
+    expect(buckets.map((b) => b.label)).toEqual(["1-5", "6-10", "11-20", "21-50", "50+"]);
+    expect(buckets.every((b) => b.count === 0)).toBe(true);
+  });
+
+  it("counts each trade in the bucket containing its hold time", () => {
+    const holds = [1, 3, 5, 6, 10, 11, 20, 21, 50, 51, 200];
+    const buckets = computeDurationBuckets(holds.map(tradeHold));
+    const counts = Object.fromEntries(buckets.map((b) => [b.label, b.count]));
+    expect(counts).toEqual({ "1-5": 3, "6-10": 2, "11-20": 2, "21-50": 2, "50+": 2 });
+    // Every trade is counted exactly once — no orphan hold times.
+    expect(buckets.reduce((n, b) => n + b.count, 0)).toBe(holds.length);
+  });
+
+  it("includes each bucket's upper bound (5, 10, 20, 50 are not orphaned)", () => {
+    const buckets = computeDurationBuckets([5, 10, 20, 50].map(tradeHold));
+    const counts = Object.fromEntries(buckets.map((b) => [b.label, b.count]));
+    expect(counts).toEqual({ "1-5": 1, "6-10": 1, "11-20": 1, "21-50": 1, "50+": 0 });
+  });
+
+  it("puts every long hold in the overflow bucket", () => {
+    const buckets = computeDurationBuckets([51, 500, 9999].map(tradeHold));
+    expect(buckets[4].count).toBe(3);
+    expect(buckets.slice(0, 4).every((b) => b.count === 0)).toBe(true);
   });
 });

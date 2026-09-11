@@ -42,6 +42,30 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+  # next.config.ts sets typescript.ignoreBuildErrors, so a passing production
+  # build does NOT prove the code type-checks. Run tsc explicitly so type
+  # errors can't slip past CI again.
+  typecheck:
+    name: Typecheck (tsc --noEmit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+
+      - name: Set up Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Generate Prisma client
+        run: bun run db:generate
+
+      - name: Typecheck (tsc --noEmit)
+        run: bun run typecheck
+
   test:
     name: Test
     runs-on: ubuntu-latest

@@ -10,10 +10,17 @@
  * detail back.
  */
 
-import type { BacktestResult } from "@/lib/backtest";
+import type { BacktestResult, BacktestStats, PositionSizing } from "@/lib/backtest";
 
 const STORAGE_KEY = "panel:saved-backtests";
 const MAX_SAVED = 50;  // cap to avoid localStorage quota issues
+
+const VALID_POSITION_SIZING: PositionSizing[] = [
+  "full",
+  "fixed_fractional",
+  "half_kelly",
+  "kelly",
+];
 
 export type SavedBacktest = {
   /** Stable id (uuid-like) generated at save time. */
@@ -67,6 +74,90 @@ function isSavedBacktest(v: unknown): v is SavedBacktest {
   );
 }
 
+/** Coerce an unknown value to a finite number. Numeric strings (hand-edited
+ *  JSON, spreadsheet exports) are accepted; anything else falls back. */
+function toNumber(value: unknown, fallback: number): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+/** Normalize every numeric field of a persisted stats block. Exports from
+ *  older versions lack the v3 risk metrics: they land on the "unavailable"
+ *  contract (NaN for ratios, 0 for counters) instead of leaking `undefined`
+ *  or strings into the UI, which calls `.toFixed()` on these fields. */
+function normalizeStats(raw: unknown): BacktestStats {
+  const s = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    totalTrades: toNumber(s.totalTrades, 0),
+    wins: toNumber(s.wins, 0),
+    losses: toNumber(s.losses, 0),
+    winRate: toNumber(s.winRate, 0),
+    totalReturnPct: toNumber(s.totalReturnPct, 0),
+    maxDrawdownPct: toNumber(s.maxDrawdownPct, 0),
+    // An all-winning run has profitFactor === Infinity, which JSON persists as
+    // null. Keep that value non-finite so the UI still renders it as "∞"
+    // instead of collapsing it to a misleading 0.00.
+    profitFactor: toNumber(s.profitFactor, Infinity),
+    avgHoldCandles: toNumber(s.avgHoldCandles, 0),
+    bestTradePct: toNumber(s.bestTradePct, 0),
+    worstTradePct: toNumber(s.worstTradePct, 0),
+    finalEquity: toNumber(s.finalEquity, 0),
+    totalFees: toNumber(s.totalFees, 0),
+    avgPositionSizePct: toNumber(s.avgPositionSizePct, 0),
+    sharpeRatio: toNumber(s.sharpeRatio, NaN),
+    sortinoRatio: toNumber(s.sortinoRatio, NaN),
+    calmarRatio: toNumber(s.calmarRatio, NaN),
+    maxWinStreak: toNumber(s.maxWinStreak, 0),
+    maxLossStreak: toNumber(s.maxLossStreak, 0),
+    avgWinPct: toNumber(s.avgWinPct, 0),
+    avgLossPct: toNumber(s.avgLossPct, 0),
+    expectancyPct: toNumber(s.expectancyPct, 0),
+  };
+}
+
+/** Normalize the persisted params block (numeric fields + sizing enum) so a
+ *  foreign export can't render `NaN` in the equity-curve axis labels. */
+function normalizeParams(raw: unknown): BacktestResult["params"] {
+  const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const sizing = p.positionSizing;
+  return {
+    minConfidence: toNumber(p.minConfidence, 60),
+    initialCapital: toNumber(p.initialCapital, 10_000),
+    stopLossPct: toNumber(p.stopLossPct, 5),
+    takeProfitPct: toNumber(p.takeProfitPct, 10),
+    maxHoldCandles: toNumber(p.maxHoldCandles, 50),
+    positionSizing: VALID_POSITION_SIZING.includes(sizing as PositionSizing)
+      ? (sizing as PositionSizing)
+      : "full",
+    fixedFractionalPct: toNumber(p.fixedFractionalPct, 25),
+    feeBps: toNumber(p.feeBps, 10),
+  };
+}
+
+/** Normalize an imported SavedBacktest: coerce the numeric stats/params fields
+ *  and guarantee the array fields exist. Malformed-but-shape-valid input can
+ *  otherwise crash the number formatting in the UI. */
+function normalizeSavedBacktest(saved: SavedBacktest): SavedBacktest {
+  const result = saved.result;
+  return {
+    id: saved.id,
+    savedAt: saved.savedAt,
+    label: saved.label,
+    result: {
+      ...result,
+      trades: Array.isArray(result.trades) ? result.trades : [],
+      equityCurve: Array.isArray(result.equityCurve) ? result.equityCurve : [],
+      durationBuckets: Array.isArray(result.durationBuckets) ? result.durationBuckets : [],
+      stats: normalizeStats(result.stats),
+      params: normalizeParams(result.params),
+    },
+  };
+}
+
 /** Load all saved backtests from localStorage. Returns [] on any error. */
 export function loadSavedBacktests(): SavedBacktest[] {
   if (typeof window === "undefined") return [];
@@ -75,7 +166,10 @@ export function loadSavedBacktests(): SavedBacktest[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isSavedBacktest);
+    // Normalize on read as well as on import: entries persisted by older
+    // versions lack the v3 risk metrics, and the UI calls number formatting
+    // (`.toFixed()`) on them directly.
+    return parsed.filter(isSavedBacktest).map(normalizeSavedBacktest);
   } catch {
     return [];
   }
@@ -173,10 +267,15 @@ export function exportSavedBacktests(): string {
  * The expected JSON shape:
  *   { format: "panel-intradia/saved-backtests/v1", backtests: SavedBacktest[] }
  * or simply an array of SavedBacktest[] (legacy format).
+ *
+ * `imported` counts only entries that survived the MAX_SAVED cap, and
+ * `dropped` reports how many entries the cap discarded, so the UI can report
+ * the cap honestly instead of over-counting.
  */
 export function importSavedBacktests(jsonText: string): {
   imported: number;
   skipped: number;
+  dropped: number;
   total: number;
   backtests: SavedBacktest[];
 } {
@@ -184,47 +283,46 @@ export function importSavedBacktests(jsonText: string): {
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    return { imported: 0, skipped: 0, total: 0, backtests: [] };
+    return { imported: 0, skipped: 0, dropped: 0, total: 0, backtests: [] };
   }
 
   // Accept either { backtests: [...] } or a bare array.
-  let incoming: SavedBacktest[] = [];
+  let incoming: unknown[];
   if (Array.isArray(parsed)) {
-    incoming = parsed as SavedBacktest[];
+    incoming = parsed;
   } else if (parsed && typeof parsed === "object" && Array.isArray((parsed as { backtests?: unknown }).backtests)) {
-    incoming = (parsed as { backtests: SavedBacktest[] }).backtests;
+    incoming = (parsed as { backtests: unknown[] }).backtests;
   } else {
-    return { imported: 0, skipped: 0, total: 0, backtests: [] };
+    return { imported: 0, skipped: 0, dropped: 0, total: 0, backtests: [] };
   }
 
-  // Filter to well-formed entries only.
-  const valid = incoming.filter(
-    (s) =>
-      s &&
-      typeof s.id === "string" &&
-      typeof s.savedAt === "string" &&
-      typeof s.label === "string" &&
-      s.result &&
-      typeof s.result === "object",
-  );
+  // Reuse the same shape guard as loadSavedBacktests, then normalize the
+  // numeric fields so a foreign / older export can't inject strings or
+  // undefined values into the formatting code.
+  const valid = incoming.filter(isSavedBacktest).map(normalizeSavedBacktest);
 
   const existing = loadSavedBacktests();
   const existingIds = new Set(existing.map((s) => s.id));
 
-  let imported = 0;
   let skipped = 0;
-  // Merge: prepend imported entries (newest-first), skip duplicates by id.
-  const merged: SavedBacktest[] = [...existing];
+  const newEntries: SavedBacktest[] = [];
   for (const s of valid) {
     if (existingIds.has(s.id)) {
       skipped++;
     } else {
-      merged.unshift(s);
       existingIds.add(s.id);
-      imported++;
+      newEntries.push(s);
     }
   }
+
+  // Merge newest-first: imported entries go in front of the existing list,
+  // preserving their original file order. The cap then trims from the tail.
+  const merged = [...newEntries, ...existing];
   const trimmed = merged.slice(0, MAX_SAVED);
+  const keptIds = new Set(trimmed.map((s) => s.id));
+
+  const imported = newEntries.reduce((n, s) => n + (keptIds.has(s.id) ? 1 : 0), 0);
+  const dropped = merged.length - trimmed.length;
 
   if (typeof window !== "undefined") {
     try {
@@ -237,6 +335,7 @@ export function importSavedBacktests(jsonText: string): {
   return {
     imported,
     skipped,
+    dropped,
     total: trimmed.length,
     backtests: trimmed,
   };

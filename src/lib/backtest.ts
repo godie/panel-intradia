@@ -157,7 +157,7 @@ export type BacktestStats = {
 export type DurationBucket = {
   /** Lower bound of the bucket (inclusive), in candles. */
   min: number;
-  /** Upper bound of the bucket (exclusive), in candles. */
+  /** Upper bound of the bucket (inclusive), in candles. */
   max: number;
   /** Human-readable label, e.g. "1-5", "6-10", "11-20", "21-50", "50+". */
   label: string;
@@ -712,7 +712,7 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
   };
 }
 
-function emptyStats(initialCapital: number): BacktestStats {
+export function emptyStats(initialCapital: number): BacktestStats {
   return {
     totalTrades: 0,
     wins: 0,
@@ -859,8 +859,10 @@ export function computeStats(
   };
 }
 
-/** Build the duration distribution histogram (4 buckets + 1 overflow). */
-function computeDurationBuckets(trades: BacktestTrade[]): DurationBucket[] {
+/** Build the duration distribution histogram (4 buckets + 1 overflow).
+ *  Ranges are inclusive on both ends, so holdCandles of exactly 5, 10, 20 or
+ *  50 land in the labeled bucket instead of falling between buckets. */
+export function computeDurationBuckets(trades: BacktestTrade[]): DurationBucket[] {
   const buckets: DurationBucket[] = [
     { min: 1, max: 5, label: "1-5", count: 0 },
     { min: 6, max: 10, label: "6-10", count: 0 },
@@ -871,7 +873,7 @@ function computeDurationBuckets(trades: BacktestTrade[]): DurationBucket[] {
   for (const t of trades) {
     const h = t.holdCandles;
     for (const b of buckets) {
-      if (h >= b.min && h < b.max) {
+      if (h >= b.min && h <= b.max) {
         b.count++;
         break;
       }
