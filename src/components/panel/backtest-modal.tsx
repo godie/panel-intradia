@@ -14,6 +14,8 @@ import {
   saveBacktest,
   deleteSavedBacktest,
   clearSavedBacktests,
+  exportSavedBacktests,
+  importSavedBacktests,
   type SavedBacktest,
 } from "@/lib/saved-backtests";
 import { useLanguage } from "@/hooks/use-language";
@@ -34,6 +36,8 @@ import {
   Check,
   CheckSquare,
   Square,
+  Download,
+  Upload,
 } from "lucide-react";
 
 type Props = {
@@ -229,6 +233,45 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
     setCompareView(selected);
   }, [compareIds, saved]);
 
+  // Export / import saved backtests as JSON.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = useCallback(() => {
+    exportSavedBacktests();
+  }, []);
+
+  const handleImport = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result ?? "");
+        const result = importSavedBacktests(text);
+        if (result.total === 0 && result.imported === 0 && result.skipped === 0) {
+          setError(t("backtest.importError"));
+          return;
+        }
+        // A successful import clears a previous failure message.
+        setError(null);
+        setSaved(result.backtests);
+        let msg = t("backtest.imported")
+          .replace("{n}", String(result.imported))
+          .replace("{skipped}", String(result.skipped));
+        if (result.dropped > 0) {
+          msg += ` · ${t("backtest.importDropped").replace("{n}", String(result.dropped))}`;
+        }
+        setSaveMsg(msg);
+        setTimeout(() => setSaveMsg(null), 3500);
+      };
+      reader.onerror = () => setError(t("backtest.importError"));
+      reader.readAsText(file);
+      // Reset the input so the same file can be re-selected later.
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    },
+    [t],
+  );
+
   // Close on Escape.
   useEffect(() => {
     if (!open) return;
@@ -324,6 +367,28 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
       }
     }
 
+    // Gradient fill under the equity curve.
+    const finalEq = curve[curve.length - 1].equity;
+    const isPositive = finalEq >= result.params.initialCapital;
+    const lineColor = isPositive ? "#5fbf8f" : "#e2604f";
+    const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+    if (isPositive) {
+      grad.addColorStop(0, "rgba(95,191,143,0.25)");
+      grad.addColorStop(1, "rgba(95,191,143,0.01)");
+    } else {
+      grad.addColorStop(0, "rgba(226,96,79,0.25)");
+      grad.addColorStop(1, "rgba(226,96,79,0.01)");
+    }
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(x(0), padT + plotH);
+    for (let i = 0; i < curve.length; i++) {
+      ctx.lineTo(x(i), y(curve[i].equity));
+    }
+    ctx.lineTo(x(curve.length - 1), padT + plotH);
+    ctx.closePath();
+    ctx.fill();
+
     // Equity line — colored by direction vs initial capital.
     ctx.lineWidth = 1.6;
     ctx.beginPath();
@@ -333,9 +398,7 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
       if (i === 0) ctx.moveTo(px, py);
       else ctx.lineTo(px, py);
     }
-    const finalEq = curve[curve.length - 1].equity;
-    ctx.strokeStyle =
-      finalEq >= result.params.initialCapital ? "#5fbf8f" : "#e2604f";
+    ctx.strokeStyle = lineColor;
     ctx.stroke();
 
     // Final equity marker dot.
@@ -734,6 +797,75 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                     />
                   </div>
 
+                  {/* Risk-adjusted metrics row */}
+                  <div>
+                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1.5">
+                      {t("backtest.riskMetrics")}
+                    </h4>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      <MetricCard
+                        label={t("backtest.sharpe")}
+                        value={formatRatio(stats.sharpeRatio)}
+                        icon={Activity}
+                        tone={stats.sharpeRatio >= 1 ? "positive" : "neutral"}
+                        compact
+                      />
+                      <MetricCard
+                        label={t("backtest.sortino")}
+                        value={formatRatio(stats.sortinoRatio)}
+                        icon={TrendingUp}
+                        tone={stats.sortinoRatio >= 1 ? "positive" : "neutral"}
+                        compact
+                      />
+                      <MetricCard
+                        label={t("backtest.calmar")}
+                        value={formatRatio(stats.calmarRatio)}
+                        icon={Target}
+                        tone={stats.calmarRatio >= 1 ? "positive" : "neutral"}
+                        compact
+                      />
+                      <MetricCard
+                        label={t("backtest.maxWinStreak")}
+                        value={String(stats.maxWinStreak)}
+                        icon={TrendingUp}
+                        tone="positive"
+                        compact
+                      />
+                      <MetricCard
+                        label={t("backtest.maxLossStreak")}
+                        value={String(stats.maxLossStreak)}
+                        icon={TrendingDown}
+                        tone="negative"
+                        compact
+                      />
+                      <MetricCard
+                        label={t("backtest.expectancy")}
+                        value={`${stats.expectancyPct >= 0 ? "+" : ""}${stats.expectancyPct.toFixed(2)}%`}
+                        icon={Activity}
+                        tone={stats.expectancyPct >= 0 ? "positive" : "negative"}
+                        compact
+                      />
+                    </div>
+                  </div>
+
+                  {/* Trade duration distribution */}
+                  {result.durationBuckets && result.durationBuckets.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                          {t("backtest.durationDist")}
+                        </h4>
+                        <span className="text-[10px] text-muted-foreground/60 font-mono">
+                          {t("backtest.avgHold")}: {stats.avgHoldCandles}
+                        </span>
+                      </div>
+                      <DurationDistribution
+                        buckets={result.durationBuckets}
+                        total={stats.totalTrades}
+                      />
+                    </div>
+                  )}
+
                   {/* Save backtest button + status */}
                   <div className="flex items-center gap-2">
                     <button
@@ -862,7 +994,7 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                         ({saved.length})
                       </span>
                     </h4>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
                         onClick={runCompare}
@@ -872,6 +1004,32 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                         <GitCompareArrows className="h-3 w-3" aria-hidden />
                         {t("backtest.compareRun")} ({compareIds.size}/3)
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleExport}
+                        disabled={saved.length === 0}
+                        className="inline-flex items-center gap-1 rounded-md border border-[#5fbf8f]/30 bg-[#5fbf8f]/8 px-2 py-0.5 text-[10px] font-medium text-[#5fbf8f] hover:bg-[#5fbf8f]/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={t("backtest.export")}
+                      >
+                        <Download className="h-3 w-3" aria-hidden />
+                        {t("backtest.export")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex items-center gap-1 rounded-md border border-[#b48cff]/30 bg-[#b48cff]/8 px-2 py-0.5 text-[10px] font-medium text-[#b48cff] hover:bg-[#b48cff]/15"
+                        title={t("backtest.import")}
+                      >
+                        <Upload className="h-3 w-3" aria-hidden />
+                        {t("backtest.import")}
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="application/json,.json"
+                        className="hidden"
+                        onChange={handleImport}
+                      />
                       <button
                         type="button"
                         onClick={handleClearAll}
@@ -1137,12 +1295,14 @@ function MetricCard({
   sub,
   icon: Icon,
   tone = "neutral",
+  compact = false,
 }: {
   label: string;
   value: string;
   sub?: string;
   icon: typeof Activity;
   tone?: "positive" | "negative" | "neutral";
+  compact?: boolean;
 }) {
   const toneColor =
     tone === "positive"
@@ -1151,12 +1311,12 @@ function MetricCard({
         ? "text-[#e2604f]"
         : "text-foreground";
   return (
-    <div className="rounded-md border border-white/8 bg-background/40 p-2.5">
-      <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-wider text-muted-foreground mb-1">
-        <Icon className="h-3 w-3 opacity-60" aria-hidden />
+    <div className={`rounded-md border border-white/8 bg-background/40 ${compact ? "p-1.5" : "p-2.5"}`}>
+      <div className={`flex items-center gap-1 ${compact ? "text-[8px]" : "text-[9px]"} uppercase tracking-wider text-muted-foreground mb-1`}>
+        <Icon className={`${compact ? "h-2.5 w-2.5" : "h-3 w-3"} opacity-60`} aria-hidden />
         {label}
       </div>
-      <div className={`text-sm font-mono font-semibold ${toneColor}`}>{value}</div>
+      <div className={`${compact ? "text-xs" : "text-sm"} font-mono font-semibold ${toneColor}`}>{value}</div>
       {sub && (
         <div className="text-[10px] text-muted-foreground/70 font-mono mt-0.5">{sub}</div>
       )}
@@ -1188,4 +1348,56 @@ function formatPrice(p: number): string {
   if (p >= 1000) return p.toLocaleString("en-US", { maximumFractionDigits: 2 });
   if (p >= 1) return p.toFixed(2);
   return p.toFixed(4);
+}
+
+/** Format a risk ratio (Sharpe, Sortino, Calmar) — NaN → "—". */
+function formatRatio(r: number): string {
+  if (!Number.isFinite(r)) return "—";
+  return r.toFixed(2);
+}
+
+/**
+ * DurationDistribution — a compact horizontal bar chart showing how many
+ * trades fell into each duration bucket (1-5, 6-10, 11-20, 21-50, 50+
+ * candles). Each bar is labeled with the bucket range + count.
+ */
+function DurationDistribution({
+  buckets,
+  total,
+}: {
+  buckets: { label: string; count: number }[];
+  total: number;
+}) {
+  const maxCount = Math.max(1, ...buckets.map((b) => b.count));
+  const colors = ["#5fbf8f", "#4fa8d8", "#e8b04b", "#b48cff", "#e2604f"];
+  return (
+    <div className="rounded-md border border-white/8 bg-background/40 p-3 space-y-1.5">
+      {buckets.map((b, i) => {
+        const pct = (b.count / maxCount) * 100;
+        const sharePct = total > 0 ? (b.count / total) * 100 : 0;
+        return (
+          <div key={b.label} className="flex items-center gap-2 text-[10px] font-mono">
+            <span className="w-12 shrink-0 text-muted-foreground/70 text-right">
+              {b.label}
+            </span>
+            <div className="flex-1 h-4 rounded bg-black/20 overflow-hidden relative">
+              <div
+                className="h-full rounded transition-[width] duration-500"
+                style={{
+                  width: `${pct}%`,
+                  background: colors[i] ?? "#4fa8d8",
+                }}
+              />
+            </div>
+            <span className="w-16 shrink-0 text-right text-foreground/80">
+              {b.count}{" "}
+              <span className="text-muted-foreground/50">
+                ({sharePct.toFixed(0)}%)
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }

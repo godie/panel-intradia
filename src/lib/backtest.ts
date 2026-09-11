@@ -135,6 +135,34 @@ export type BacktestStats = {
   totalFees: number;
   /** Average position size as % of equity across all trades. */
   avgPositionSizePct: number;
+  /** Annualized Sharpe ratio (risk-free rate 0). NaN if stddev is 0. */
+  sharpeRatio: number;
+  /** Annualized Sortino ratio (downside deviation only). NaN if no downside. */
+  sortinoRatio: number;
+  /** Calmar ratio = totalReturn / maxDrawdown (NaN if maxDD = 0). */
+  calmarRatio: number;
+  /** Largest consecutive winning streak. */
+  maxWinStreak: number;
+  /** Largest consecutive losing streak. */
+  maxLossStreak: number;
+  /** Average winning trade P&L percent. */
+  avgWinPct: number;
+  /** Average losing trade P&L percent (negative). */
+  avgLossPct: number;
+  /** Expectancy per trade in % (avg win * winRate - avg loss * lossRate). */
+  expectancyPct: number;
+};
+
+/** Histogram bucket for trade duration distribution. */
+export type DurationBucket = {
+  /** Lower bound of the bucket (inclusive), in candles. */
+  min: number;
+  /** Upper bound of the bucket (inclusive), in candles. */
+  max: number;
+  /** Human-readable label, e.g. "1-5", "6-10", "11-20", "21-50", "50+". */
+  label: string;
+  /** Number of trades that fell in this bucket. */
+  count: number;
 };
 
 export type BacktestResult = {
@@ -145,6 +173,8 @@ export type BacktestResult = {
   trades: BacktestTrade[];
   equityCurve: EquityPoint[];
   stats: BacktestStats;
+  /** Trade duration distribution histogram (4 buckets). */
+  durationBuckets: DurationBucket[];
   strategy: { id: string; name: string; action: string };
   params: {
     minConfidence: number;
@@ -523,6 +553,7 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
       trades: [],
       equityCurve: [],
       stats: emptyStats(initialCapital),
+      durationBuckets: [],
       strategy: { id: strategy.id, name: strategy.name, action },
       params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
       error: "Failed to fetch historical klines from upstream provider.",
@@ -538,6 +569,7 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
       trades: [],
       equityCurve: [],
       stats: emptyStats(initialCapital),
+      durationBuckets: [],
       strategy: { id: strategy.id, name: strategy.name, action },
       params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
       error: `Insufficient historical data (${klines.length} candles; need at least 220 for warmup).`,
@@ -663,7 +695,8 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     }
   }
 
-  const stats = computeStats(trades, equity, initialCapital, maxDrawdownPct, totalFees);
+  const stats = computeStats(trades, equity, initialCapital, maxDrawdownPct, totalFees, equityCurve, interval);
+  const durationBuckets = computeDurationBuckets(trades);
 
   return {
     symbol,
@@ -673,12 +706,13 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     trades,
     equityCurve,
     stats,
+    durationBuckets,
     strategy: { id: strategy.id, name: strategy.name, action },
     params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
   };
 }
 
-function emptyStats(initialCapital: number): BacktestStats {
+export function emptyStats(initialCapital: number): BacktestStats {
   return {
     totalTrades: 0,
     wins: 0,
@@ -693,8 +727,24 @@ function emptyStats(initialCapital: number): BacktestStats {
     finalEquity: initialCapital,
     totalFees: 0,
     avgPositionSizePct: 0,
+    sharpeRatio: NaN,
+    sortinoRatio: NaN,
+    calmarRatio: NaN,
+    maxWinStreak: 0,
+    maxLossStreak: 0,
+    avgWinPct: 0,
+    avgLossPct: 0,
+    expectancyPct: 0,
   };
 }
+
+/** Candles per year by interval — used to annualize Sharpe/Sortino. */
+const CANDLES_PER_YEAR: Record<string, number> = {
+  "15m": 365 * 24 * 4,   // 35,040
+  "1h": 365 * 24,         // 8,760
+  "4h": 365 * 6,          // 2,190
+  "1d": 365,              // 365
+};
 
 export function computeStats(
   trades: BacktestTrade[],
@@ -702,6 +752,8 @@ export function computeStats(
   initialCapital: number,
   maxDrawdownPct: number,
   totalFees: number,
+  equityCurve: EquityPoint[],
+  interval: string,
 ): BacktestStats {
   if (trades.length === 0) return emptyStats(initialCapital);
   const wins = trades.filter((t) => t.pnl > 0);
@@ -715,6 +767,72 @@ export function computeStats(
   const totalReturnPct = ((finalEquity - initialCapital) / initialCapital) * 100;
   const avgPositionSizePct =
     trades.reduce((s, t) => s + t.positionSizePct, 0) / trades.length;
+
+  // Average win / loss percent.
+  const avgWinPct = wins.length > 0
+    ? wins.reduce((s, t) => s + t.pnlPct, 0) / wins.length
+    : 0;
+  const avgLossPct = losses.length > 0
+    ? losses.reduce((s, t) => s + t.pnlPct, 0) / losses.length
+    : 0;
+
+  // Expectancy = avgWin * winRate - |avgLoss| * lossRate (in %).
+  const winRate = wins.length / trades.length;
+  const lossRate = 1 - winRate;
+  const expectancyPct = avgWinPct * winRate - Math.abs(avgLossPct) * lossRate;
+
+  // Streaks: find max consecutive wins/losses in trade order.
+  let maxWinStreak = 0;
+  let maxLossStreak = 0;
+  let curWin = 0;
+  let curLoss = 0;
+  for (const t of trades) {
+    if (t.pnl > 0) {
+      curWin++;
+      curLoss = 0;
+      if (curWin > maxWinStreak) maxWinStreak = curWin;
+    } else {
+      curLoss++;
+      curWin = 0;
+      if (curLoss > maxLossStreak) maxLossStreak = curLoss;
+    }
+  }
+
+  // Sharpe / Sortino: compute per-candle returns from the equity curve.
+  // Return_t = (equity_t - equity_{t-1}) / equity_{t-1}.
+  // Annualize by multiplying mean by sqrt(candlesPerYear) and stddev by 1.
+  const cpy = CANDLES_PER_YEAR[interval] ?? CANDLES_PER_YEAR["1d"];
+  let sharpeRatio = NaN;
+  let sortinoRatio = NaN;
+  if (equityCurve.length >= 2) {
+    const returns: number[] = [];
+    for (let i = 1; i < equityCurve.length; i++) {
+      const prev = equityCurve[i - 1].equity;
+      const cur = equityCurve[i].equity;
+      if (prev > 0) returns.push((cur - prev) / prev);
+    }
+    if (returns.length > 0) {
+      const meanReturn = returns.reduce((s, r) => s + r, 0) / returns.length;
+      const variance = returns.reduce((s, r) => s + (r - meanReturn) ** 2, 0) / returns.length;
+      const stddev = Math.sqrt(variance);
+      if (stddev > 0) {
+        sharpeRatio = (meanReturn / stddev) * Math.sqrt(cpy);
+      }
+      // Downside deviation (only negative returns).
+      const downsideReturns = returns.filter((r) => r < 0);
+      if (downsideReturns.length > 0) {
+        const downsideVar = downsideReturns.reduce((s, r) => s + r * r, 0) / returns.length;
+        const downsideDev = Math.sqrt(downsideVar);
+        if (downsideDev > 0) {
+          sortinoRatio = (meanReturn / downsideDev) * Math.sqrt(cpy);
+        }
+      }
+    }
+  }
+
+  // Calmar = totalReturnPct / maxDrawdownPct (annualized totalReturn optional;
+  // we use the raw totalReturnPct over the backtest period — simpler).
+  const calmarRatio = maxDrawdownPct > 0 ? totalReturnPct / maxDrawdownPct : NaN;
 
   return {
     totalTrades: trades.length,
@@ -730,5 +848,36 @@ export function computeStats(
     finalEquity: Math.round(finalEquity * 100) / 100,
     totalFees: Math.round(totalFees * 100) / 100,
     avgPositionSizePct: Math.round(avgPositionSizePct * 10) / 10,
+    sharpeRatio: Number.isFinite(sharpeRatio) ? Math.round(sharpeRatio * 100) / 100 : NaN,
+    sortinoRatio: Number.isFinite(sortinoRatio) ? Math.round(sortinoRatio * 100) / 100 : NaN,
+    calmarRatio: Number.isFinite(calmarRatio) ? Math.round(calmarRatio * 100) / 100 : NaN,
+    maxWinStreak,
+    maxLossStreak,
+    avgWinPct: Math.round(avgWinPct * 100) / 100,
+    avgLossPct: Math.round(avgLossPct * 100) / 100,
+    expectancyPct: Math.round(expectancyPct * 100) / 100,
   };
+}
+
+/** Build the duration distribution histogram (4 buckets + 1 overflow).
+ *  Ranges are inclusive on both ends, so holdCandles of exactly 5, 10, 20 or
+ *  50 land in the labeled bucket instead of falling between buckets. */
+export function computeDurationBuckets(trades: BacktestTrade[]): DurationBucket[] {
+  const buckets: DurationBucket[] = [
+    { min: 1, max: 5, label: "1-5", count: 0 },
+    { min: 6, max: 10, label: "6-10", count: 0 },
+    { min: 11, max: 20, label: "11-20", count: 0 },
+    { min: 21, max: 50, label: "21-50", count: 0 },
+    { min: 51, max: Infinity, label: "50+", count: 0 },
+  ];
+  for (const t of trades) {
+    const h = t.holdCandles;
+    for (const b of buckets) {
+      if (h >= b.min && h <= b.max) {
+        b.count++;
+        break;
+      }
+    }
+  }
+  return buckets;
 }
