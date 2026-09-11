@@ -10,9 +10,10 @@ on:
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
+    # No `paths-ignore` on purpose: "Lint" and "Test" are required status
+    # checks on main, and skipping the workflow on docs-only PRs leaves them
+    # pending forever, which permanently blocks the merge button. The push
+    # trigger above still ignores docs on main.
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
