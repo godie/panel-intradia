@@ -201,6 +201,7 @@ Rules:
 - Socket.io `path: "/socket.io/"` (NOT `"/"`)
 - Frontend connects via `io("/_tick-stream/socket.io/", { path: "/socket.io/" })` (tick-stream) or `io("/_order-book/socket.io/", { path: "/socket.io/" })` (order-book)
 - Health endpoint at `/health` returns JSON with `binanceConnected` status
+- Validate with `bash mini-services/validate-service.sh <service-dir> <service> <port>` — boots the service, asserts the `/health` contract, the `/socket.io/` engine path and its Origin enforcement, then shuts it down. The `Validate order-book` / `Validate tick-stream` CI jobs run exactly this script
 - Background processes started with double-fork pattern:
   ```bash
   ( setsid nohup bun index.ts > service.log 2>&1 < /dev/null & ) &
