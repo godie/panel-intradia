@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Plus, CheckCircle2, XCircle, Loader2, Sparkles } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
+import { validateSymbol } from "@/lib/symbol-manager";
 
 type Props = {
   open: boolean;
@@ -46,6 +47,7 @@ export function AddTickerModal({ open, existing = [], onClose, onAdd }: Props) {
   const { t } = useLanguage();
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const timerRef = useRef<number | null>(null);
   // Track previous `open` so we can reset state synchronously during render
   // when the modal opens. This is React's recommended "adjust state during
   // render" pattern (avoids the set-state-in-effect lint rule).
@@ -68,18 +70,24 @@ export function AddTickerModal({ open, existing = [], onClose, onAdd }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Cancel a pending "valid" → onAdd handoff if the modal closes during the
+  // success flash. Keyed on `open` only: `onClose` is recreated by the parent
+  // on every render, so depending on it would clear the timer prematurely.
+  useEffect(() => {
+    if (open) return;
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, [open]);
+
   if (!open) return null;
 
   const normalized = input.trim().toUpperCase();
 
   const validate = async (symbolArg?: string) => {
-    const sym = (symbolArg ?? normalized).toUpperCase();
+    const sym = validateSymbol(symbolArg ?? input);
     if (!sym) {
-      setStatus({ kind: "invalid", message: t("ticker.invalid") });
-      return;
-    }
-    // Shape check — must end with USDT and be plausible length.
-    if (!/^[A-Z]{2,12}USDT$/.test(sym) || sym.length < 6 || sym.length > 16) {
       setStatus({ kind: "invalid", message: t("ticker.invalid") });
       return;
     }
@@ -101,7 +109,7 @@ export function AddTickerModal({ open, existing = [], onClose, onAdd }: Props) {
       }
       setStatus({ kind: "valid" });
       // Brief success flash, then propagate to parent.
-      window.setTimeout(() => {
+      timerRef.current = window.setTimeout(() => {
         onAdd(sym);
       }, 350);
     } catch {
@@ -140,7 +148,7 @@ export function AddTickerModal({ open, existing = [], onClose, onAdd }: Props) {
             type="button"
             onClick={onClose}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
-            aria-label="Cerrar"
+            aria-label={t("common.close")}
           >
             <X className="h-4 w-4" aria-hidden />
           </button>

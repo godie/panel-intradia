@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { providerRouter } from "@/lib/providers/router";
 import { getCached, setCached } from "@/lib/cache";
 import { SYMBOLS } from "@/lib/types";
+import { isValidSymbolFormat } from "@/lib/providers/symbols";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,17 +10,6 @@ export const dynamic = "force-dynamic";
 /** Default set of symbols used when no `symbols` query param is provided. */
 const DEFAULT_SYMBOLS: string[] = [...SYMBOLS];
 const CACHE_TTL_MS = 120_000; // 2 min — correlation doesn't need to be as fresh
-
-/**
- * Validate that a symbol string is a plausible Binance USDT spot pair.
- * Uppercase letters, ends with "USDT", 6-16 chars total, base 2-12 letters.
- */
-export function isValidSymbolFormat(symbol: string): boolean {
-  if (!symbol) return false;
-  if (!/^[A-Z]{2,12}USDT$/.test(symbol)) return false;
-  if (symbol.length < 6 || symbol.length > 16) return false;
-  return true;
-}
 
 /** Allowed intervals with human-readable labels for the UI. */
 const INTERVALS: Record<string, { label: string; daysPerCandle: number }> = {

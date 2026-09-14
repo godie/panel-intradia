@@ -84,15 +84,15 @@ function fmtTrades(n: number | null): string {
   return n.toLocaleString("en-US");
 }
 
-function fmtRelative(iso: string): string {
+function fmtRelative(iso: string, t: (key: string) => string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const min = Math.floor(ms / 60000);
-  if (min < 1) return "now";
-  if (min < 60) return `${min}m ago`;
+  if (min < 1) return t("common.now");
+  if (min < 60) return t("ticker.agoMin").replace("{n}", String(min));
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) return t("ticker.agoHour").replace("{n}", String(hr));
   const day = Math.floor(hr / 24);
-  return `${day}d ago`;
+  return t("ticker.agoDay").replace("{n}", String(day));
 }
 
 const STATE_STYLES: Record<
@@ -234,7 +234,7 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
             type="button"
             onClick={onClose}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8] shrink-0"
-            aria-label="Cerrar"
+            aria-label={t("common.close")}
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -328,8 +328,8 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
                   <DetailMetric label={t("card.resistance")} value={`$${fmtPrice(data.resistance)}`} unavailable={!!nd.resistance} color="#e2604f" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={t("card.support")} value={`$${fmtPrice(data.support)}`} unavailable={!!nd.support} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.macdSignal")}`} value={`$${fmtPrice(data.macd.line)}`} unavailable={!!nd.macd} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="Signal" value={`$${fmtPrice(data.macd.signal)}`} unavailable={!!nd.macd} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="Histogram" value={`$${fmtPrice(data.macd.histogram)}`} unavailable={!!nd.macd} color={data.macd.histogram != null && data.macd.histogram >= 0 ? "#5fbf8f" : "#e2604f"} notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.signal")} value={`$${fmtPrice(data.macd.signal)}`} unavailable={!!nd.macd} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.hist")} value={`$${fmtPrice(data.macd.histogram)}`} unavailable={!!nd.macd} color={data.macd.histogram != null && data.macd.histogram >= 0 ? "#5fbf8f" : "#e2604f"} notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.bollinger")} U`} value={`$${fmtPrice(data.bollinger.upper)}`} unavailable={!!nd.bollinger} color="#b48cff" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.bollinger")} M`} value={`$${fmtPrice(data.bollinger.middle)}`} unavailable={!!nd.bollinger} color="#b48cff" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.bollinger")} L`} value={`$${fmtPrice(data.bollinger.lower)}`} unavailable={!!nd.bollinger} color="#b48cff" notAvailableLabel={t("card.notAvailable")} />
@@ -337,18 +337,18 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
                   <DetailMetric label={t("card.vwapLabel")} value={`$${fmtPrice(data.vwap_20_4h)}`} unavailable={!!nd.vwap_20_4h} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.stochastic")} %K`} value={data.stochastic.k != null ? data.stochastic.k.toFixed(2) : "—"} unavailable={!!nd.stochastic} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.stochastic")} %D`} value={data.stochastic.d != null ? data.stochastic.d.toFixed(2) : "—"} unavailable={!!nd.stochastic} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="Tenkan-sen" value={`$${fmtPrice(data.ichimoku.tenkan)}`} unavailable={!!nd.ichimoku} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="Kijun-sen" value={`$${fmtPrice(data.ichimoku.kijun)}`} unavailable={!!nd.ichimoku} color="#4fa8d8" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="Senkou A" value={`$${fmtPrice(data.ichimoku.senkou_a)}`} unavailable={!!nd.ichimoku} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="Senkou B" value={`$${fmtPrice(data.ichimoku.senkou_b)}`} unavailable={!!nd.ichimoku} color="#e2604f" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.tenkan")} value={`$${fmtPrice(data.ichimoku.tenkan)}`} unavailable={!!nd.ichimoku} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.kijun")} value={`$${fmtPrice(data.ichimoku.kijun)}`} unavailable={!!nd.ichimoku} color="#4fa8d8" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.senkouA")} value={`$${fmtPrice(data.ichimoku.senkou_a)}`} unavailable={!!nd.ichimoku} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.senkouB")} value={`$${fmtPrice(data.ichimoku.senkou_b)}`} unavailable={!!nd.ichimoku} color="#e2604f" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric
-                    label="Cloud"
+                    label={t("card.cloud")}
                     value={
                       data.ichimoku.cloud_color === "bullish"
-                        ? "Bullish"
+                        ? t("market.bullish")
                         : data.ichimoku.cloud_color === "bearish"
-                          ? "Bearish"
-                          : "Neutral"
+                          ? t("market.bearish")
+                          : t("common.neutral")
                     }
                     unavailable={!!nd.ichimoku}
                     color={
@@ -361,7 +361,7 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
                     notAvailableLabel={t("card.notAvailable")}
                   />
                   <DetailMetric
-                    label="Price vs cloud"
+                    label={t("card.priceVsCloud")}
                     value={
                       data.ichimoku.price_vs_cloud === "above"
                         ? t("card.ichimokuAbove")
@@ -381,10 +381,10 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
                     }
                     notAvailableLabel={t("card.notAvailable")}
                   />
-                  <DetailMetric label="Volume 24h" value={fmtVolume(data.volume_24h_usd)} unavailable={!!nd.volume_24h_usd} color="#8b96a5" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="Trades 24h" value={fmtTrades(data.trades_24h)} unavailable={!!nd.volume_24h_usd} color="#8b96a5" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="High 24h" value={`$${fmtPrice(data.high_24h)}`} unavailable={!!nd.high_24h} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label="Low 24h" value={`$${fmtPrice(data.low_24h)}`} unavailable={!!nd.low_24h} color="#e2604f" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.volume24h")} value={fmtVolume(data.volume_24h_usd)} unavailable={!!nd.volume_24h_usd} color="#8b96a5" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.trades24h")} value={fmtTrades(data.trades_24h)} unavailable={!!nd.volume_24h_usd} color="#8b96a5" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.high24h")} value={`$${fmtPrice(data.high_24h)}`} unavailable={!!nd.high_24h} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.low24h")} value={`$${fmtPrice(data.low_24h)}`} unavailable={!!nd.low_24h} color="#e2604f" notAvailableLabel={t("card.notAvailable")} />
                 </div>
               </div>
 
@@ -462,7 +462,9 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
                   </div>
                 )}
                 {crossesError && (
-                  <div className="py-2 text-xs text-[#e2604f]">Error: {crossesError}</div>
+                  <div className="py-2 text-xs text-[#e2604f]">
+                    {t("common.error")}: {crossesError}
+                  </div>
                 )}
                 {!crossesLoading && !crossesError && crosses.length === 0 && (
                   <div className="py-2 text-xs text-muted-foreground/60">
@@ -501,9 +503,9 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
                             <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/70">
                               <span className="tnum">@ ${fmtPrice(ev.price)}</span>
                               <span>·</span>
-                              <span>vela {ev.candlesAgo}</span>
+                              <span>{t("card.candleAgo").replace("{n}", String(ev.candlesAgo))}</span>
                               <span>·</span>
-                              <span>{fmtRelative(ev.detectedAt)}</span>
+                              <span>{fmtRelative(ev.detectedAt, t)}</span>
                             </div>
                           </div>
                         </li>
