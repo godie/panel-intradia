@@ -3657,3 +3657,22 @@ namespace: `add`, `addDesc`, `symbol`, `placeholder` (= "ADAUSDT"),
   code.
 
 - **Branch:** `dm/round-33` (based on `origin/main`).
+
+### Review fixes (post-review pass)
+
+- Centralized symbol validation in `isValidSymbolFormat`
+  (`src/lib/providers/symbols.ts`) — it had been copy-pasted across the
+  three API routes, `symbol-manager` and `add-ticker-modal`. Route-level
+  `export function isValidSymbolFormat` was also an invalid App Router
+  export and is gone.
+- Removed dead `symbol-manager` exports (`Watchlist`, `resetWatchlist`,
+  `getMaxSymbols`, `getSymbolLabel`/`getSymbolPair`/`getSymbolAsset`).
+- Localized the remaining hardcoded strings in the detail modal (metric
+  labels, relative timestamps, "vela", error prefix) and the close
+  `aria-label` in both modals — 14 keys × 4 languages.
+- Cancel the pending add when the modal closes during the success flash;
+  the effect is keyed on `open` only (`onClose` is recreated every parent
+  render, so depending on it cleared the timer prematurely).
+- Tests: `symbol-manager.test.ts` + `types.test.ts` for the new pure
+  helpers, and `isValidSymbolFormat` cases in `symbols.test.ts`.
+  Suite: 210 → 228 tests.

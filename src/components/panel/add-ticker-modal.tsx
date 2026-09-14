@@ -110,6 +110,7 @@ export function AddTickerModal({ open, existing = [], onClose, onAdd }: Props) {
       setStatus({ kind: "valid" });
       // Brief success flash, then propagate to parent.
       timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
         onAdd(sym);
       }, 350);
     } catch {
