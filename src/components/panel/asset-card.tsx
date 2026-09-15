@@ -12,17 +12,19 @@ import { StrategyBuilder } from "./strategy-builder";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
-import { SYMBOL_META, type AnalysisResponse } from "@/lib/types";
+import { getSymbolMeta, type AnalysisResponse } from "@/lib/types";
 import type { DepthSnapshot } from "@/hooks/use-order-book";
 import { useLanguage } from "@/hooks/use-language";
 import {
   TrendingUp,
   TrendingDown,
   Minimize2,
+  Maximize2,
   Activity,
   Zap,
   BarChart3,
   Radio,
+  X,
 } from "lucide-react";
 
 type Props = {
@@ -39,6 +41,10 @@ type Props = {
   depthSnapshot?: DepthSnapshot | undefined;
   /** Whether the order-book socket is connected. */
   depthConnected?: boolean;
+  /** Optional remove-from-watchlist callback. When provided, an "X" button is rendered in the header. */
+  onRemove?: () => void;
+  /** Optional open-detail callback. When provided, a "Details" button is rendered in the header. */
+  onDetail?: () => void;
 };
 
 function fmtPrice(n: number | null): string {
@@ -204,14 +210,11 @@ export function AssetCard({
   nowMs,
   depthSnapshot,
   depthConnected,
+  onRemove,
+  onDetail,
 }: Props) {
   const { t } = useLanguage();
-  const meta = SYMBOL_META[data.symbol] ?? {
-    label: data.symbol,
-    pair: data.symbol,
-    asset: data.symbol,
-    quote: "USD",
-  };
+  const meta = getSymbolMeta(data.symbol);
   const nd = data.no_disponible;
   const notAvailableLabel = t("card.notAvailable");
   const state = data.cross_state;
@@ -320,20 +323,48 @@ export function AssetCard({
             </div>
           <p className="mt-0.5 text-xs text-muted-foreground">{meta.label}</p>
         </div>
-        {stateStyle && (
-          <span
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${stateStyle.bg} ${stateStyle.border} ${stateStyle.text}`}
-          >
-            <stateStyle.icon className="h-3.5 w-3.5" aria-hidden />
-            {t(stateStyle.label)}
-          </span>
-        )}
-        {nd.cross_state && (
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-muted-foreground">
-            <Activity className="h-3.5 w-3.5" aria-hidden />
-            N/D
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {(onDetail || onRemove) && (
+            <div className="flex items-center gap-1">
+              {onDetail && (
+                <button
+                  type="button"
+                  onClick={onDetail}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#4fa8d8]"
+                  aria-label={t("ticker.detail")}
+                  title={t("ticker.detail")}
+                >
+                  <Maximize2 className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              )}
+              {onRemove && (
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-[#e2604f]/15 hover:text-[#e2604f] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#e2604f]"
+                  aria-label={t("ticker.remove")}
+                  title={t("ticker.remove")}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              )}
+            </div>
+          )}
+          {stateStyle && (
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${stateStyle.bg} ${stateStyle.border} ${stateStyle.text}`}
+            >
+              <stateStyle.icon className="h-3.5 w-3.5" aria-hidden />
+              {t(stateStyle.label)}
+            </span>
+          )}
+          {nd.cross_state && (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-muted-foreground">
+              <Activity className="h-3.5 w-3.5" aria-hidden />
+              N/D
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Price block */}

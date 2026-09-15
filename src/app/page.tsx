@@ -6,7 +6,14 @@ import { TickerTape } from "@/components/panel/ticker-tape";
 import { MarketSummary } from "@/components/panel/market-summary";
 import { CrossHistory } from "@/components/panel/cross-history";
 import { MarketOverview } from "@/components/panel/market-overview";
-import { SYMBOLS, SYMBOL_META, type AnalysisResponse } from "@/lib/types";
+import { AddTickerModal } from "@/components/panel/add-ticker-modal";
+import { TickerDetailModal } from "@/components/panel/ticker-detail-modal";
+import { getSymbolMeta, type AnalysisResponse } from "@/lib/types";
+import {
+  loadWatchlist,
+  addSymbol,
+  removeSymbol,
+} from "@/lib/symbol-manager";
 import {
   useTickStream,
   clearTickPriceGlobal,
@@ -21,7 +28,17 @@ import { KeyboardHelpModal } from "@/components/panel/keyboard-help-modal";
 import { PriceAlertsButton } from "@/components/panel/price-alerts-button";
 import { LanguageSelector } from "@/components/panel/language-selector";
 import { useLanguage } from "@/hooks/use-language";
-import { RefreshCw, Radio, AlertTriangle, Clock, Wifi, WifiOff, Download, Keyboard, HelpCircle } from "lucide-react";
+import {
+  RefreshCw,
+  Radio,
+  AlertTriangle,
+  Clock,
+  Wifi,
+  WifiOff,
+  Download,
+  Keyboard,
+  Plus,
+} from "lucide-react";
 
 const REFRESH_MS = 60_000;
 type Cell = { loading: boolean; error: string | null; data: AnalysisResponse | null };
@@ -44,14 +61,22 @@ function fmtTime(iso: string | null): string {
 
 export default function Page() {
   const { t } = useLanguage();
-  const [cells, setCells] = useState<Record<string, Cell>>(
-    Object.fromEntries(SYMBOLS.map((s) => [s, { ...initialCell }])),
+  // Dynamic watchlist — initialized from the user's localStorage on mount.
+  // We start with the default 5 symbols so SSR + first client render match
+  // (avoids hydration mismatch) and then load the stored list in an effect.
+  const [symbols, setSymbols] = useState<string[]>(() => loadWatchlist());
+  const [cells, setCells] = useState<Record<string, Cell>>(() =>
+    Object.fromEntries(
+      loadWatchlist().map((s) => [s, { ...initialCell }]),
+    ),
   );
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(REFRESH_MS / 1000);
   const [refreshing, setRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [helpOpen, setHelpOpen] = useState(false);
+  const [addTickerOpen, setAddTickerOpen] = useState(false);
+  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Live tick stream — shared singleton socket.
@@ -64,18 +89,24 @@ export default function Page() {
     onToggleHelp: () => setHelpOpen((v) => !v),
   });
 
+  // Keep a ref of the current symbol list so the (stable) fetchAll callback
+  // can read the latest list without re-creating itself on every change.
+  const symbolsRef = useRef<string[]>(symbols);
+  symbolsRef.current = symbols;
+
   const fetchAll = useCallback(async (manual: boolean) => {
     // Cancel any in-flight fetch.
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
+    const list = symbolsRef.current;
     if (manual) setRefreshing(true);
     // Mark loading only for manual refresh so auto-refresh doesn't flash skeletons.
     if (manual) {
       setCells((prev) => {
         const next: Record<string, Cell> = {};
-        for (const s of SYMBOLS) {
+        for (const s of list) {
           next[s] = prev[s]?.data
             ? { ...prev[s], loading: true }
             : { loading: true, error: null, data: null };
@@ -85,7 +116,7 @@ export default function Page() {
     }
 
     await Promise.all(
-      SYMBOLS.map(async (symbol) => {
+      list.map(async (symbol) => {
         try {
           const res = await fetch(`/api/analysis?symbol=${symbol}`, {
             signal: ac.signal,
@@ -155,11 +186,25 @@ export default function Page() {
     return () => clearInterval(id);
   }, []);
 
-  const tickerItems = SYMBOLS.map((s) => cells[s].data);
+  // When the watchlist changes (add/remove), reconcile the cells map: seed
+  // loading entries for any new symbols and prune entries that were removed.
+  useEffect(() => {
+    setCells((prev) => {
+      const next: Record<string, Cell> = {};
+      for (const s of symbols) {
+        next[s] = prev[s] ?? { ...initialCell };
+      }
+      return next;
+    });
+    // Refetch so the new symbol's data is loaded.
+    fetchAll(false);
+  }, [symbols, fetchAll]);
+
+  const tickerItems = symbols.map((s) => cells[s]?.data ?? null);
   // Strategy alerts — fire toasts when strategy transitions WAIT→BUY/SHORT.
-  useStrategyAlerts(tickerItems, "trend_buy");
-  const anyLoading = SYMBOLS.some((s) => cells[s].loading);
-  const anyError = SYMBOLS.some((s) => cells[s].error);
+  useStrategyAlerts(tickerItems.filter((i): i is AnalysisResponse => i != null), "trend_buy");
+  const anyLoading = symbols.some((s) => cells[s]?.loading);
+  const anyError = symbols.some((s) => cells[s]?.error);
 
   // Connection indicator state:
   //  - live (green pulsing "TICK LIVE") when socket connected AND binance upstream live
@@ -295,7 +340,18 @@ export default function Page() {
 
               <button
                 type="button"
-                onClick={() => exportSnapshot(tickerItems)}
+                onClick={() => setAddTickerOpen(true)}
+                className="inline-flex items-center gap-2 rounded-md border border-[#5fbf8f]/30 bg-[#5fbf8f]/10 px-3 py-1.5 text-xs font-medium text-[#5fbf8f] transition-colors hover:bg-[#5fbf8f]/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5fbf8f]"
+                aria-label={t("ticker.add")}
+                title={t("ticker.addDesc")}
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+                <span className="hidden sm:inline">{t("ticker.add")}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => exportSnapshot(tickerItems.filter((i): i is AnalysisResponse => i != null))}
                 className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-foreground/70 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
                 aria-label={t("header.export")}
                 title="Exportar análisis actual como JSON"
@@ -337,14 +393,14 @@ export default function Page() {
                     {t("common.synchronizing")}
                   </span>
                 )}
-                {SYMBOLS.filter((s) => cells[s].error).map((s) => (
+                {symbols.filter((s) => cells[s]?.error).map((s) => (
                   <span
                     key={s}
                     className="flex items-center gap-1.5 text-[#e2604f]"
-                    title={cells[s].error ?? ""}
+                    title={cells[s]?.error ?? ""}
                   >
                     <AlertTriangle className="h-3 w-3" aria-hidden />
-                    {SYMBOL_META[s].asset}: {cells[s].error}
+                    {getSymbolMeta(s).asset}: {cells[s]?.error}
                   </span>
                 ))}
               </div>
@@ -356,7 +412,7 @@ export default function Page() {
         {tickerItems.some((i) => i != null) && (
           <div className="border-b border-white/5 bg-black/15">
             <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-              <MarketSummary items={tickerItems} />
+              <MarketSummary items={tickerItems.filter((i): i is AnalysisResponse => i != null)} />
             </div>
           </div>
         )}
@@ -364,8 +420,9 @@ export default function Page() {
         {/* Main grid */}
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {SYMBOLS.map((symbol) => {
-              const cell = cells[symbol];
+            {symbols.map((symbol) => {
+              const cell = cells[symbol] ?? { ...initialCell };
+              const meta = getSymbolMeta(symbol);
               if (cell.error && !cell.data) {
                 return (
                   <article
@@ -375,21 +432,41 @@ export default function Page() {
                     <AlertTriangle className="h-8 w-8 text-[#e2604f]" aria-hidden />
                     <div>
                       <h3 className="text-base font-semibold text-foreground">
-                        {SYMBOL_META[symbol].pair}
+                        {meta.pair}
                       </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         No se pudo cargar el análisis.
                       </p>
                     </div>
                     <p className="max-w-xs text-xs text-[#e2604f]/80">{cell.error}</p>
-                    <button
-                      type="button"
-                      onClick={() => fetchAll(true)}
-                      className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-foreground hover:bg-white/10"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                      {t("common.retry")}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fetchAll(true)}
+                        className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-foreground hover:bg-white/10"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                        {t("common.retry")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (symbols.length <= 1) return;
+                          if (
+                            typeof window !== "undefined" &&
+                            !window.confirm(
+                              t("ticker.removeConfirm").replace("{symbol}", symbol),
+                            )
+                          )
+                            return;
+                          setSymbols((prev) => removeSymbol(prev, symbol));
+                        }}
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[#e2604f]/30 bg-[#e2604f]/10 px-2.5 py-1.5 text-[11px] text-[#e2604f] hover:bg-[#e2604f]/20"
+                        title={t("ticker.remove")}
+                      >
+                        {t("ticker.remove")}
+                      </button>
+                    </div>
                   </article>
                 );
               }
@@ -400,7 +477,7 @@ export default function Page() {
                     key={symbol}
                     className="flex min-h-[420px] animate-pulse flex-col gap-4 rounded-xl border border-white/8 bg-card/40 p-5"
                     aria-busy="true"
-                    aria-label={`Cargando ${SYMBOL_META[symbol].pair}`}
+                    aria-label={`Cargando ${meta.pair}`}
                   >
                     <div className="h-6 w-32 rounded bg-white/5" />
                     <div className="h-10 w-48 rounded bg-white/5" />
@@ -430,11 +507,26 @@ export default function Page() {
                   nowMs={nowMs}
                   depthSnapshot={book.snapshots[symbol]}
                   depthConnected={book.connected && book.binanceLive}
+                  onRemove={
+                    symbols.length > 1
+                      ? () => {
+                          if (
+                            typeof window !== "undefined" &&
+                            !window.confirm(
+                              t("ticker.removeConfirm").replace("{symbol}", symbol),
+                            )
+                          )
+                            return;
+                          setSymbols((prev) => removeSymbol(prev, symbol));
+                        }
+                      : undefined
+                  }
+                  onDetail={() => setDetailSymbol(symbol)}
                 />
               );
             })}
             {/* Market overview — fills the 6th grid slot */}
-            <MarketOverview items={tickerItems} />
+            <MarketOverview items={tickerItems.filter((i): i is AnalysisResponse => i != null)} />
           </div>
 
           {/* Cross history timeline — persisted EMA/MACD/momentum crosses */}
@@ -471,6 +563,25 @@ export default function Page() {
 
       {/* Keyboard shortcuts help modal */}
       <KeyboardHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {/* Add ticker modal — validate + add any Binance USDT pair */}
+      <AddTickerModal
+        open={addTickerOpen}
+        existing={symbols}
+        onClose={() => setAddTickerOpen(false)}
+        onAdd={(sym) => {
+          setSymbols((prev) => addSymbol(prev, sym));
+          setAddTickerOpen(false);
+        }}
+      />
+
+      {/* Ticker detail modal — full indicator breakdown for one symbol */}
+      <TickerDetailModal
+        symbol={detailSymbol}
+        data={detailSymbol ? cells[detailSymbol]?.data ?? null : null}
+        open={!!detailSymbol}
+        onClose={() => setDetailSymbol(null)}
+      />
     </div>
   );
 }

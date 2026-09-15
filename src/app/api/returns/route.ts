@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { providerRouter } from "@/lib/providers/router";
 import { getCached, setCached } from "@/lib/cache";
+import { isValidSymbolFormat } from "@/lib/providers/symbols";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ALLOWED_SYMBOLS = new Set([
-  "BTCUSDT",
-  "ETHUSDT",
-  "XRPUSDT",
-  "SOLUSDT",
-  "BNBUSDT",
-]);
 const ALLOWED_INTERVALS = new Set(["1h", "4h", "1d"]);
 const ALLOWED_LIMITS = new Set([100, 500, 1000]);
 const CACHE_TTL_MS = 120_000;
@@ -73,15 +67,15 @@ export async function GET(req: NextRequest) {
   const interval = searchParams.get("interval") ?? "4h";
   const limitRaw = Number(searchParams.get("limit") ?? "500");
 
-  if (!symbolA || !ALLOWED_SYMBOLS.has(symbolA)) {
+  if (!symbolA || !isValidSymbolFormat(symbolA)) {
     return NextResponse.json(
-      { error: `symbolA inválido. Permitidos: ${[...ALLOWED_SYMBOLS].join(", ")}` },
+      { error: "symbolA inválido. Debe ser un par USDT válido." },
       { status: 400 },
     );
   }
-  if (!symbolB || !ALLOWED_SYMBOLS.has(symbolB)) {
+  if (!symbolB || !isValidSymbolFormat(symbolB)) {
     return NextResponse.json(
-      { error: `symbolB inválido. Permitidos: ${[...ALLOWED_SYMBOLS].join(", ")}` },
+      { error: "symbolB inválido. Debe ser un par USDT válido." },
       { status: 400 },
     );
   }

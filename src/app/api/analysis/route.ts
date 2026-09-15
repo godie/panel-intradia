@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { providerRouter } from "@/lib/providers/router";
 import { UpstreamError } from "@/lib/providers/types";
-import { isSupportedSymbol } from "@/lib/providers/symbols";
 import {
   calculateEMA,
   calculateRSI,
@@ -20,6 +19,7 @@ import {
 } from "@/lib/indicators";
 import { buildStructureText } from "@/lib/structure";
 import { getCached, setCached } from "@/lib/cache";
+import { isValidSymbolFormat } from "@/lib/providers/symbols";
 import type { AnalysisResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -344,9 +344,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const symbol = (searchParams.get("symbol") ?? "").toUpperCase().trim();
 
-  if (!symbol || !isSupportedSymbol(symbol)) {
+  if (!symbol || !isValidSymbolFormat(symbol)) {
     return NextResponse.json(
-      { error: `Símbolo inválido. Permitidos: BTCUSDT, ETHUSDT, XRPUSDT, SOLUSDT, BNBUSDT` },
+      { error: "Símbolo inválido. Debe ser un par USDT válido (ej. BTCUSDT, ADAUSDT)." },
       { status: 400 },
     );
   }

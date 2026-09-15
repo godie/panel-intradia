@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { providerRouter } from "@/lib/providers/router";
 import { getCached, setCached } from "@/lib/cache";
+import { SYMBOLS } from "@/lib/types";
+import { isValidSymbolFormat } from "@/lib/providers/symbols";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SYMBOLS = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT", "BNBUSDT"];
+/** Default set of symbols used when no `symbols` query param is provided. */
+const DEFAULT_SYMBOLS: string[] = [...SYMBOLS];
 const CACHE_TTL_MS = 120_000; // 2 min — correlation doesn't need to be as fresh
 
 /** Allowed intervals with human-readable labels for the UI. */
@@ -57,9 +60,9 @@ function toReturns(closes: number[]): number[] {
 }
 
 /**
- * GET /api/correlation?interval=4h&limit=500
+ * GET /api/correlation?interval=4h&limit=500&symbols=BTCUSDT,ETHUSDT,...
  *
- * Returns a Pearson correlation matrix between all supported symbols, based
+ * Returns a Pearson correlation matrix between the requested symbols, based
  * on close-to-close percentage returns over the last `limit` candles of the
  * given `interval`. A symmetric matrix of {symbols[], matrix[][]} where
  * matrix[i][j] is the correlation between symbols[i] and symbols[j] (1.0
@@ -68,14 +71,18 @@ function toReturns(closes: number[]): number[] {
  * Params:
  *  - interval: "1h" | "4h" | "1d" (default "4h")
  *  - limit: 100 | 500 | 1000 (default 500)
+ *  - symbols: optional comma-separated list of USDT pairs. When omitted,
+ *    the default 5 symbols (BTC/ETH/XRP/SOL/BNB) are used. At least 2
+ *    symbols are required.
  *
- * Cached for 120s per (interval+limit) combo — correlation is compute-heavy
- * (5 Binance fetches) and doesn't need sub-minute freshness.
+ * Cached for 120s per (symbols+interval+limit) combo — correlation is
+ * compute-heavy (N Binance fetches) and doesn't need sub-minute freshness.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const interval = searchParams.get("interval") ?? "4h";
   const limitRaw = Number(searchParams.get("limit") ?? "500");
+  const symbolsParam = searchParams.get("symbols") ?? "";
 
   // Validate interval.
   if (!INTERVALS[interval]) {
@@ -87,7 +94,42 @@ export async function GET(req: NextRequest) {
   // Validate limit.
   const limit = ALLOWED_LIMITS.has(limitRaw) ? limitRaw : 500;
 
-  const cacheKey = `correlation:${interval}:${limit}`;
+  // Resolve the requested symbol list.
+  let symbols: string[];
+  if (symbolsParam.trim()) {
+    const parsed = symbolsParam
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter((s) => s.length > 0);
+    // Deduplicate while preserving order.
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const s of parsed) {
+      if (!seen.has(s)) {
+        seen.add(s);
+        unique.push(s);
+      }
+    }
+    // Validate every requested symbol.
+    const invalid = unique.filter((s) => !isValidSymbolFormat(s));
+    if (invalid.length > 0) {
+      return NextResponse.json(
+        { error: `Símbolos inválidos: ${invalid.join(", ")}. Deben ser pares USDT válidos.` },
+        { status: 400 },
+      );
+    }
+    if (unique.length < 2) {
+      return NextResponse.json(
+        { error: "Se requieren al menos 2 símbolos para calcular correlación." },
+        { status: 400 },
+      );
+    }
+    symbols = unique;
+  } else {
+    symbols = DEFAULT_SYMBOLS;
+  }
+
+  const cacheKey = `correlation:${symbols.join(",")}:${interval}:${limit}`;
   const cached = getCached(cacheKey);
   if (cached) {
     return NextResponse.json(cached, {
@@ -98,7 +140,7 @@ export async function GET(req: NextRequest) {
   try {
     // Fetch klines for all symbols in parallel.
     const results = await Promise.all(
-      SYMBOLS.map(async (s) => {
+      symbols.map(async (s) => {
         try {
           const klines = await providerRouter.getKlines(s, interval, limit).then((r) => r.klines);
           return { symbol: s, returns: toReturns(klines.map((k) => k.close)) };
@@ -109,8 +151,8 @@ export async function GET(req: NextRequest) {
     );
 
     // Build the symmetric correlation matrix.
-    const matrix: (number | null)[][] = SYMBOLS.map((_, i) =>
-      SYMBOLS.map((_, j) => {
+    const matrix: (number | null)[][] = symbols.map((_, i) =>
+      symbols.map((_, j) => {
         if (i === j) return 1.0;
         const a = results[i].returns;
         const b = results[j].returns;
@@ -123,7 +165,7 @@ export async function GET(req: NextRequest) {
     const window = `${meta.label} · ${limit} velas (~${approxDays} días)`;
 
     const payload = {
-      symbols: SYMBOLS,
+      symbols,
       matrix,
       interval,
       limit,

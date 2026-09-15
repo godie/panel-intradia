@@ -165,16 +165,43 @@ export type AnalysisResponse = {
 
 export type AssetError = { error: string };
 
-export const SYMBOL_META: Record<
-  string,
-  { label: string; pair: string; asset: string; quote: string }
-> = {
+export type SymbolMeta = {
+  label: string;
+  pair: string;
+  asset: string;
+  quote: string;
+};
+
+export const SYMBOL_META: Record<string, SymbolMeta> = {
   BTCUSDT: { label: "Bitcoin", pair: "BTC / USD", asset: "BTC", quote: "USD" },
   ETHUSDT: { label: "Ethereum", pair: "ETH / USD", asset: "ETH", quote: "USD" },
   XRPUSDT: { label: "Ripple", pair: "XRP / USD", asset: "XRP", quote: "USD" },
   SOLUSDT: { label: "Solana", pair: "SOL / USD", asset: "SOL", quote: "USD" },
   BNBUSDT: { label: "BNB", pair: "BNB / USD", asset: "BNB", quote: "USD" },
 };
+
+/**
+ * getSymbolMeta — returns display metadata for any ticker symbol.
+ *
+ * For known symbols (in SYMBOL_META), returns the stored metadata. For
+ * unknown symbols (e.g. ADAUSDT, DOTUSDT) derives a reasonable fallback
+ * from the ticker: the base asset is the ticker with "USDT" stripped, the
+ * label is the base asset, the pair is "{BASE} / USD", and the quote is
+ * "USD". This lets the dashboard dynamically render cards for any Binance
+ * USDT pair the user adds to their watchlist without needing a static
+ * metadata entry for every possible symbol.
+ */
+export function getSymbolMeta(symbol: string): SymbolMeta {
+  const known = SYMBOL_META[symbol];
+  if (known) return known;
+  const base = symbol.replace(/USDT$/i, "");
+  return {
+    label: base || symbol,
+    pair: base ? `${base} / USD` : symbol,
+    asset: base || symbol,
+    quote: "USD",
+  };
+}
 
 export const SYMBOLS = [
   "BTCUSDT",
