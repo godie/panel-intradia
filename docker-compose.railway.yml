@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-file:./db/custom.db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:81,http://localhost:3000}
+    volumes:
+      - panel_db:/app/db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/analysis?symbol=BTCUSDT"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    depends_on:
+      - tick-stream
+      - order-book
+
+  tick-stream:
+    build:
+      context: ./mini-services/tick-stream
+      dockerfile: Dockerfile
+    ports:
+      - "3005:3005"
+    environment:
+      PORT: 3005
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:81,http://localhost:3000}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  order-book:
+    build:
+      context: ./mini-services/order-book
+      dockerfile: Dockerfile
+    ports:
+      - "3004:3004"
+    environment:
+      PORT: 3004
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:81,http://localhost:3000}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.7-alpine
+    ports:
+      - "81:81"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      APP_UPSTREAM: ${APP_UPSTREAM:-app:3000}
+      TICK_STREAM_UPSTREAM: ${TICK_STREAM_UPSTREAM:-tick-stream:3005}
+      ORDER_BOOK_UPSTREAM: ${ORDER_BOOK_UPSTREAM:-order-book:3004}
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  panel_db:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
