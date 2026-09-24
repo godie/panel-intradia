@@ -3676,3 +3676,98 @@ namespace: `add`, `addDesc`, `symbol`, `placeholder` (= "ADAUSDT"),
 - Tests: `symbol-manager.test.ts` + `types.test.ts` for the new pure
   helpers, and `isValidSymbolFormat` cases in `symbols.test.ts`.
   Suite: 210 → 228 tests.
+
+---
+Task ID: round-34
+Agent: Z.ai Code (continuation)
+Task: Multi-symbol backtest — run a strategy across N symbols simultaneously with aggregated equity curve + per-symbol breakdown.
+
+Work Log:
+- Pulled origin main (465da76 — PR #28 multi-timeframe + /comparar page +
+  3 new strategies, PR #27 my round 33 dynamic tickers). Reset local main,
+  created branch `dm/round-34`.
+- QA baseline: 255/255 tests, lint clean, all services healthy.
+
+- === Multi-symbol backtest engine (src/lib/backtest.ts) ===
+  New `runMultiSymbolBacktest()` function + PerSymbolResult + MultiSymbolBacktestResult types:
+  - Splits initialCapital equally across N symbols (initialCapital / N)
+  - Runs each symbol's backtest in parallel via Promise.all
+  - Aggregates equity curves: sums all per-symbol equity at each candle index
+  - Aggregates trades: combines all trades from all symbols
+  - Computes aggregated stats via computeStats() using combined trades + aggregated equity curve
+  - Returns perSymbol[] breakdown with each symbol's full BacktestResult + allocation + return
+  - Collects errors[] per symbol (e.g. if one symbol fails on Binance, others still succeed)
+  - Handles edge cases: 0 valid symbols, all symbols fail, different equity curve lengths (uses shortest)
+
+- === API route (src/app/api/backtest/route.ts) ===
+  - Accepts both `symbol` (single, backward compatible) and `symbols` (array, multi-symbol mode)
+  - When `symbols[]` is provided with >0 entries, runs runMultiSymbolBacktest()
+  - Validates each symbol via isValidSymbolFormat() regex
+  - Caps at 10 symbols in multi-symbol mode
+  - Returns multiSymbol: true flag + perSymbol[] array in the response
+  - Removed unused `isSupportedSymbol` import (replaced by isValidSymbolFormat)
+  - Updated error path to include both `symbol` and `symbols` in the response
+
+- === BacktestModal UI (src/components/panel/backtest-modal.tsx) ===
+  - New "Multi-símbolo" toggle button (purple, top of config panel)
+  - When toggled ON: replaces single-symbol dropdown with multi-select chips
+    (BTC/ETH/XRP/SOL/BNB as toggleable chips, "Todos"/"Ninguno" quick buttons,
+    "N seleccionados" counter)
+  - When toggled OFF: single-symbol dropdown (backward compatible)
+  - runBacktest() sends `symbols[]` array when multi-symbol mode is active
+  - Per-symbol breakdown table: renders after equity curve when result has
+    `perSymbol[]`. Columns: Símbolo, Operaciones, Retorno, Win rate, Capital
+    final, Sharpe, Máx DD. Sorted by return (best first). Color-coded P&L.
+  - Multi-symbol errors section: red-tinted panel listing per-symbol errors
+  - Trade list section guarded with `result.trades &&` check (multi-symbol
+    results don't include a combined trade list to keep payload small)
+
+- === i18n (4 languages × 18 new keys = 72 new keys) ===
+  Added: backtest.multiSymbol, multiSymbolDesc, selectSymbols, selected,
+  selectAll, selectNone, perSymbol, perSymbolHint, perSymbolSymbol,
+  perSymbolTrades, perSymbolReturn, perSymbolWinRate, perSymbolFinal,
+  perSymbolSharpe, perSymbolMaxDD, aggregatedEquity, multiSymbolErrors.
+
+- === Test fix (src/lib/backtest-route.test.ts) ===
+  Updated the "rejects invalid input" test: changed test symbol from
+  "NOPEUSDT" (which now passes isValidSymbolFormat since it matches the
+  USDT-pair regex) to "NOTASYMBOL" (which fails the regex and correctly
+  returns 400).
+
+- QA with agent-browser (ES):
+  - Opened backtest modal, clicked "Multi-símbolo" toggle
+  - Selected all 5 symbols (BTC/ETH/XRP/SOL/BNB) via "Todos" button
+  - Clicked "Ejecutar backtest" — ran successfully
+  - Results: aggregated metrics (OPERACIONES, RETORNO TOTAL, etc.) +
+    "DESGLOSE POR SÍMBOLO" table with 5 rows sorted by return:
+    SOL: 19 trades, +48.13%, 53% win rate, $2,963 final, Sharpe 4.24
+    ETH: 8 trades, +39.58%, 63% win rate, ...
+    BTC: 8 trades, +29.61%, ...
+    etc.
+  - Aggregated equity curve rendered (gradient fill, green = positive)
+  - Zero agent-browser errors, zero console errors
+
+- API verified directly:
+  POST /api/backtest with symbols=["BTCUSDT","ETHUSDT","SOLUSDT"] →
+  35 aggregated trades, +38.91% return, Sharpe 4.3, MaxDD 7.82%
+  Per-symbol: BTC +29.61%, ETH +39.40%, SOL +47.73%
+
+Stage Summary:
+- **Estado:** Round 34 entregada. Multi-symbol backtest fully functional.
+  Users can now test a strategy across the entire watchlist simultaneously
+  and see which symbols contribute positively vs negatively. The aggregated
+  equity curve + stats show the portfolio-level performance, while the
+  per-symbol breakdown table lets users identify which tickers work best
+  with the strategy.
+- **Artefactos:**
+  - `src/lib/backtest.ts` (+runMultiSymbolBacktest +PerSymbolResult +
+    MultiSymbolBacktestResult types, +170 LOC)
+  - `src/app/api/backtest/route.ts` (+multi-symbol mode, +isValidSymbolFormat)
+  - `src/components/panel/backtest-modal.tsx` (+multi-symbol toggle + chip
+    selector + per-symbol breakdown table + error panel, +120 LOC)
+  - `src/lib/i18n.ts` (+72 keys = 18 × 4 languages)
+  - `src/lib/backtest-route.test.ts` (fixed invalid-symbol test)
+- **Verification:** 255/255 tests pass, lint clean. agent-browser verified
+  in ES: 5-symbol backtest ran, per-symbol breakdown table rendered with
+  sorted rows, aggregated equity curve displayed. Zero errors.
+- **Branch:** `dm/round-34` (based on `origin/main` 465da76).

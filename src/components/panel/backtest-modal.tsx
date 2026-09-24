@@ -86,6 +86,10 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
   const { t } = useLanguage();
 
   const [symbol, setSymbol] = useState<string>(defaultSymbol);
+  const [multiSymbol, setMultiSymbol] = useState<boolean>(false);
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(
+    new Set([defaultSymbol]),
+  );
   const [interval, setInterval] = useState<BacktestInterval>("4h");
   const [limit, setLimit] = useState<number>(500);
   const [minConfidence, setMinConfidence] = useState<number>(60);
@@ -140,7 +144,6 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
     setSaveMsg(null);
     try {
       const payload: Record<string, unknown> = {
-        symbol,
         interval,
         limit,
         minConfidence,
@@ -152,6 +155,11 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
         fixedFractionalPct,
         feeBps,
       };
+      if (multiSymbol && selectedSymbols.size > 0) {
+        payload.symbols = Array.from(selectedSymbols);
+      } else {
+        payload.symbol = symbol;
+      }
       if (predefined) {
         payload.strategyId = strategy.id;
       } else {
@@ -162,7 +170,7 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const json = (await res.json()) as BacktestResult & { error?: string };
+      const json = (await res.json()) as BacktestResult & { error?: string; multiSymbol?: boolean; perSymbol?: unknown[] };
       if (json.error) {
         setError(json.error);
         setResult(null);
@@ -176,6 +184,8 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
     }
   }, [
     symbol,
+    multiSymbol,
+    selectedSymbols,
     interval,
     limit,
     strategy,
@@ -471,22 +481,98 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-0">
             {/* Config panel (left) */}
             <div className="border-b lg:border-b-0 lg:border-r border-white/8 p-4 space-y-3.5 bg-background/40">
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                  {t("backtest.symbol")}
-                </label>
-                <select
-                  value={symbol}
-                  onChange={(e) => setSymbol(e.target.value)}
-                  className="w-full rounded-md border border-white/10 bg-background/60 px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
+              {/* Multi-symbol toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMultiSymbol((v) => !v)}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                    multiSymbol
+                      ? "bg-[#b48cff]/20 text-[#b48cff] border border-[#b48cff]/40"
+                      : "bg-background/40 text-muted-foreground border border-white/8 hover:bg-white/5"
+                  }`}
                 >
-                  {SYMBOLS.map((s) => (
-                    <option key={s} value={s}>
-                      {SYMBOL_META[s]?.label ?? s} · {SYMBOL_META[s]?.pair}
-                    </option>
-                  ))}
-                </select>
+                  {t("backtest.multiSymbol")}
+                </button>
               </div>
+              {multiSymbol && (
+                <p className="text-[9px] text-muted-foreground/60 -mt-1.5">
+                  {t("backtest.multiSymbolDesc")}
+                </p>
+              )}
+
+              {/* Symbol selector — single or multi */}
+              {multiSymbol ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {t("backtest.selectSymbols")}
+                    </label>
+                    <span className="text-[9px] text-muted-foreground/60">
+                      {t("backtest.selected").replace("{n}", String(selectedSymbols.size))}
+                    </span>
+                  </div>
+                  <div className="flex gap-1 mb-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSymbols(new Set(SYMBOLS))}
+                      className="rounded border border-white/8 bg-black/20 px-1.5 py-0.5 text-[9px] text-muted-foreground/70 hover:bg-white/5 hover:text-foreground/80"
+                    >
+                      {t("backtest.selectAll")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSymbols(new Set())}
+                      className="rounded border border-white/8 bg-black/20 px-1.5 py-0.5 text-[9px] text-muted-foreground/70 hover:bg-white/5 hover:text-foreground/80"
+                    >
+                      {t("backtest.selectNone")}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {SYMBOLS.map((s) => {
+                      const isSel = selectedSymbols.has(s);
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSymbols((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(s)) next.delete(s);
+                              else next.add(s);
+                              return next;
+                            });
+                          }}
+                          className={`rounded px-2 py-1 text-[10px] font-mono font-medium transition-colors ${
+                            isSel
+                              ? "bg-[#b48cff]/20 text-[#b48cff] border border-[#b48cff]/40"
+                              : "bg-background/40 text-muted-foreground border border-white/8 hover:bg-white/5"
+                          }`}
+                        >
+                          {SYMBOL_META[s]?.asset ?? s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                    {t("backtest.symbol")}
+                  </label>
+                  <select
+                    value={symbol}
+                    onChange={(e) => setSymbol(e.target.value)}
+                    className="w-full rounded-md border border-white/10 bg-background/60 px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
+                  >
+                    {SYMBOLS.map((s) => (
+                      <option key={s} value={s}>
+                        {SYMBOL_META[s]?.label ?? s} · {SYMBOL_META[s]?.pair}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 block">
@@ -912,7 +998,77 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                     />
                   </div>
 
-                  {/* Trade list */}
+                  {/* Per-symbol breakdown (only for multi-symbol results) */}
+                  {"perSymbol" in result && Array.isArray(result.perSymbol) && result.perSymbol.length > 0 && (
+                    <div>
+                      <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                        {t("backtest.perSymbol")}
+                      </h4>
+                      <p className="text-[9px] text-muted-foreground/60 mb-1.5">
+                        {t("backtest.perSymbolHint")}
+                      </p>
+                      <div className="rounded-md border border-white/8 bg-background/30 overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-[10px] font-mono">
+                          <thead>
+                            <tr className="text-left text-muted-foreground border-b border-white/8">
+                              <th className="px-2 py-1.5 font-medium">{t("backtest.perSymbolSymbol")}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">{t("backtest.perSymbolTrades")}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">{t("backtest.perSymbolReturn")}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">{t("backtest.perSymbolWinRate")}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">{t("backtest.perSymbolFinal")}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">{t("backtest.perSymbolSharpe")}</th>
+                              <th className="px-2 py-1.5 font-medium text-right">{t("backtest.perSymbolMaxDD")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(result as { perSymbol: { symbol: string; result: { stats: { totalTrades: number; totalReturnPct: number; winRate: number; finalEquity: number; sharpeRatio: number; maxDrawdownPct: number } } }[] }).perSymbol
+                              .slice()
+                              .sort((a, b) => b.result.stats.totalReturnPct - a.result.stats.totalReturnPct)
+                              .map((p) => {
+                                const ps = p.result.stats;
+                                const positive = ps.totalReturnPct >= 0;
+                                return (
+                                  <tr key={p.symbol} className="border-b border-white/5 hover:bg-white/[0.02]">
+                                    <td className="px-2 py-1.5 text-foreground/80 font-medium">
+                                      {SYMBOL_META[p.symbol]?.asset ?? p.symbol}
+                                    </td>
+                                    <td className="px-2 py-1.5 text-right text-foreground/80">{ps.totalTrades}</td>
+                                    <td className={`px-2 py-1.5 text-right font-semibold ${positive ? "text-[#5fbf8f]" : "text-[#e2604f]"}`}>
+                                      {positive ? "+" : ""}{ps.totalReturnPct.toFixed(2)}%
+                                    </td>
+                                    <td className="px-2 py-1.5 text-right text-muted-foreground">{ps.winRate.toFixed(0)}%</td>
+                                    <td className="px-2 py-1.5 text-right text-foreground/80">${formatNumber(ps.finalEquity)}</td>
+                                    <td className="px-2 py-1.5 text-right text-muted-foreground">
+                                      {Number.isFinite(ps.sharpeRatio) ? ps.sharpeRatio.toFixed(2) : "—"}
+                                    </td>
+                                    <td className="px-2 py-1.5 text-right text-[#e2604f]/80">-{ps.maxDrawdownPct.toFixed(2)}%</td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Multi-symbol errors */}
+                  {"errors" in result && Array.isArray(result.errors) && result.errors.length > 0 && (
+                    <div className="rounded-md border border-[#e2604f]/20 bg-[#e2604f]/5 p-2.5">
+                      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-[#e2604f]/80 mb-1">
+                        {t("backtest.multiSymbolErrors")}
+                      </h4>
+                      <ul className="space-y-0.5">
+                        {(result as { errors: string[] }).errors.map((err, i) => (
+                          <li key={i} className="text-[10px] text-[#e2604f]/70 font-mono">{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Trade list — only for single-symbol results (multi-symbol
+                      results don't include a combined trade list to keep the
+                      payload small; use the per-symbol breakdown instead) */}
+                  {result.trades && (
                   <div>
                     <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
                       {t("backtest.trades")}{" "}
@@ -981,6 +1137,7 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                       </div>
                     )}
                   </div>
+                  )}
                 </>
               )}
 

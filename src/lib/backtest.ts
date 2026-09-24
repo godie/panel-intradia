@@ -881,3 +881,214 @@ export function computeDurationBuckets(trades: BacktestTrade[]): DurationBucket[
   }
   return buckets;
 }
+
+// ============================================================
+// MULTI-SYMBOL BACKTEST
+// ============================================================
+
+/** Per-symbol result within a multi-symbol backtest. */
+export type PerSymbolResult = {
+  symbol: string;
+  /** The full single-symbol BacktestResult (with its own equity curve, trades, stats). */
+  result: BacktestResult;
+  /** This symbol's allocation as a fraction of the total capital (1/N). */
+  allocation: number;
+  /** Final equity for this symbol's slice. */
+  finalEquity: number;
+  /** Return % for this symbol's slice. */
+  totalReturnPct: number;
+};
+
+/** Aggregated multi-symbol backtest result. */
+export type MultiSymbolBacktestResult = {
+  symbols: string[];
+  interval: string;
+  candlesAnalyzed: number;
+  provider: ProviderId;
+  /** Aggregated stats across all symbols (combined trades, weighted returns). */
+  stats: BacktestStats;
+  /** Aggregated equity curve — sum of all per-symbol equity curves at each candle index. */
+  equityCurve: EquityPoint[];
+  /** Per-symbol breakdown for the comparison table. */
+  perSymbol: PerSymbolResult[];
+  strategy: { id: string; name: string; action: string };
+  params: {
+    minConfidence: number;
+    initialCapital: number;
+    stopLossPct: number;
+    takeProfitPct: number;
+    maxHoldCandles: number;
+    positionSizing: PositionSizing;
+    fixedFractionalPct: number;
+    feeBps: number;
+  };
+  errors: string[];
+};
+
+/**
+ * Run a backtest across multiple symbols simultaneously. Each symbol gets
+ * an equal slice of the initial capital (initialCapital / N) and is traded
+ * independently using the same strategy + params. The aggregated equity
+ * curve is the sum of all per-symbol equity curves at each candle index.
+ *
+ * This answers questions like "does my strategy work across the whole
+ * watchlist, or only on BTC?" and provides a per-symbol breakdown so the
+ * user can see which symbols contribute positively vs negatively.
+ */
+export async function runMultiSymbolBacktest(
+  params: Omit<BacktestParams, "symbol"> & { symbols: string[] },
+): Promise<MultiSymbolBacktestResult> {
+  const {
+    symbols,
+    interval,
+    limit,
+    strategy,
+    action,
+    minConfidence = 60,
+    initialCapital = 10_000,
+    stopLossPct = 5,
+    takeProfitPct = 10,
+    maxHoldCandles = 50,
+    positionSizing = "full",
+    fixedFractionalPct = 25,
+    feeBps = 10,
+  } = params;
+
+  const validSymbols = symbols.filter((s) => s && s.length > 0);
+  const errors: string[] = [];
+
+  if (validSymbols.length === 0) {
+    return {
+      symbols: [],
+      interval,
+      candlesAnalyzed: 0,
+      provider: "binance",
+      stats: emptyStats(initialCapital),
+      equityCurve: [],
+      perSymbol: [],
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      errors: ["No symbols provided."],
+    };
+  }
+
+  const perSymbolCapital = initialCapital / validSymbols.length;
+
+  // Run each symbol's backtest in parallel.
+  const results = await Promise.all(
+    validSymbols.map(async (symbol) => {
+      try {
+        const result = await runBacktest({
+          symbol,
+          interval,
+          limit,
+          strategy,
+          action,
+          minConfidence,
+          initialCapital: perSymbolCapital,
+          stopLossPct,
+          takeProfitPct,
+          maxHoldCandles,
+          positionSizing,
+          fixedFractionalPct,
+          feeBps,
+        });
+        if (result.error) {
+          errors.push(`${symbol}: ${result.error}`);
+        }
+        return { symbol, result };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        errors.push(`${symbol}: ${msg}`);
+        return { symbol, result: null };
+      }
+    }),
+  );
+
+  // Build per-symbol breakdown.
+  const perSymbol: PerSymbolResult[] = [];
+  for (const { symbol, result } of results) {
+    if (!result || result.error) continue;
+    perSymbol.push({
+      symbol,
+      result,
+      allocation: 1 / validSymbols.length,
+      finalEquity: result.stats.finalEquity,
+      totalReturnPct: result.stats.totalReturnPct,
+    });
+  }
+
+  if (perSymbol.length === 0) {
+    return {
+      symbols: validSymbols,
+      interval,
+      candlesAnalyzed: 0,
+      provider: "binance",
+      stats: emptyStats(initialCapital),
+      equityCurve: [],
+      perSymbol: [],
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      errors,
+    };
+  }
+
+  // Aggregate equity curve: sum all per-symbol equity curves at each candle index.
+  // All symbols should have the same number of candles (same interval + limit),
+  // but we handle different lengths gracefully by using the shortest.
+  const minLen = Math.min(...perSymbol.map((p) => p.result.equityCurve.length));
+  const aggregatedEquity: EquityPoint[] = [];
+  let peakEquity = initialCapital;
+  let maxDrawdownPct = 0;
+  for (let i = 0; i < minLen; i++) {
+    let totalEquity = 0;
+    let inPosition = false;
+    let time = 0;
+    for (const p of perSymbol) {
+      const pt = p.result.equityCurve[i];
+      totalEquity += pt.equity;
+      if (pt.inPosition) inPosition = true;
+      if (time === 0) time = pt.time;
+    }
+    aggregatedEquity.push({
+      candleIndex: i,
+      time,
+      equity: totalEquity,
+      inPosition,
+    });
+    if (totalEquity > peakEquity) peakEquity = totalEquity;
+    if (peakEquity > 0) {
+      const dd = ((peakEquity - totalEquity) / peakEquity) * 100;
+      if (dd > maxDrawdownPct) maxDrawdownPct = dd;
+    }
+  }
+
+  // Aggregate trades: combine all trades from all symbols.
+  const allTrades: BacktestTrade[] = [];
+  let totalFees = 0;
+  for (const p of perSymbol) {
+    allTrades.push(...p.result.trades);
+    totalFees += p.result.stats.totalFees;
+  }
+
+  // Compute aggregated final equity.
+  const finalEquity = perSymbol.reduce((sum, p) => sum + p.result.stats.finalEquity, 0);
+  const provider = perSymbol[0].result.provider;
+  const candlesAnalyzed = perSymbol[0].result.candlesAnalyzed;
+
+  // Compute aggregated stats using the combined trades + aggregated equity curve.
+  const stats = computeStats(allTrades, finalEquity, initialCapital, maxDrawdownPct, totalFees, aggregatedEquity, interval);
+
+  return {
+    symbols: validSymbols,
+    interval,
+    candlesAnalyzed,
+    provider,
+    stats,
+    equityCurve: aggregatedEquity,
+    perSymbol,
+    strategy: { id: strategy.id, name: strategy.name, action },
+    params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+    errors,
+  };
+}
