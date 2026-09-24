@@ -20,6 +20,12 @@ import {
 import { buildStructureText } from "@/lib/structure";
 import { getCached, setCached } from "@/lib/cache";
 import { isValidSymbolFormat } from "@/lib/providers/symbols";
+import {
+  DEFAULT_TIMEFRAME,
+  TIMEFRAMES,
+  normalizeTimeframe,
+  type Timeframe,
+} from "@/lib/timeframes";
 import type { AnalysisResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -49,6 +55,7 @@ function buildAnalysis(
   klines: import("@/lib/providers/types").Kline[],
   ticker: Awaited<ReturnType<typeof providerRouter.getTicker24h>>["ticker"],
   source: import("@/lib/providers/types").ProviderId,
+  timeframe: Timeframe,
 ): AnalysisResponse {
   const closes = klines.map((k) => k.close);
   const highs = klines.map((k) => k.high);
@@ -232,25 +239,25 @@ function buildAnalysis(
   const no_disponible: AnalysisResponse["no_disponible"] = {
     spot_price: spotPrice == null,
     change_24h_pct: change24h == null,
-    ema55_4h: !ema55Res.available,
-    ema200_4h: !ema200Res.available,
+    ema55: !ema55Res.available,
+    ema200: !ema200Res.available,
     cross_state: !crossRes.available,
     cross_info: !ema55Res.available || !ema200Res.available,
     resistance: srRes.resistance == null,
     support: srRes.support == null,
-    rsi_14_4h: !rsiRes.available,
+    rsi_14: !rsiRes.available,
     volume_24h_usd: ticker == null,
     high_24h: ticker == null,
     low_24h: ticker == null,
     macd: !macdRes.available,
     macd_cross: !macdRes.available,
-    atr_14_4h: !atrRes.available,
+    atr_14: !atrRes.available,
     bollinger: !bbRes.available,
     bollinger_squeeze: !bbRes.available,
     squeeze_breakout: !bbRes.available,
     stop_loss_suggestion: spotPrice == null || !atrRes.available,
     fibonacci: !fibRes.available,
-    vwap_20_4h: !vwapRes.available,
+    vwap_20: !vwapRes.available,
     stochastic: !stochRes.available,
     stoch_cross: !stochRes.available,
     ichimoku: !ichimokuRes.available,
@@ -274,15 +281,16 @@ function buildAnalysis(
 
   return {
     symbol,
+    timeframe,
     spot_price: round(spotPrice, dec),
     change_24h_pct: round(change24h, 2),
-    ema55_4h: round(ema55Res.last, dec),
-    ema200_4h: round(ema200Res.last, dec),
+    ema55: round(ema55Res.last, dec),
+    ema200: round(ema200Res.last, dec),
     cross_state: crossRes.state,
     cross_info: crossInfo,
     resistance: round(srRes.resistance, dec),
     support: round(srRes.support, dec),
-    rsi_14_4h: round(rsiRes.last, 2),
+    rsi_14: round(rsiRes.last, 2),
     volume_24h_usd: ticker?.quoteVolume ?? null,
     trades_24h: ticker?.trades ?? null,
     high_24h: round(ticker?.highPrice ?? null, dec),
@@ -293,7 +301,7 @@ function buildAnalysis(
       histogram: round(macdRes.lastHistogram, dec),
     },
     macd_cross: macdCross,
-    atr_14_4h: round(atrRes.last, dec),
+    atr_14: round(atrRes.last, dec),
     bollinger: {
       upper: round(bbRes.lastUpper, dec),
       middle: round(bbRes.lastMiddle, dec),
@@ -304,7 +312,7 @@ function buildAnalysis(
     squeeze_breakout: squeezeBreakout,
     stop_loss_suggestion: stopLossSuggestion,
     fibonacci,
-    vwap_20_4h: round(vwapRes.last, dec),
+    vwap_20: round(vwapRes.last, dec),
     stochastic: {
       k: round(stochRes.lastK, 2),
       d: round(stochRes.lastD, 2),
@@ -351,7 +359,21 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const cacheKey = `analysis:${symbol}`;
+  const tfParam = searchParams.get("tf");
+  // Absent → the historical default. Present but unrecognized → 400, never a
+  // silent substitution, so a typo can't look like it worked.
+  const timeframe =
+    tfParam == null || tfParam.trim() === ""
+      ? DEFAULT_TIMEFRAME
+      : normalizeTimeframe(tfParam);
+  if (timeframe == null) {
+    return NextResponse.json(
+      { error: `Temporalidad inválida. Usar ${TIMEFRAMES.join(", ")}.` },
+      { status: 400 },
+    );
+  }
+
+  const cacheKey = `analysis:${symbol}:${timeframe}`;
   const cached = getCached<AnalysisResponse>(cacheKey);
   if (cached) {
     return NextResponse.json(cached, {
@@ -361,7 +383,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const [klinesRes, tickerRes] = await Promise.all([
-      providerRouter.getKlines(symbol, "4h", 500),
+      providerRouter.getKlines(symbol, timeframe, 500),
       providerRouter.getTicker24h(symbol).catch((e) => {
         if (e instanceof UpstreamError) return { provider: "binance" as const, ticker: null };
         throw e;
@@ -372,7 +394,13 @@ export async function GET(req: NextRequest) {
       throw new UpstreamError("Provider devolvió 0 klines", klinesRes.provider);
     }
 
-    const payload = buildAnalysis(symbol, klinesRes.klines, tickerRes.ticker, klinesRes.provider);
+    const payload = buildAnalysis(
+      symbol,
+      klinesRes.klines,
+      tickerRes.ticker,
+      klinesRes.provider,
+      timeframe,
+    );
     setCached(cacheKey, payload, CACHE_TTL_MS);
 
     return NextResponse.json(payload, {

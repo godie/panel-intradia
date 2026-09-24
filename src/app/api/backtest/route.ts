@@ -7,7 +7,7 @@
  *     interval: "15m" | "1h" | "4h" | "1d",
  *     limit: number,         // candles to fetch (max 1000)
  *     // Either:
- *     strategyId?: string,    // predefined: "trend_buy" | "mean_reversion_buy" | "trend_short" | "hold"
+ *     strategyId?: string,    // predefined id — see STRATEGY_LIST in src/lib/strategies.ts
  *     // Or:
  *     customStrategy?: CustomStrategy, // from the builder
  *     minConfidence?: number,

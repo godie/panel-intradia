@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Sparkline } from "./sparkline";
 import { getSymbolMeta, type AnalysisResponse } from "@/lib/types";
+import { TIMEFRAME_LABEL_KEY, type Timeframe } from "@/lib/timeframes";
 import { useLanguage } from "@/hooks/use-language";
 import {
   X,
@@ -22,6 +23,8 @@ type Props = {
   symbol: string | null;
   /** The cached analysis payload for this symbol (from page.tsx's cells map). */
   data: AnalysisResponse | null;
+  /** Candle interval `data` was computed on (shown in the EMA labels). */
+  timeframe: Timeframe;
   open: boolean;
   onClose: () => void;
 };
@@ -134,7 +137,7 @@ const STATE_STYLES: Record<
  *  - Structure text paragraph
  *  - Recent cross events fetched from /api/cross-history?symbol=X&limit=10
  */
-export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
+export function TickerDetailModal({ symbol, data, timeframe, open, onClose }: Props) {
   const { t } = useLanguage();
   const [crosses, setCrosses] = useState<CrossEvent[]>([]);
   const [crossesLoading, setCrossesLoading] = useState(false);
@@ -315,16 +318,16 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
                   {t("ticker.allIndicators")}
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <DetailMetric label={`${t("card.ema55")} · 4h`} value={`$${fmtPrice(data.ema55_4h)}`} unavailable={!!nd.ema55_4h} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label={`${t("card.ema200")} · 4h`} value={`$${fmtPrice(data.ema200_4h)}`} unavailable={!!nd.ema200_4h} color="#4fa8d8" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={`${t("card.ema55")} · ${t(TIMEFRAME_LABEL_KEY[timeframe])}`} value={`$${fmtPrice(data.ema55)}`} unavailable={!!nd.ema55} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={`${t("card.ema200")} · ${t(TIMEFRAME_LABEL_KEY[timeframe])}`} value={`$${fmtPrice(data.ema200)}`} unavailable={!!nd.ema200} color="#4fa8d8" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric
                     label={t("card.rsi")}
-                    value={data.rsi_14_4h != null ? data.rsi_14_4h.toFixed(2) : "—"}
-                    unavailable={!!nd.rsi_14_4h}
-                    color={data.rsi_14_4h != null && data.rsi_14_4h >= 70 ? "#e2604f" : data.rsi_14_4h != null && data.rsi_14_4h <= 30 ? "#5fbf8f" : "#8b96a5"}
+                    value={data.rsi_14 != null ? data.rsi_14.toFixed(2) : "—"}
+                    unavailable={!!nd.rsi_14}
+                    color={data.rsi_14 != null && data.rsi_14 >= 70 ? "#e2604f" : data.rsi_14 != null && data.rsi_14 <= 30 ? "#5fbf8f" : "#8b96a5"}
                     notAvailableLabel={t("card.notAvailable")}
                   />
-                  <DetailMetric label={t("card.atr")} value={`$${fmtPrice(data.atr_14_4h)}`} unavailable={!!nd.atr_14_4h} color="#b48cff" hint={t("card.atrHint")} notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.atr")} value={`$${fmtPrice(data.atr_14)}`} unavailable={!!nd.atr_14} color="#b48cff" hint={t("card.atrHint")} notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={t("card.resistance")} value={`$${fmtPrice(data.resistance)}`} unavailable={!!nd.resistance} color="#e2604f" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={t("card.support")} value={`$${fmtPrice(data.support)}`} unavailable={!!nd.support} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.macdSignal")}`} value={`$${fmtPrice(data.macd.line)}`} unavailable={!!nd.macd} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
@@ -334,7 +337,7 @@ export function TickerDetailModal({ symbol, data, open, onClose }: Props) {
                   <DetailMetric label={`${t("card.bollinger")} M`} value={`$${fmtPrice(data.bollinger.middle)}`} unavailable={!!nd.bollinger} color="#b48cff" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.bollinger")} L`} value={`$${fmtPrice(data.bollinger.lower)}`} unavailable={!!nd.bollinger} color="#b48cff" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={t("card.bollingerBw")} value={data.bollinger.bandwidth != null ? `${data.bollinger.bandwidth.toFixed(2)}%` : "—"} unavailable={!!nd.bollinger} color="#b48cff" hint={t("card.bollingerBwHint")} notAvailableLabel={t("card.notAvailable")} />
-                  <DetailMetric label={t("card.vwapLabel")} value={`$${fmtPrice(data.vwap_20_4h)}`} unavailable={!!nd.vwap_20_4h} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
+                  <DetailMetric label={t("card.vwapLabel")} value={`$${fmtPrice(data.vwap_20)}`} unavailable={!!nd.vwap_20} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.stochastic")} %K`} value={data.stochastic.k != null ? data.stochastic.k.toFixed(2) : "—"} unavailable={!!nd.stochastic} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={`${t("card.stochastic")} %D`} value={data.stochastic.d != null ? data.stochastic.d.toFixed(2) : "—"} unavailable={!!nd.stochastic} color="#e8b04b" notAvailableLabel={t("card.notAvailable")} />
                   <DetailMetric label={t("card.tenkan")} value={`$${fmtPrice(data.ichimoku.tenkan)}`} unavailable={!!nd.ichimoku} color="#5fbf8f" notAvailableLabel={t("card.notAvailable")} />

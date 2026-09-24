@@ -12,7 +12,9 @@ import { StrategyBuilder } from "./strategy-builder";
 import { MacdPanel } from "./macd-panel";
 import { DepthBar } from "./depth-bar";
 import { CollapsibleSection } from "./collapsible-section";
+import { TimeframeSelector } from "./timeframe-selector";
 import { getSymbolMeta, type AnalysisResponse } from "@/lib/types";
+import { TIMEFRAME_LABEL_KEY, type Timeframe } from "@/lib/timeframes";
 import type { DepthSnapshot } from "@/hooks/use-order-book";
 import { useLanguage } from "@/hooks/use-language";
 import {
@@ -25,10 +27,15 @@ import {
   BarChart3,
   Radio,
   X,
+  ArrowLeftRight,
 } from "lucide-react";
 
 type Props = {
   data: AnalysisResponse;
+  /** Candle interval this payload was computed on (labels + selector state). */
+  timeframe: Timeframe;
+  /** Change this card's interval. The owner persists it. */
+  onTimeframeChange: (tf: Timeframe) => void;
   /** Live tick price (overrides REST spot_price when present). */
   livePrice?: number | null;
   /** Whether the tick stream is currently emitting ticks for this symbol. */
@@ -45,6 +52,8 @@ type Props = {
   onRemove?: () => void;
   /** Optional open-detail callback. When provided, a "Details" button is rendered in the header. */
   onDetail?: () => void;
+  /** Optional open-comparison callback. When provided, a "Compare" button is rendered. */
+  onCompare?: () => void;
 };
 
 function fmtPrice(n: number | null): string {
@@ -204,6 +213,8 @@ function MetricRow({
 
 export function AssetCard({
   data,
+  timeframe,
+  onTimeframeChange,
   livePrice,
   tickActive,
   lastTickAt,
@@ -212,6 +223,7 @@ export function AssetCard({
   depthConnected,
   onRemove,
   onDetail,
+  onCompare,
 }: Props) {
   const { t } = useLanguage();
   const meta = getSymbolMeta(data.symbol);
@@ -367,6 +379,23 @@ export function AssetCard({
         </div>
       </div>
 
+      {/* Timeframe + comparison controls */}
+      <div className="flex items-center justify-between gap-2 px-5 pb-3">
+        <TimeframeSelector value={timeframe} onChange={onTimeframeChange} />
+        {onCompare && (
+          <button
+            type="button"
+            onClick={onCompare}
+            className="inline-flex items-center gap-1 rounded-md border border-[#b48cff]/30 bg-[#b48cff]/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#b48cff] transition-colors hover:bg-[#b48cff]/20 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#b48cff]"
+            aria-label={t("compare.button")}
+            title={t("compare.title")}
+          >
+            <ArrowLeftRight className="h-3 w-3" aria-hidden />
+            {t("compare.button")}
+          </button>
+        )}
+      </div>
+
       {/* Price block */}
       <div className="px-5 pb-3">
         <div className="flex items-end gap-3">
@@ -490,8 +519,8 @@ export function AssetCard({
           spot={displayPrice}
           support={data.support}
           resistance={data.resistance}
-          ema55={data.ema55_4h}
-          ema200={data.ema200_4h}
+          ema55={data.ema55}
+          ema200={data.ema200}
           high24h={data.high_24h}
           low24h={data.low_24h}
           fibLevels={data.fibonacci?.levels}
@@ -522,16 +551,16 @@ export function AssetCard({
       {/* Metric rows + RSI */}
       <CollapsibleSection label={t("card.indicators")} accent="#8b96a5">
         <MetricRow
-          label={`${t("card.ema55")} · 4h`}
-          value={`$${fmtPrice(data.ema55_4h)}`}
-          unavailable={nd.ema55_4h}
+          label={`${t("card.ema55")} · ${t(TIMEFRAME_LABEL_KEY[timeframe])}`}
+          value={`$${fmtPrice(data.ema55)}`}
+          unavailable={nd.ema55}
           color="#e8b04b"
           notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
-          label={`${t("card.ema200")} · 4h`}
-          value={`$${fmtPrice(data.ema200_4h)}`}
-          unavailable={nd.ema200_4h}
+          label={`${t("card.ema200")} · ${t(TIMEFRAME_LABEL_KEY[timeframe])}`}
+          value={`$${fmtPrice(data.ema200)}`}
+          unavailable={nd.ema200}
           color="#4fa8d8"
           notAvailableLabel={notAvailableLabel}
         />
@@ -551,8 +580,8 @@ export function AssetCard({
         />
         <MetricRow
           label={t("card.atr")}
-          value={`$${fmtPrice(data.atr_14_4h)}`}
-          unavailable={nd.atr_14_4h}
+          value={`$${fmtPrice(data.atr_14)}`}
+          unavailable={nd.atr_14}
           color="#b48cff"
           hint={t("card.atrHint")}
           notAvailableLabel={notAvailableLabel}
@@ -567,12 +596,12 @@ export function AssetCard({
         />
         <MetricRow
           label={t("card.vwapLabel")}
-          value={`$${fmtPrice(data.vwap_20_4h)}`}
-          unavailable={nd.vwap_20_4h}
+          value={`$${fmtPrice(data.vwap_20)}`}
+          unavailable={nd.vwap_20}
           color="#5fbf8f"
           hint={
-            data.vwap_20_4h != null && displayPrice != null
-              ? displayPrice > data.vwap_20_4h
+            data.vwap_20 != null && displayPrice != null
+              ? displayPrice > data.vwap_20
                 ? t("card.vwapAbove")
                 : t("card.vwapBelow")
               : undefined
@@ -581,8 +610,8 @@ export function AssetCard({
         />
         {/* RSI gauge (own row, richer) */}
         <RsiGauge
-          rsi={data.rsi_14_4h}
-          unavailable={nd.rsi_14_4h}
+          rsi={data.rsi_14}
+          unavailable={nd.rsi_14}
           series={data.series.rsi}
         />
         {/* Stochastic oscillator */}

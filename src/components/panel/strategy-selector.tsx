@@ -111,7 +111,7 @@ export function StrategySelector({ data }: Props) {
           aria-expanded={expanded}
         >
           <span className="truncate font-medium text-foreground/90">
-            {t(`strategy.${strategy.id === "trend_buy" ? "trendBuy" : strategy.id === "mean_reversion_buy" ? "meanRevBuy" : strategy.id === "trend_short" ? "trendShort" : "holdName"}`)}
+            {t(strategy.name)}
           </span>
           <ChevronDown
             className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${
@@ -138,10 +138,10 @@ export function StrategySelector({ data }: Props) {
                 }`}
               >
                 <div className="font-medium">
-                  {t(`strategy.${s.id === "trend_buy" ? "trendBuy" : s.id === "mean_reversion_buy" ? "meanRevBuy" : s.id === "trend_short" ? "trendShort" : "holdName"}`)}
+                  {t(s.name)}
                 </div>
                 <div className="mt-0.5 text-[9px] leading-snug opacity-60">
-                  {t(`strategy.${s.id === "trend_buy" ? "trendBuyDesc" : s.id === "mean_reversion_buy" ? "meanRevBuyDesc" : s.id === "trend_short" ? "trendShortDesc" : "holdDesc"}`)}
+                  {t(s.description)}
                 </div>
               </button>
             ))}
@@ -151,7 +151,7 @@ export function StrategySelector({ data }: Props) {
 
       {/* Description */}
       <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground/70">
-        {t(`strategy.${strategy.id === "trend_buy" ? "trendBuyDesc" : strategy.id === "mean_reversion_buy" ? "meanRevBuyDesc" : strategy.id === "trend_short" ? "trendShortDesc" : "holdDesc"}`)}
+        {t(strategy.description)}
       </p>
 
       {/* Summary */}

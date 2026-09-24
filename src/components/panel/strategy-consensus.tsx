@@ -1,10 +1,7 @@
 "use client";
 
-import {
-  STRATEGY_LIST,
-  evaluateStrategy,
-  type StrategyAction,
-} from "@/lib/strategies";
+import type { StrategyAction } from "@/lib/strategies";
+import { computeConsensus, type ConsensusLevel } from "@/lib/consensus";
 import type { AnalysisResponse } from "@/lib/types";
 import { Check, X, Minus, Target } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
@@ -15,12 +12,23 @@ type Props = {
 
 const ACTION_META: Record<
   StrategyAction,
-  { label: string; color: string; weight: number; icon: typeof Check }
+  { label: string; color: string; icon: typeof Check }
 > = {
-  BUY: { label: "Buy", color: "#5fbf8f", weight: 2, icon: Check },
-  SHORT: { label: "Short", color: "#e2604f", weight: -2, icon: X },
-  HOLD: { label: "Hold", color: "#e8b04b", weight: 0, icon: Minus },
-  WAIT: { label: "Wait", color: "#8b96a5", weight: 0, icon: Minus },
+  BUY: { label: "Buy", color: "#5fbf8f", icon: Check },
+  SHORT: { label: "Short", color: "#e2604f", icon: X },
+  HOLD: { label: "Hold", color: "#e8b04b", icon: Minus },
+  WAIT: { label: "Wait", color: "#8b96a5", icon: Minus },
+};
+
+export const CONSENSUS_META: Record<
+  ConsensusLevel,
+  { label: string; color: string; bg: string }
+> = {
+  strong_buy: { label: "BUY Fuerte", color: "#5fbf8f", bg: "bg-[#5fbf8f]/15 border-[#5fbf8f]/30" },
+  buy: { label: "Buy", color: "#5fbf8f", bg: "bg-[#5fbf8f]/10 border-[#5fbf8f]/20" },
+  mixed: { label: "Mixto", color: "#e8b04b", bg: "bg-[#e8b04b]/10 border-[#e8b04b]/20" },
+  short: { label: "Short", color: "#e2604f", bg: "bg-[#e2604f]/10 border-[#e2604f]/20" },
+  strong_short: { label: "SHORT Fuerte", color: "#e2604f", bg: "bg-[#e2604f]/15 border-[#e2604f]/30" },
 };
 
 /**
@@ -35,48 +43,14 @@ const ACTION_META: Record<
  */
 export function StrategyConsensus({ data }: Props) {
   const { t } = useLanguage();
-  const results = STRATEGY_LIST.map((s) => ({
-    ...evaluateStrategy(s, data),
-    strategy: s,
-  }));
+  const {
+    level: consensus,
+    avgConfidence,
+    scorePct,
+    results,
+  } = computeConsensus(data);
 
-  // Count votes per action.
-  const votes: Record<StrategyAction, number> = {
-    BUY: 0,
-    SHORT: 0,
-    HOLD: 0,
-    WAIT: 0,
-  };
-  let totalConfidence = 0;
-  let weightedScore = 0;
-
-  for (const r of results) {
-    votes[r.action]++;
-    totalConfidence += r.confidence;
-    weightedScore += ACTION_META[r.action].weight * (r.confidence / 100);
-  }
-
-  // Consensus: if 2+ strategies say BUY and 0 SHORT → strong BUY.
-  // If 2+ SHORT and 0 BUY → strong SHORT. Otherwise mixed.
-  let consensus: "strong_buy" | "buy" | "mixed" | "short" | "strong_short";
-  if (votes.BUY >= 3 && votes.SHORT === 0) consensus = "strong_buy";
-  else if (votes.BUY >= 2 && votes.SHORT === 0) consensus = "buy";
-  else if (votes.SHORT >= 3 && votes.BUY === 0) consensus = "strong_short";
-  else if (votes.SHORT >= 2 && votes.BUY === 0) consensus = "short";
-  else consensus = "mixed";
-
-  const consensusMeta = {
-    strong_buy: { label: "BUY Fuerte", color: "#5fbf8f", bg: "bg-[#5fbf8f]/15 border-[#5fbf8f]/30" },
-    buy: { label: "Buy", color: "#5fbf8f", bg: "bg-[#5fbf8f]/10 border-[#5fbf8f]/20" },
-    mixed: { label: "Mixto", color: "#e8b04b", bg: "bg-[#e8b04b]/10 border-[#e8b04b]/20" },
-    short: { label: "Short", color: "#e2604f", bg: "bg-[#e2604f]/10 border-[#e2604f]/20" },
-    strong_short: { label: "SHORT Fuerte", color: "#e2604f", bg: "bg-[#e2604f]/15 border-[#e2604f]/30" },
-  }[consensus];
-
-  const avgConfidence = Math.round(totalConfidence / results.length);
-
-  // Score bar: -100 (all short) to +100 (all buy).
-  const scorePct = Math.max(-100, Math.min(100, Math.round((weightedScore / results.length) * 50)));
+  const consensusMeta = CONSENSUS_META[consensus];
 
   return (
     <div className="rounded-lg border border-white/8 bg-card/60 p-4">
@@ -136,7 +110,7 @@ export function StrategyConsensus({ data }: Props) {
                 <Icon className="h-3 w-3" style={{ color: meta.color }} aria-hidden />
               </div>
               <span className="flex-1 truncate text-foreground/70">
-                {t(`strategy.${r.strategyId === "trend_buy" ? "trendBuy" : r.strategyId === "mean_reversion_buy" ? "meanRevBuy" : r.strategyId === "trend_short" ? "trendShort" : "holdName"}`).split("·")[0].trim()}
+                {t(r.strategy.name).split("·")[0].trim()}
               </span>
               <span
                 className="tnum font-medium"

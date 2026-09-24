@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AssetCard } from "@/components/panel/asset-card";
+import { TimeframeSelector } from "@/components/panel/timeframe-selector";
 import { TickerTape } from "@/components/panel/ticker-tape";
 import { MarketSummary } from "@/components/panel/market-summary";
 import { CrossHistory } from "@/components/panel/cross-history";
@@ -10,6 +13,15 @@ import { AddTickerModal } from "@/components/panel/add-ticker-modal";
 import { TickerDetailModal } from "@/components/panel/ticker-detail-modal";
 import { getSymbolMeta, type AnalysisResponse } from "@/lib/types";
 import {
+  DEFAULT_TIMEFRAME,
+  TF_MAP_STORAGE_KEY,
+  parseTimeframeMap,
+  serializeTimeframeMap,
+  type Timeframe,
+} from "@/lib/timeframes";
+import { useLocalStorageString } from "@/hooks/use-local-storage";
+import {
+  DEFAULT_WATCHLIST,
   loadWatchlist,
   addSymbol,
   removeSymbol,
@@ -38,12 +50,43 @@ import {
   Download,
   Keyboard,
   Plus,
+  ArrowLeftRight,
 } from "lucide-react";
 
 const REFRESH_MS = 60_000;
 type Cell = { loading: boolean; error: string | null; data: AnalysisResponse | null };
 
 const initialCell: Cell = { loading: true, error: null, data: null };
+
+/** The comparison page's default preset. */
+const COMPARE_HREF = "/comparar?preset=4h-1d";
+
+/** Cells and in-flight fetches are keyed "SYMBOL:tf" so one symbol can be
+ *  rendered on two different timeframes at once. Symbols never contain ":". */
+function cellKey(symbol: string, tf: Timeframe): string {
+  return `${symbol}:${tf}`;
+}
+
+/** Aggregates (ticker tape, market summary/overview, strategy alerts) are
+ *  always computed on this interval so they stay comparable across cards. */
+const AGGREGATE_TF: Timeframe = DEFAULT_TIMEFRAME;
+
+/**
+ * Every cell that must be loaded: the aggregate interval for each symbol (the
+ * aggregates always need it) plus the interval the user picked for that symbol.
+ * With every card on the default this is exactly one key per symbol.
+ */
+function visibleCellKeys(
+  symbols: string[],
+  tfMap: Record<string, Timeframe>,
+): string[] {
+  const keys = new Set<string>();
+  for (const s of symbols) {
+    keys.add(cellKey(s, AGGREGATE_TF));
+    keys.add(cellKey(s, tfMap[s] ?? DEFAULT_TIMEFRAME));
+  }
+  return [...keys];
+}
 
 function fmtTime(iso: string | null): string {
   if (!iso) return "—";
@@ -61,15 +104,25 @@ function fmtTime(iso: string | null): string {
 
 export default function Page() {
   const { t } = useLanguage();
-  // Dynamic watchlist — initialized from the user's localStorage on mount.
-  // We start with the default 5 symbols so SSR + first client render match
-  // (avoids hydration mismatch) and then load the stored list in an effect.
-  const [symbols, setSymbols] = useState<string[]>(() => loadWatchlist());
+  const router = useRouter();
+  // Dynamic watchlist — the initial state MUST be the same on the server and
+  // on the first client render, so it cannot read localStorage (SSR has none).
+  // We start from the default list and swap in the stored one after mount.
+  const [symbols, setSymbols] = useState<string[]>(DEFAULT_WATCHLIST);
   const [cells, setCells] = useState<Record<string, Cell>>(() =>
     Object.fromEntries(
-      loadWatchlist().map((s) => [s, { ...initialCell }]),
+      DEFAULT_WATCHLIST.map((s) => [
+        cellKey(s, DEFAULT_TIMEFRAME),
+        { ...initialCell },
+      ]),
     ),
   );
+  // Per-symbol timeframe, persisted as ONE JSON map. `useLocalStorageString` is
+  // hydration-safe (useSyncExternalStore) and a single key is required because
+  // hooks cannot be called inside `symbols.map()`.
+  const [tfMapRaw, setTfMapRaw] = useLocalStorageString(TF_MAP_STORAGE_KEY, "{}");
+  const tfMap = useMemo(() => parseTimeframeMap(tfMapRaw), [tfMapRaw]);
+  const tfFor = (symbol: string): Timeframe => tfMap[symbol] ?? DEFAULT_TIMEFRAME;
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(REFRESH_MS / 1000);
   const [refreshing, setRefreshing] = useState(false);
@@ -93,6 +146,8 @@ export default function Page() {
   // can read the latest list without re-creating itself on every change.
   const symbolsRef = useRef<string[]>(symbols);
   symbolsRef.current = symbols;
+  const tfMapRef = useRef(tfMap);
+  tfMapRef.current = tfMap;
 
   const fetchAll = useCallback(async (manual: boolean) => {
     // Cancel any in-flight fetch.
@@ -100,15 +155,15 @@ export default function Page() {
     const ac = new AbortController();
     abortRef.current = ac;
 
-    const list = symbolsRef.current;
+    const keys = visibleCellKeys(symbolsRef.current, tfMapRef.current);
     if (manual) setRefreshing(true);
     // Mark loading only for manual refresh so auto-refresh doesn't flash skeletons.
     if (manual) {
       setCells((prev) => {
         const next: Record<string, Cell> = {};
-        for (const s of list) {
-          next[s] = prev[s]?.data
-            ? { ...prev[s], loading: true }
+        for (const key of keys) {
+          next[key] = prev[key]?.data
+            ? { ...prev[key], loading: true }
             : { loading: true, error: null, data: null };
         }
         return next;
@@ -116,9 +171,10 @@ export default function Page() {
     }
 
     await Promise.all(
-      list.map(async (symbol) => {
+      keys.map(async (key) => {
+        const [symbol, tf] = key.split(":") as [string, Timeframe];
         try {
-          const res = await fetch(`/api/analysis?symbol=${symbol}`, {
+          const res = await fetch(`/api/analysis?symbol=${symbol}&tf=${tf}`, {
             signal: ac.signal,
             cache: "no-store",
           });
@@ -136,7 +192,7 @@ export default function Page() {
           if (ac.signal.aborted) return;
           setCells((prev) => ({
             ...prev,
-            [symbol]: { loading: false, error: null, data },
+            [key]: { loading: false, error: null, data },
           }));
           // Clear the live tick price so the freshly-fetched REST spot_price
           // takes over until the next tick arrives (which then re-flashes).
@@ -147,7 +203,7 @@ export default function Page() {
           const msg = err instanceof Error ? err.message : "Error desconocido";
           setCells((prev) => ({
             ...prev,
-            [symbol]: { loading: false, error: msg, data: prev[symbol]?.data ?? null },
+            [key]: { loading: false, error: msg, data: prev[key]?.data ?? null },
           }));
         }
       }),
@@ -186,25 +242,38 @@ export default function Page() {
     return () => clearInterval(id);
   }, []);
 
-  // When the watchlist changes (add/remove), reconcile the cells map: seed
-  // loading entries for any new symbols and prune entries that were removed.
+  // After mount, adopt the watchlist persisted in localStorage. Deferred to an
+  // effect so the first client render still matches the SSR HTML.
+  useEffect(() => {
+    setSymbols(loadWatchlist());
+  }, []);
+
+  // When the watchlist or any card's timeframe changes, reconcile the cells
+  // map: seed the visible keys that are missing, drop cells for symbols that
+  // left the watchlist, and refetch. Cells for other timeframes of a symbol
+  // that is still listed are KEPT — the aggregates read the 4h ones.
   useEffect(() => {
     setCells((prev) => {
-      const next: Record<string, Cell> = {};
-      for (const s of symbols) {
-        next[s] = prev[s] ?? { ...initialCell };
+      const next: Record<string, Cell> = { ...prev };
+      for (const key of visibleCellKeys(symbols, tfMap)) {
+        next[key] = next[key] ?? { ...initialCell };
+      }
+      for (const key of Object.keys(next)) {
+        if (!symbols.includes(key.split(":")[0])) delete next[key];
       }
       return next;
     });
-    // Refetch so the new symbol's data is loaded.
+    // Refetch so newly visible cells get data.
     fetchAll(false);
-  }, [symbols, fetchAll]);
+  }, [symbols, tfMap, fetchAll]);
 
-  const tickerItems = symbols.map((s) => cells[s]?.data ?? null);
+  // Aggregates are always 4h (see AGGREGATE_TF) so they stay comparable no
+  // matter which timeframe each card is showing.
+  const tickerItems = symbols.map((s) => cells[cellKey(s, AGGREGATE_TF)]?.data ?? null);
   // Strategy alerts — fire toasts when strategy transitions WAIT→BUY/SHORT.
   useStrategyAlerts(tickerItems.filter((i): i is AnalysisResponse => i != null), "trend_buy");
-  const anyLoading = symbols.some((s) => cells[s]?.loading);
-  const anyError = symbols.some((s) => cells[s]?.error);
+  const anyLoading = symbols.some((s) => cells[cellKey(s, tfFor(s))]?.loading);
+  const anyError = symbols.some((s) => cells[cellKey(s, tfFor(s))]?.error);
 
   // Connection indicator state:
   //  - live (green pulsing "TICK LIVE") when socket connected AND binance upstream live
@@ -360,6 +429,16 @@ export default function Page() {
                 <span className="hidden sm:inline">{t("header.export")}</span>
               </button>
 
+              <Link
+                href={COMPARE_HREF}
+                className="inline-flex items-center gap-2 rounded-md border border-[#b48cff]/30 bg-[#b48cff]/10 px-3 py-1.5 text-xs font-medium text-[#b48cff] transition-colors hover:bg-[#b48cff]/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b48cff]"
+                aria-label={t("compare.button")}
+                title={t("compare.title")}
+              >
+                <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden />
+                <span className="hidden sm:inline">{t("compare.button")}</span>
+              </Link>
+
               <PriceAlertsButton
                 alerts={priceAlerts.alerts}
                 onAdd={priceAlerts.addAlert}
@@ -400,7 +479,7 @@ export default function Page() {
                     title={cells[s]?.error ?? ""}
                   >
                     <AlertTriangle className="h-3 w-3" aria-hidden />
-                    {getSymbolMeta(s).asset}: {cells[s]?.error}
+                    {getSymbolMeta(s).asset}: {cells[cellKey(s, tfFor(s))]?.error}
                   </span>
                 ))}
               </div>
@@ -408,11 +487,16 @@ export default function Page() {
           )}
         </header>
 
-        {/* Market summary strip — aggregate sentiment across all 3 pairs */}
+        {/* Market summary strip — aggregate sentiment, always on AGGREGATE_TF */}
         {tickerItems.some((i) => i != null) && (
           <div className="border-b border-white/5 bg-black/15">
-            <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-              <MarketSummary items={tickerItems.filter((i): i is AnalysisResponse => i != null)} />
+            <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+              <span className="shrink-0 rounded border border-white/8 bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                {t("tf.4h")}
+              </span>
+              <div className="min-w-0 flex-1">
+                <MarketSummary items={tickerItems.filter((i): i is AnalysisResponse => i != null)} />
+              </div>
             </div>
           </div>
         )}
@@ -421,7 +505,8 @@ export default function Page() {
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {symbols.map((symbol) => {
-              const cell = cells[symbol] ?? { ...initialCell };
+              const tf = tfFor(symbol);
+              const cell = cells[cellKey(symbol, tf)] ?? { ...initialCell };
               const meta = getSymbolMeta(symbol);
               if (cell.error && !cell.data) {
                 return (
@@ -501,6 +586,11 @@ export default function Page() {
                 <AssetCard
                   key={symbol}
                   data={cell.data}
+                  timeframe={tf}
+                  onTimeframeChange={(next) =>
+                    setTfMapRaw(serializeTimeframeMap({ ...tfMap, [symbol]: next }))
+                  }
+                  onCompare={() => router.push(COMPARE_HREF)}
                   livePrice={livePrice}
                   tickActive={tick.connected && tick.binanceLive}
                   lastTickAt={lastTickAt}
@@ -526,7 +616,10 @@ export default function Page() {
               );
             })}
             {/* Market overview — fills the 6th grid slot */}
-            <MarketOverview items={tickerItems.filter((i): i is AnalysisResponse => i != null)} />
+            <MarketOverview
+              items={tickerItems.filter((i): i is AnalysisResponse => i != null)}
+              timeframeLabel={t("tf.4h")}
+            />
           </div>
 
           {/* Cross history timeline — persisted EMA/MACD/momentum crosses */}
@@ -578,7 +671,10 @@ export default function Page() {
       {/* Ticker detail modal — full indicator breakdown for one symbol */}
       <TickerDetailModal
         symbol={detailSymbol}
-        data={detailSymbol ? cells[detailSymbol]?.data ?? null : null}
+        data={
+          detailSymbol ? cells[cellKey(detailSymbol, tfFor(detailSymbol))]?.data ?? null : null
+        }
+        timeframe={detailSymbol ? tfFor(detailSymbol) : DEFAULT_TIMEFRAME}
         open={!!detailSymbol}
         onClose={() => setDetailSymbol(null)}
       />

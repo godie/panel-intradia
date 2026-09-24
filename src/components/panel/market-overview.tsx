@@ -7,6 +7,9 @@ import { TrendingUp, TrendingDown, Minimize2, Globe, Award } from "lucide-react"
 
 type Props = {
   items: (AnalysisResponse | null)[];
+  /** Interval every item was computed on, shown so the aggregate is not
+   *  mistaken for following the per-card timeframe selector. */
+  timeframeLabel?: string;
 };
 
 function fmtPrice(n: number | null): string {
@@ -36,7 +39,7 @@ function fmtPct(n: number | null): string {
  *
  * When no data is available (all loading), shows a placeholder.
  */
-export function MarketOverview({ items }: Props) {
+export function MarketOverview({ items, timeframeLabel }: Props) {
   const { t } = useLanguage();
   const ready = items.filter(
     (i): i is AnalysisResponse =>
@@ -75,7 +78,7 @@ export function MarketOverview({ items }: Props) {
 
   // Average RSI.
   const rsis = ready
-    .map((i) => i.rsi_14_4h)
+    .map((i) => i.rsi_14)
     .filter((v): v is number => v != null && Number.isFinite(v));
   const avgRsi = rsis.length
     ? rsis.reduce((a, b) => a + b, 0) / rsis.length
@@ -104,6 +107,11 @@ export function MarketOverview({ items }: Props) {
             <h2 className="text-lg font-semibold tracking-tight text-foreground">
               {t("overview.title")}
             </h2>
+            {timeframeLabel && (
+              <span className="rounded border border-white/8 bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                {timeframeLabel}
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {t("overview.subtitle")} · {ready.length} pares
