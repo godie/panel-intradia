@@ -10,7 +10,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8000
-      DATABASE_URL: ${DATABASE_URL:-file:./db/custom.db}
+      DATABASE_URL: ${DATABASE_URL:-file:/app/db/custom.db}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:81,http://localhost:8000}
     volumes:
       - panel_db:/app/db

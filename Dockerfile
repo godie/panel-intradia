@@ -96,6 +96,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=8000
+# SQLite path for the entrypoint's `prisma db push`. Absolute on purpose: a
+# relative `file:` URL resolves against the schema directory (prisma/), not
+# /app. Overridable by any deploy-time variable (compose, Railway, …).
+ENV DATABASE_URL=file:/app/db/custom.db
 # Next.js standalone server binds to HOSTNAME; default may be localhost.
 ENV HOSTNAME=0.0.0.0
 
