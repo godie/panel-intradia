@@ -37,8 +37,24 @@ Railway detectará automáticamente:
 NODE_ENV=production
 PORT=8000
 CORS_ORIGINS=https://panel-intradia-prod.up.railway.app
+DATABASE_URL=file:/app/db/custom.db   # Ruta ABSOLUTA (ver nota abajo)
 SKIP_DB_INIT=0  # Permite que el entrypoint cree la DB
 ```
+
+> **`DATABASE_URL` es obligatorio.** Sin esa variable el entrypoint falla con
+> `Prisma schema validation - P1012: Environment variable not found:
+> DATABASE_URL` y el contenedor queda en restart loop. El `Dockerfile` ya la
+> define con ese mismo valor por defecto, así que sólo hace falta declararla si
+> querés apuntar a otro archivo o a otro motor.
+>
+> **Ruta absoluta, no relativa.** `file:./db/custom.db` se resuelve contra el
+> directorio del schema (`/app/prisma/db/custom.db`), no contra `/app`. Usá
+> siempre `file:/app/db/custom.db`.
+
+> **Persistencia**: el filesystem de Railway es efímero. Para que el historial
+> de cruces sobreviva a un redeploy hay que montar un **Volume** en `/app/db`
+> (Railway Dashboard → Service → Settings → Volumes → Mount path `/app/db`).
+> Sin volumen, cada deploy arranca con la DB vacía.
 
 ### 3. Esperar Deploy
 
@@ -70,6 +86,8 @@ railway init  # Seleccionar repositorio
 # En Railway Dashboard → Variable:
 NODE_ENV=production
 PORT=8000
+DATABASE_URL=file:/app/db/custom.db
+SKIP_DB_INIT=0
 ```
 
 ### 2. Deploy de tick-stream
