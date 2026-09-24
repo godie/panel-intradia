@@ -35,7 +35,7 @@ Railway detectará automáticamente:
 # Agregar variables de entorno:
 
 NODE_ENV=production
-PORT=3000
+PORT=8000
 CORS_ORIGINS=https://panel-intradia-prod.up.railway.app
 SKIP_DB_INIT=0  # Permite que el entrypoint cree la DB
 ```
@@ -69,7 +69,7 @@ railway init  # Seleccionar repositorio
 
 # En Railway Dashboard → Variable:
 NODE_ENV=production
-PORT=3000
+PORT=8000
 ```
 
 ### 2. Deploy de tick-stream

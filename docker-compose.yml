@@ -2,7 +2,7 @@
 # docker-compose for local development / single-host deploy.
 #
 # Services:
-#   app         Next.js standalone on :3000 (REST + dashboard)
+#   app         Next.js standalone on :8000 (REST + dashboard)
 #   tick-stream socket.io → Binance/Bybit trade stream on :3005
 #   order-book  socket.io → Binance L2 depth stream on :3004
 #   caddy       reverse proxy on :81 (allowlisted ?XTransformPort → services)
@@ -27,7 +27,7 @@ services:
     command: ["bun", "server.js"]
     environment:
       NODE_ENV: production
-      PORT: "3000"
+      PORT: "8000"
       HOSTNAME: 0.0.0.0
       DATABASE_URL: file:/app/db/custom.db
     volumes:
@@ -36,7 +36,7 @@ services:
       - panelnet
     healthcheck:
       # Root page — /api/cross-history requires a symbol param.
-      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:3000/"]
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8000/"]
       interval: 15s
       timeout: 5s
       retries: 6
@@ -49,7 +49,7 @@ services:
     command: ["bun", "mini-services/tick-stream/index.ts"]
     environment:
       NODE_ENV: production
-      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:81,http://localhost:3000}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:81,http://localhost:8000}"
       # Mini-services don't use the database.
       SKIP_DB_INIT: "1"
     networks:
@@ -68,7 +68,7 @@ services:
     command: ["bun", "mini-services/order-book/index.ts"]
     environment:
       NODE_ENV: production
-      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:81,http://localhost:3000}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:81,http://localhost:8000}"
       # Mini-services don't use the database.
       SKIP_DB_INIT: "1"
     networks:
@@ -87,7 +87,7 @@ services:
     ports:
       - "81:81"
     environment:
-      APP_UPSTREAM: app:3000
+      APP_UPSTREAM: app:8000
       TICK_STREAM_UPSTREAM: tick-stream:3005
       ORDER_BOOK_UPSTREAM: order-book:3004
     volumes:

@@ -20,7 +20,7 @@ Y al final, **[Despliegue en producción](#despliegue-en-producción)** con inst
 ### Requisitos
 
 - **Docker Engine** ≥ 24 + **Docker Compose v2** (incluido en Docker Desktop).
-- `CORS_ORIGINS` opcional: lista separada por comas de orígenes exactos permitidos para los WebSockets (por defecto `http://localhost:81,http://localhost:3000`).
+- `CORS_ORIGINS` opcional: lista separada por comas de orígenes exactos permitidos para los WebSockets (por defecto `http://localhost:81,http://localhost:8000`).
 - ~2 GB de RAM libre para los 4 contenedores.
 - Acceso HTTPS saliente a `api.binance.com`, `stream.binance.com`, `api.binance.us` (si la región bloquea el endpoint principal).
 
@@ -49,12 +49,12 @@ open http://localhost:81/
 
 | Servicio | Puerto interno | Puerto público | Función |
 |---|---|---|---|
-| `app` | 3000 | (interno) | Next.js standalone — dashboard + REST API |
+| `app` | 8000 | (interno) | Next.js standalone — dashboard + REST API |
 | `tick-stream` | 3005 | (interno) | socket.io → ticks Binance/Bybit en vivo |
 | `order-book` | 3004 | (interno) | socket.io → order book L2 Binance |
 | `caddy` | 81 | **81** | Reverse proxy con enrutamiento por path (`/_tick-stream/*`, `/_order-book/*`) |
 
-> **El frontend SIEMPRE se accede por `:81`** (Caddy), nunca directo al `:3000`. El browser necesita el proxy para que los WebSockets lleguen a los mini-services.
+> **El frontend SIEMPRE se accede por `:81`** (Caddy), nunca directo al `:8000`. El browser necesita el proxy para que los WebSockets lleguen a los mini-services.
 
 ### Comandos útiles
 
@@ -212,7 +212,7 @@ midominio.com {
     }
 
     handle {
-        reverse_proxy localhost:3000 {
+        reverse_proxy localhost:8000 {
             header_up Host {host}
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto https
@@ -254,7 +254,7 @@ cd /opt/intradia
 bun install --production
 cp .env.example .env
 bunx prisma db push
-bun run start    # sirve en :3000
+bun run start    # sirve en :8000
 
 # 4. Mini-services (systemd o pm2)
 pm2 start bun --name tick-stream -- mini-services/tick-stream/index.ts
@@ -308,7 +308,7 @@ docker compose down -v --rmi all
 |---|---|---|
 | `DATABASE_URL` | `file:./db/custom.db` | Ubicación del archivo SQLite. En Docker Compose se monta como volumen. |
 | `NODE_ENV` | (auto) | Forzar `production` en Docker. |
-| `PORT` | `3000` | Puerto del Next.js standalone. No suele necesitar cambio. |
-| `CORS_ORIGINS` | `http://localhost:81,http://localhost:3000` | Orígenes exactos separados por comas autorizados para conectarse a los mini-services Socket.IO. |
+| `PORT` | `8000` | Puerto del Next.js standalone. No suele necesitar cambio. |
+| `CORS_ORIGINS` | `http://localhost:81,http://localhost:8000` | Orígenes exactos separados por comas autorizados para conectarse a los mini-services Socket.IO. |
 
 El proyecto **no necesita API keys** — todos los endpoints públicos de Binance / Bybit / CoinGecko que usamos son keyless.

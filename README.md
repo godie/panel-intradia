@@ -127,7 +127,7 @@ bun run dev    # http://localhost:3000
 ### Requisitos
 
 - **Docker** ≥ 24 (recomendado) o **Bun** ≥ 1.4.2 (manual)
-- `CORS_ORIGINS` opcional: lista separada por comas de orígenes exactos permitidos para los WebSockets (por defecto `http://localhost:81,http://localhost:3000`)
+- `CORS_ORIGINS` opcional: lista separada por comas de orígenes exactos permitidos para los WebSockets (por defecto `http://localhost:81,http://localhost:8000`)
 - Acceso HTTPS saliente a `api.binance.com`, `stream.binance.com` y
   opcionalmente `api.binance.us` si la región bloquea el endpoint principal
 - (Opcional) **Caddy** si vas a servir tras un proxy en modo manual
