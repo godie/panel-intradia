@@ -30,7 +30,7 @@ function computeSummary(items: (AnalysisResponse | null)[]): Summary {
     .map((i) => i.change_24h_pct)
     .filter((v): v is number => v != null && Number.isFinite(v));
   const rsis = ready
-    .map((i) => i.rsi_14_4h)
+    .map((i) => i.rsi_14)
     .filter((v): v is number => v != null && Number.isFinite(v));
 
   const avg = (arr: number[]) =>

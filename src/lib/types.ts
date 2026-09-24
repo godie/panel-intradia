@@ -5,6 +5,7 @@
  */
 
 import type { ProviderId } from "./providers/types";
+import type { Timeframe } from "./timeframes";
 
 export type CrossState = "ALCISTA" | "BAJISTA" | "COMPRIMIDO";
 
@@ -30,16 +31,18 @@ export type MacdCrossInfo = {
 
 export type AnalysisResponse = {
   symbol: string;
+  /** Candle interval every indicator in this payload was computed on. */
+  timeframe: Timeframe;
   spot_price: number | null;
   change_24h_pct: number | null;
-  ema55_4h: number | null;
-  ema200_4h: number | null;
+  ema55: number | null;
+  ema200: number | null;
   cross_state: CrossState | null;
   cross_info: CrossInfo | null;
   resistance: number | null;
   support: number | null;
-  /** RSI(14) on 4h closes — Wilder smoothing. */
-  rsi_14_4h: number | null;
+  /** RSI(14) on the response's `timeframe` closes — Wilder smoothing. */
+  rsi_14: number | null;
   /** 24h quote volume in USD (from ticker). */
   volume_24h_usd: number | null;
   /** 24h trade count (from ticker). */
@@ -47,7 +50,7 @@ export type AnalysisResponse = {
   /** 24h high / low (from ticker). */
   high_24h: number | null;
   low_24h: number | null;
-  /** MACD(12, 26, 9) on 4h closes — Gerald Appel defaults. */
+  /** MACD(12, 26, 9) on the response's `timeframe` closes — Gerald Appel defaults. */
   macd: {
     line: number | null;
     signal: number | null;
@@ -55,9 +58,9 @@ export type AnalysisResponse = {
   };
   /** MACD/signal crossover detection (recent + momentum flip). */
   macd_cross: MacdCrossInfo | null;
-  /** ATR(14) on 4h — volatility measure (Average True Range, Wilder). */
-  atr_14_4h: number | null;
-  /** Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev. */
+  /** ATR(14) on the response's `timeframe` — volatility measure (Average True Range, Wilder). */
+  atr_14: number | null;
+  /** Bollinger Bands (20, 2) on the response's `timeframe` — SMA ± 2 stddev. */
   bollinger: {
     upper: number | null;
     middle: number | null;
@@ -95,8 +98,8 @@ export type AnalysisResponse = {
     /** Extension levels (127.2%, 161.8%, 261.8%) — profit targets. */
     extensions: { ratio: number; price: number; label: string }[];
   } | null;
-  /** VWAP(20) on 4h — Volume Weighted Average Price, rolling 20 candles. */
-  vwap_20_4h: number | null;
+  /** VWAP(20) on the response's `timeframe` — Volume Weighted Average Price, rolling 20 candles. */
+  vwap_20: number | null;
   /** Stochastic oscillator %K and %D (14, 3). */
   stochastic: { k: number | null; d: number | null };
   /** Stochastic %K/%D crossover detection. */
@@ -120,25 +123,25 @@ export type AnalysisResponse = {
   no_disponible: {
     spot_price: boolean;
     change_24h_pct: boolean;
-    ema55_4h: boolean;
-    ema200_4h: boolean;
+    ema55: boolean;
+    ema200: boolean;
     cross_state: boolean;
     cross_info: boolean;
     resistance: boolean;
     support: boolean;
-    rsi_14_4h: boolean;
+    rsi_14: boolean;
     volume_24h_usd: boolean;
     high_24h: boolean;
     low_24h: boolean;
     macd: boolean;
     macd_cross: boolean;
-    atr_14_4h: boolean;
+    atr_14: boolean;
     bollinger: boolean;
     bollinger_squeeze: boolean;
     squeeze_breakout: boolean;
     stop_loss_suggestion: boolean;
     fibonacci: boolean;
-    vwap_20_4h: boolean;
+    vwap_20: boolean;
     stochastic: boolean;
     stoch_cross: boolean;
     ichimoku: boolean;

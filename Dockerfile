@@ -13,7 +13,7 @@
 # ----------------------------------------------------------------------------
 
 ARG BUN_VERSION=1.3.6
-ARG NODE_VERSION=20
+ARG NODE_VERSION=24
 
 # =============================================================================
 # Stage 1: base — install bun + system deps once.
@@ -95,7 +95,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
+ENV PORT=8000
 # Next.js standalone server binds to HOSTNAME; default may be localhost.
 ENV HOSTNAME=0.0.0.0
 
@@ -127,13 +127,13 @@ RUN mkdir -p /app/db && chown -R bun:bun /app/db
 
 USER bun
 
-EXPOSE 3000 3004 3005
+EXPOSE 8000 3004 3005
 
 # Note: the `app` service overrides the healthcheck in docker-compose.yml
 # (it targets the dashboard root); the mini-services override it too.
 # This default just probes the app port so a bare `docker run` is sane.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --quiet --spider http://127.0.0.1:${PORT:-3000}/ || exit 1
+  CMD wget --quiet --spider http://127.0.0.1:${PORT:-8000}/ || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 # Default command: the Next.js standalone server. docker-compose overrides

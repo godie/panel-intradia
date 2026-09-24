@@ -138,23 +138,23 @@ function evaluateCondition(
       };
     case "rsi_below": {
       const threshold = cond.threshold ?? 30;
-      const fired = data.rsi_14_4h != null && data.rsi_14_4h < threshold;
+      const fired = data.rsi_14 != null && data.rsi_14 < threshold;
       return {
         name: `RSI < ${threshold}`,
         fired,
         description: fired ? "strategy.sig.rsiOversoldBuy" : "strategy.sig.rsiNotOversold",
-        descValue: data.rsi_14_4h?.toFixed(1),
+        descValue: data.rsi_14?.toFixed(1),
         direction: fired ? "bullish" : "neutral",
       };
     }
     case "rsi_above": {
       const threshold = cond.threshold ?? 70;
-      const fired = data.rsi_14_4h != null && data.rsi_14_4h > threshold;
+      const fired = data.rsi_14 != null && data.rsi_14 > threshold;
       return {
         name: `RSI > ${threshold}`,
         fired,
         description: fired ? "strategy.sig.rsiOverbought" : "strategy.sig.rsiNeutral",
-        descValue: data.rsi_14_4h?.toFixed(1),
+        descValue: data.rsi_14?.toFixed(1),
         direction: fired ? "bearish" : "neutral",
       };
     }
@@ -205,7 +205,7 @@ function evaluateCondition(
         direction: "bearish",
       };
     case "price_above_vwap": {
-      const fired = data.vwap_20_4h != null && data.spot_price != null && data.spot_price > data.vwap_20_4h;
+      const fired = data.vwap_20 != null && data.spot_price != null && data.spot_price > data.vwap_20;
       return {
         name: "Price > VWAP",
         fired,
@@ -214,7 +214,7 @@ function evaluateCondition(
       };
     }
     case "price_below_vwap": {
-      const fired = data.vwap_20_4h != null && data.spot_price != null && data.spot_price < data.vwap_20_4h;
+      const fired = data.vwap_20 != null && data.spot_price != null && data.spot_price < data.vwap_20;
       return {
         name: "Price < VWAP",
         fired,
