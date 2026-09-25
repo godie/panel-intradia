@@ -209,7 +209,9 @@ export default function ComparePage() {
       <div className="terminal-scanlines pointer-events-none fixed inset-0 z-0" aria-hidden />
 
       <div className="relative z-10 flex min-h-screen flex-col">
-        <header className="border-b border-white/5 bg-card/40 backdrop-blur-sm">
+        {/* No `backdrop-blur` here — see the note in app/page.tsx: it would
+            make this header a containing block for any fixed descendant. */}
+        <header className="border-b border-white/5 bg-card/40">
           <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
             <div>
               <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
