@@ -8,8 +8,23 @@ import {
 } from "./types";
 import { toBinanceSymbol } from "./symbols";
 
-const BINANCE_BASE = "https://api.binance.com/api/v3";
+const DEFAULT_BINANCE_BASE = "https://api.binance.com/api/v3";
 const FETCH_TIMEOUT_MS = 5000;
+
+/**
+ * resolveBinanceBase — the Binance REST base URL.
+ *
+ * `api.binance.com` answers HTTP 451 to US IPs, which is where some hosts run
+ * by default (Railway's default region is us-west / San Francisco). Deployments
+ * there should set `BINANCE_BASE_URL=https://api.binance.us/api/v3`.
+ *
+ * Resolved per call rather than at module scope so a deploy-time env var always
+ * applies (and so the bundler can't inline it at build time).
+ */
+export function resolveBinanceBase(): string {
+  const configured = process.env.BINANCE_BASE_URL?.trim();
+  return configured ? configured.replace(/\/+$/, "") : DEFAULT_BINANCE_BASE;
+}
 
 async function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController();
@@ -93,14 +108,14 @@ export class BinanceProvider implements MarketDataProvider {
 
   async getKlines(symbol: string, interval = "4h", limit = 500): Promise<Kline[]> {
     const s = toBinanceSymbol(symbol);
-    const url = `${BINANCE_BASE}/klines?symbol=${encodeURIComponent(s)}&interval=${encodeURIComponent(interval)}&limit=${limit}`;
+    const url = `${resolveBinanceBase()}/klines?symbol=${encodeURIComponent(s)}&interval=${encodeURIComponent(interval)}&limit=${limit}`;
     const res = await fetchWithTimeout(url);
     return parseKlines(await res.json());
   }
 
   async getTicker24h(symbol: string): Promise<Ticker24h> {
     const s = toBinanceSymbol(symbol);
-    const url = `${BINANCE_BASE}/ticker/24hr?symbol=${encodeURIComponent(s)}`;
+    const url = `${resolveBinanceBase()}/ticker/24hr?symbol=${encodeURIComponent(s)}`;
     const res = await fetchWithTimeout(url);
     return parseTicker(await res.json());
   }
@@ -118,7 +133,7 @@ export class BinanceProvider implements MarketDataProvider {
 
   async healthy(): Promise<boolean> {
     try {
-      const res = await fetchWithTimeout(`${BINANCE_BASE}/ping`);
+      const res = await fetchWithTimeout(`${resolveBinanceBase()}/ping`);
       return res.ok;
     } catch {
       return false;

@@ -30,6 +30,10 @@ export function createProviderRouter(providers: MarketDataProvider[]) {
     fn: (p: MarketDataProvider) => Promise<T>,
   ): Promise<ProviderResult<T>> {
     let lastErr: unknown = null;
+    // Every provider's failure reason, so the surfaced error names the actual
+    // cause instead of only the last one tried. A geo-blocked Binance used to
+    // be reported as "bybit is unhealthy", which hid the real problem.
+    const failures: string[] = [];
 
     const now = Date.now();
     const cachedHealth =
@@ -39,6 +43,7 @@ export function createProviderRouter(providers: MarketDataProvider[]) {
       const isHealthy = cachedHealth ? cachedHealth[p.id] : await p.healthy();
       if (!isHealthy) {
         lastErr = new Error(`${p.id} is unhealthy`);
+        failures.push(`${p.id} is unhealthy`);
         continue;
       }
       try {
@@ -47,6 +52,9 @@ export function createProviderRouter(providers: MarketDataProvider[]) {
         return { provider: p.id, value };
       } catch (err) {
         lastErr = err;
+        failures.push(
+          `${p.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -61,11 +69,12 @@ export function createProviderRouter(providers: MarketDataProvider[]) {
       healthCache = { value: fresh, expires: now + HEALTH_CACHE_TTL_MS };
     }
 
-    const msg =
-      lastErr instanceof Error
-        ? `All providers failed for ${label}: ${lastErr.message}`
-        : `All providers failed for ${label}`;
-    throw new UpstreamError(msg, activeSource ?? providers[0]?.id ?? "binance", lastErr);
+    const detail = failures.length > 0 ? ` — ${failures.join("; ")}` : "";
+    throw new UpstreamError(
+      `All providers failed for ${label}${detail}`,
+      activeSource ?? providers[0]?.id ?? "binance",
+      lastErr,
+    );
   }
 
   return {
