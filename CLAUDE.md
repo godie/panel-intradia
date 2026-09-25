@@ -3,9 +3,10 @@
 **Repository**: https://github.com/godie/panel-intradia.git
 
 Dashboard Next.js de análisis técnico intradía en vivo para pares cripto
-contra USDT (BTC, ETH, XRP, SOL, BNB). Ver `README.md` para la descripción
-completa de features y `INSTALL.md` para despliegue. Este archivo cubre solo
-lo que un agente necesita para trabajar en el repo con seguridad.
+contra USDT (watchlist dinámica: los 5 por defecto —BTC, ETH, XRP, SOL, BNB—
+más cualquier par USDT spot que agregue el usuario). Ver `README.md` para la
+descripción completa de features y `INSTALL.md` para despliegue. Este archivo
+cubre solo lo que un agente necesita para trabajar en el repo con seguridad.
 
 ## Stack
 
@@ -15,8 +16,9 @@ lo que un agente necesita para trabajar en el repo con seguridad.
 - Vitest 4 para tests unitarios; ESLint 9 (`eslint-config-next`)
 - Runtime: **Bun** (no npm/yarn) — `bun install`, `bun run <script>`
 - Mini-services independientes en `mini-services/` (Bun + socket.io):
-  `order-book` (:3004) y el tick-stream WS. Se instalan/arrancan por
-  separado de la app Next.js.
+  `order-book` (:3004) y `tick-stream` (:3005). Se instalan/arrancan por
+  separado de la app Next.js, y en el navegador se llega a ellos **solo** a
+  través del gateway Caddy (`/_tick-stream/*`, `/_order-book/*`).
 
 ## Comandos
 
@@ -24,6 +26,7 @@ lo que un agente necesita para trabajar en el repo con seguridad.
 bun run dev          # dev server, puerto 3000 (loguea a dev.log)
 bun run build         # build standalone
 bun run lint          # ESLint sobre todo el repo
+bun run typecheck     # tsc --noEmit
 bun test              # vitest run (bun run test también funciona)
 bun run test:watch
 bun run db:push       # aplica schema Prisma a SQLite (sin migración)
@@ -33,12 +36,28 @@ bun run db:reset      # ⚠ borra CrossEvent persistidos
 
 Los tests viven junto al código fuente (`src/lib/**/*.test.ts`), no en
 `tests/` (esa carpeta es para scripts de shell de build/CI). Antes de dar
-por terminado un cambio en `src/lib`, corre `bun test` y `bun run lint`.
+por terminado un cambio en `src/lib`, corre `bun run test`,
+`bun run typecheck` y `bun run lint`.
+
+## WebSockets / gateway
+
+La app **nunca** se conecta directo a un mini-service. Se usa
+`buildGatewaySocketTarget(port, window.location)` y el prefijo va en
+`opts.path`, **nunca** en la URL:
+
+```ts
+const t = buildGatewaySocketTarget("3005", window.location);
+io(t.url, { path: t.path });   // ✅  io(t.url + t.path) ❌
+```
+
+Poner el prefijo en la URL hace que socket.io-client lo lea como *namespace*
+y el server responde `Invalid namespace`. Del otro lado, Caddy usa
+`handle_path` (no `handle`) para recortar el prefijo antes de proxear.
 
 ## Arquitectura de proveedores de datos (`src/lib/providers/`)
 
-Rama activa: `feat/provider-abstraction-bybit` — se está generalizando el
-acceso a mercado para no depender solo de Binance.
+La abstracción está **mergeada y en uso** (`providerRouter` con
+`[binance, bybit]`), ya no hay rama de trabajo para esto.
 
 - `types.ts` define la interfaz `MarketDataProvider` que todo proveedor
   (Binance, Bybit, …) debe implementar. Convenciones clave:
@@ -74,9 +93,11 @@ acceso a mercado para no depender solo de Binance.
   funciones puras — así se testean en Vitest sin mocks de red. Mantén esa
   separación: lógica de cálculo pura vs. fetch/IO en providers o API
   routes.
-- Endpoints API en `src/app/api/*/route.ts` devuelven `400` para símbolos
-  no soportados y `502` si el upstream (exchange) falla — no cambies estos
-  contratos sin actualizar el frontend que espera `"Dato no disponible"`.
+- Endpoints API en `src/app/api/*/route.ts` devuelven `400` si el símbolo no
+  tiene forma de par USDT válido (cualquier par bien formado se acepta; si no
+  existe, lo decide el upstream) y `502` si el upstream (exchange) falla — no
+  cambies estos contratos sin actualizar el frontend que espera
+  `"Dato no disponible"`.
 
 ## Base de datos
 

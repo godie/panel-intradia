@@ -13,11 +13,14 @@ estilo *trading-terminal*.
 
 **Versión actual:** v31 (rondas 1–31 de iteración continua, ~4 años de
 desarrollo). Estable, verificado end-to-end con navegador automatizado (agent-browser)
-en los 4 idiomas soportados, 164/164 tests pasando, lint limpio.
+en los 4 idiomas soportados, 278/278 tests pasando, lint limpio.
 
 ### Qué incluye hoy
 
-- **5 pares** monitorizados en paralelo (BTC/USDT, ETH/USDT, XRP/USDT, SOL/USDT, BNB/USDT) sobre velas de 4 h.
+- **Watchlist dinámica**: los 5 pares por defecto (BTC/USDT, ETH/USDT, XRP/USDT, SOL/USDT, BNB/USDT) más cualquier par USDT spot de Binance que agregues.
+- **4 temporalidades por tarjeta**: 1h / 4h / 1D / 1W (persistida por símbolo). Los agregados —ticker tape, market summary/overview y alertas de estrategia— quedan fijos en **4h** y así se etiquetan.
+- **Página `/comparar`** — comparación fullscreen de dos temporalidades con 3 presets fijos (1h↔4h, 4h↔1D, 1D↔1W): por símbolo muestra consenso, estado EMA, precio, RSI, EMA55/200, MACD, ATR y cruce reciente.
+- **Página `/status`** — probe server-side de los mini-services (`/health`) + estado de los sockets del navegador, reducidos a un diagnóstico: todo ok / gateway roto / servidor ciego / no desplegados.
 - **Tick en tiempo real** vía WebSocket de Binance/Bybit (mini-service `tick-stream` en puerto 3005) con throttle 800 ms por símbolo, fallback automático, reconexión y latido de estado.
 - **Order book** en vivo (mini-service `order-book` en puerto 3004) con depth bar visual por activo.
 - **Análisis cuantitativo cada 60 s** servido por `GET /api/analysis?symbol=…` (caché TTL 60 s en memoria):
@@ -35,7 +38,7 @@ en los 4 idiomas soportados, 164/164 tests pasando, lint limpio.
 - **Eventos persistidos en SQLite** vía Prisma (`CrossEvent`): cruces EMA, cruces MACD, momentum flip, squeeze y squeeze breakout, cruces estocásticos — cada uno con `dedup` adaptativo y notificación toast.
 - **Historial de cruces** navegable con filtros por símbolo, tipo, dirección y rango temporal (`CrossHistory`).
 - **Alertas de precio** personalizables en `localStorage` con verificación contra el stream de ticks y sonido Web Audio API (tono alcista / bajista) al dispararse.
-- **Sistema de estrategias** predefinidas (Trend Buy / Mean Reversion Buy / Trend Short / Hold) con consenso agregado y selector por activo.
+- **7 estrategias** predefinidas (Trend Buy / Mean Reversion Buy / Breakout Buy / Trend Short / Mean Reversion Short / Breakout Short / Hold — 3 BUY / 3 SHORT / 1 HOLD, así todos los niveles de consenso son alcanzables) con consenso agregado y selector por activo.
 - **Constructor de estrategia personalizada** (UI completa) — combina 13 tipos de condiciones (EMA cross, RSI thresholds, MACD bullish/bearish, Stochastic cross, price vs VWAP, Bollinger squeeze, Ichimoku above/below), elige acción objetivo (BUY/SHORT/HOLD) y persiste en `localStorage`.
 - **Backtest de estrategias** — evalúa cualquier estrategia (predefinida o personalizada) contra histórico de hasta 1000 velas (intervalos 15m/1h/4h/1d) con simulación de trades realista:
   - **Position sizing** configurable: 100% completo, fraccional fijo, **medio-Kelly** y **Kelly completo** (fracción de Kelly calculada desde el win rate + payoff realizado)
@@ -93,11 +96,11 @@ Mini-services independientes (Bun):
 | Datos           | Prisma 6 + SQLite (`CrossEvent`)                               |
 | Tiempo real     | socket.io-client + socket.io                                   |
 | Validación      | Zod 4                                                          |
-| Tests           | Vitest 4 (164 tests sobre funciones puras de indicadores + WebSocket routing)      |
+| Tests           | Vitest 4 (278 tests sobre funciones puras: indicadores, timeframes, consenso, providers) |
 | Lint            | ESLint 9 con `eslint-config-next`                              |
 | Mini-services   | Bun 1.4.2 (`tick-stream`, `order-book`)                        |
 | Runtime         | Bun 1.4.2 (dev server + mini-services)                         |
-| Proxy           | Caddy (puerto 81, enrutamiento por path `/_tick-stream/*` y `/_order-book/*`) |
+| Proxy           | Caddy (puerto 81) — `handle_path` sobre `/_tick-stream/*` y `/_order-book/*`; el prefijo va en `opts.path`, **nunca** en la URL (socket.io lo leería como namespace) |
 | CI               | GitHub Actions: lint, test, build, Prisma validate, mini-services |
 | i18n            | Diccionario estático en `src/lib/i18n.ts` (es/en/zh/fr)        |
 
@@ -169,7 +172,7 @@ caddy run --config Caddyfile   # :81
 | `bun run build`       | Build de producción con output standalone                      |
 | `bun run start`       | Sirve el build standalone con Bun                              |
 | `bun run lint`        | ESLint sobre todo el repo (debe ser 0 errores, 0 warnings)      |
-| `bun test`            | Ejecuta los tests de Vitest (164 tests)                        |
+| `bun test`            | Ejecuta los tests de Vitest (278 tests)                        |
 | `bun run db:push`     | Aplica el esquema Prisma a SQLite                              |
 | `bun run db:migrate`  | Crea una migración nueva                                       |
 | `bun run db:reset`    | Resetea la base de datos (⚠ borra cruces persistidos)          |

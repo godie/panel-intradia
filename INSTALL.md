@@ -154,6 +154,7 @@ caddy run --config Caddyfile   # :81 → proxy al dashboard + WS
 
 - **Dashboard (recomendado):** http://localhost:81/
 - Dashboard directo (sin WS funcionales): http://localhost:3000/
+- **Estado del sistema:** http://localhost:81/status — probe server-side de los mini-services + estado de los sockets del navegador, con un diagnóstico de cuál de las dos cosas falla
 
 ### Scripts disponibles
 
@@ -199,9 +200,11 @@ docker cp panel_app:/app/db/backup-YYYY-MM-DD.db ./backups/
 
 **HTTPS con Caddy (recomendado):** edita el `Caddyfile` para que Caddy escuche en `:443` y gestione los certificados de Let's Encrypt automáticamente. Configura también `CORS_ORIGINS=https://midominio.com` para autorizar el origen del dashboard. Un ejemplo para `midominio.com`:
 
+> Usá `handle_path`, **no** `handle`: `handle_path` recorta el prefijo `/_tick-stream` antes de proxear, que es lo que el engine de socket.io espera (`/socket.io/`). Con `handle` el prefijo llega intacto y todo responde 404.
+
 ```caddyfile
 midominio.com {
-    handle /_tick-stream/* {
+    handle_path /_tick-stream/* {
         reverse_proxy localhost:3005 {
             header_up Host {host}
             header_up X-Forwarded-For {remote_host}
@@ -209,7 +212,7 @@ midominio.com {
         }
     }
 
-    handle /_order-book/* {
+    handle_path /_order-book/* {
         reverse_proxy localhost:3004 {
             header_up Host {host}
             header_up X-Forwarded-For {remote_host}
