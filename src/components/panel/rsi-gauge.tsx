@@ -1,9 +1,14 @@
 "use client";
 
+import { TIMEFRAME_LABEL_KEY, type Timeframe } from "@/lib/timeframes";
+import { useLanguage } from "@/hooks/use-language";
+
 type Props = {
   rsi: number | null;
   unavailable: boolean;
   series?: (number | null)[];
+  /** Candle interval this value was computed on (shown in the label). */
+  timeframe: Timeframe;
 };
 
 /**
@@ -19,15 +24,17 @@ type Props = {
  * When `unavailable` is true we render an explicit "N/D" pill — never a
  * fabricated number.
  */
-export function RsiGauge({ rsi, unavailable, series }: Props) {
+export function RsiGauge({ rsi, unavailable, series, timeframe }: Props) {
+  const { t } = useLanguage();
+  const rsiLabel = t("card.rsi").replace("{tf}", t(TIMEFRAME_LABEL_KEY[timeframe]));
   if (unavailable || rsi == null || !Number.isFinite(rsi)) {
     return (
       <div className="flex items-center justify-between gap-3 border-b border-white/5 py-2 last:border-0">
         <span className="text-xs uppercase tracking-wider text-muted-foreground">
-          RSI 14 · 4h
+          {rsiLabel}
         </span>
         <span className="tnum text-xs italic text-muted-foreground/60">
-          Dato no disponible
+          {t("card.notAvailable")}
         </span>
       </div>
     );
@@ -63,7 +70,7 @@ export function RsiGauge({ rsi, unavailable, series }: Props) {
             aria-hidden
           />
           <span className="text-xs uppercase tracking-wider text-muted-foreground">
-            RSI 14 · 4h
+            {rsiLabel}
           </span>
         </div>
         <div className="flex items-baseline gap-2">

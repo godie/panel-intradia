@@ -2,12 +2,15 @@
 
 import { Zap } from "lucide-react";
 import type { MacdCrossInfo } from "@/lib/types";
+import { TIMEFRAME_LABEL_KEY, type Timeframe } from "@/lib/timeframes";
 import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   macd: { line: number | null; signal: number | null; histogram: number | null };
   series: (number | null)[];
   unavailable: boolean;
+  /** Candle interval these values were computed on (shown in the labels). */
+  timeframe: Timeframe;
   /** MACD/signal crossover + momentum flip detection. */
   macdCross?: MacdCrossInfo | null;
   /** Optional number of bars to render (default 40). */
@@ -28,7 +31,7 @@ type Props = {
  *
  * The current MACD line / signal / histogram values are labeled to the right.
  */
-export function MacdPanel({ macd, series, unavailable, macdCross, bars = 40 }: Props) {
+export function MacdPanel({ macd, series, unavailable, timeframe, macdCross, bars = 40 }: Props) {
   const { t } = useLanguage();
   if (unavailable || macd.line == null) {
     return (
@@ -107,7 +110,7 @@ export function MacdPanel({ macd, series, unavailable, macdCross, bars = 40 }: P
 
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          MACD · 12 / 26 / 9 · 4h
+          {t("card.macd").replace("{tf}", t(TIMEFRAME_LABEL_KEY[timeframe]))}
         </span>
         <span
           className="text-[10px] font-semibold uppercase tracking-wider"
@@ -218,7 +221,7 @@ export function MacdPanel({ macd, series, unavailable, macdCross, bars = 40 }: P
 
       <div className="flex items-center justify-between text-[9px] uppercase tracking-wider text-muted-foreground/60">
         <span>{cross}</span>
-        <span>4h · Appel</span>
+        <span>{t(TIMEFRAME_LABEL_KEY[timeframe])} · Appel</span>
       </div>
     </div>
   );
