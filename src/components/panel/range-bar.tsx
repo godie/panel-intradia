@@ -1,5 +1,8 @@
 "use client";
 
+import { TIMEFRAME_LABEL_KEY, type Timeframe } from "@/lib/timeframes";
+import { useLanguage } from "@/hooks/use-language";
+
 type FibLevel = { ratio: number; price: number; label: string };
 
 type Props = {
@@ -10,6 +13,8 @@ type Props = {
   ema200: number | null;
   high24h: number | null;
   low24h: number | null;
+  /** Candle interval the EMAs were computed on (shown in their labels). */
+  timeframe: Timeframe;
   /** Optional Fibonacci retracement levels to display as markers. */
   fibLevels?: FibLevel[];
   /** Optional Fibonacci extension levels (profit targets). */
@@ -37,9 +42,12 @@ export function RangeBar({
   ema200,
   high24h,
   low24h,
+  timeframe,
   fibLevels,
   fibExtensions,
 }: Props) {
+  const { t } = useLanguage();
+  const tfLabel = t(TIMEFRAME_LABEL_KEY[timeframe]);
   // Gather all reference points (including Fib levels + extensions) to compute the visible range.
   const fibPrices = (fibLevels ?? [])
     .map((l) => l.price)
@@ -54,7 +62,7 @@ export function RangeBar({
   if (spot == null || points.length < 2) {
     return (
       <div className="rounded-md border border-white/5 bg-black/20 px-3 py-2.5 text-center text-[11px] italic text-muted-foreground/60">
-        Dato no disponible
+        {t("card.notAvailable")}
       </div>
     );
   }
@@ -86,7 +94,7 @@ export function RangeBar({
       pct: pct(support),
       color: "#5fbf8f",
       label: "S",
-      fullLabel: "Soporte",
+      fullLabel: t("card.support"),
       price: support,
     });
   if (resistance != null)
@@ -94,7 +102,7 @@ export function RangeBar({
       pct: pct(resistance),
       color: "#e2604f",
       label: "R",
-      fullLabel: "Resistencia",
+      fullLabel: t("card.resistance"),
       price: resistance,
     });
   if (ema55 != null)
@@ -102,7 +110,7 @@ export function RangeBar({
       pct: pct(ema55),
       color: "#e8b04b",
       label: "55",
-      fullLabel: "EMA 55 (4h)",
+      fullLabel: `${t("card.ema55")} (${tfLabel})`,
       price: ema55,
     });
   if (ema200 != null)
@@ -110,7 +118,7 @@ export function RangeBar({
       pct: pct(ema200),
       color: "#4fa8d8",
       label: "200",
-      fullLabel: "EMA 200 (4h)",
+      fullLabel: `${t("card.ema200")} (${tfLabel})`,
       price: ema200,
     });
   // Fibonacci retracement levels (only the golden ratio 61.8% to avoid clutter).

@@ -226,6 +226,8 @@ export function AssetCard({
   onCompare,
 }: Props) {
   const { t } = useLanguage();
+  // Labels that carry the active interval ("… · {tf}") get it substituted here.
+  const tfLabel = t(TIMEFRAME_LABEL_KEY[timeframe]);
   const meta = getSymbolMeta(data.symbol);
   const nd = data.no_disponible;
   const notAvailableLabel = t("card.notAvailable");
@@ -491,7 +493,7 @@ export function AssetCard({
 
       {/* MACD mini-panel — histogram of last ~40 bars + crossover alerts */}
       <CollapsibleSection
-        label={t("card.macd")}
+        label={t("card.macd").replace("{tf}", tfLabel)}
         accent="#e8b04b"
         badge={
           data.macd_cross?.happened ? (
@@ -506,6 +508,7 @@ export function AssetCard({
           macd={data.macd}
           series={data.series.macd_histogram}
           unavailable={nd.macd}
+          timeframe={timeframe}
           macdCross={data.macd_cross}
         />
       </CollapsibleSection>
@@ -523,6 +526,7 @@ export function AssetCard({
           ema200={data.ema200}
           high24h={data.high_24h}
           low24h={data.low_24h}
+          timeframe={timeframe}
           fibLevels={data.fibonacci?.levels}
           fibExtensions={data.fibonacci?.extensions}
         />
@@ -549,7 +553,10 @@ export function AssetCard({
       </CollapsibleSection>
 
       {/* Metric rows + RSI */}
-      <CollapsibleSection label={t("card.indicators")} accent="#8b96a5">
+      <CollapsibleSection
+        label={t("card.indicators").replace("{tf}", tfLabel)}
+        accent="#8b96a5"
+      >
         <MetricRow
           label={`${t("card.ema55")} · ${t(TIMEFRAME_LABEL_KEY[timeframe])}`}
           value={`$${fmtPrice(data.ema55)}`}
@@ -579,7 +586,7 @@ export function AssetCard({
           notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
-          label={t("card.atr")}
+          label={t("card.atr").replace("{tf}", tfLabel)}
           value={`$${fmtPrice(data.atr_14)}`}
           unavailable={nd.atr_14}
           color="#b48cff"
@@ -595,7 +602,7 @@ export function AssetCard({
           notAvailableLabel={notAvailableLabel}
         />
         <MetricRow
-          label={t("card.vwapLabel")}
+          label={t("card.vwapLabel").replace("{tf}", tfLabel)}
           value={`$${fmtPrice(data.vwap_20)}`}
           unavailable={nd.vwap_20}
           color="#5fbf8f"
@@ -613,6 +620,7 @@ export function AssetCard({
           rsi={data.rsi_14}
           unavailable={nd.rsi_14}
           series={data.series.rsi}
+          timeframe={timeframe}
         />
         {/* Stochastic oscillator */}
         <StochasticRow
@@ -695,7 +703,7 @@ export function AssetCard({
             })}{" "}
             UTC
           </span>
-          <span>{t("card.binanceLabel")}</span>
+          <span>{t("card.binanceLabel").replace("{tf}", tfLabel)}</span>
         </div>
       </div>
     </article>

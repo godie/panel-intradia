@@ -77,6 +77,8 @@ function CompareCell({ data }: { data: AnalysisResponse | null | undefined }) {
   const meta = CONSENSUS_META[level];
   const state = data.cross_state ? STATE_KEY[data.cross_state] : null;
   const nd = data.no_disponible;
+  // Labels carrying the interval ("… · {tf}") use THIS cell's timeframe.
+  const tfLabel = t(TIMEFRAME_LABEL_KEY[data.timeframe]);
   const freshCross =
     data.cross_info?.happened === true || data.macd_cross?.happened === true;
 
@@ -111,7 +113,7 @@ function CompareCell({ data }: { data: AnalysisResponse | null | undefined }) {
         value={`$${fmtPrice(data.spot_price)}`}
       />
       <Metric
-        label={t("card.rsi")}
+        label={t("card.rsi").replace("{tf}", tfLabel)}
         value={nd.rsi_14 || data.rsi_14 == null ? t("compare.na") : data.rsi_14.toFixed(1)}
         color={
           data.rsi_14 == null
@@ -128,7 +130,7 @@ function CompareCell({ data }: { data: AnalysisResponse | null | undefined }) {
         value={`${fmtPrice(data.ema55)} / ${fmtPrice(data.ema200)}`}
       />
       <Metric
-        label={t("card.macd")}
+        label={t("card.macd").replace("{tf}", tfLabel)}
         value={fmtPrice(data.macd.histogram)}
         color={
           data.macd.histogram == null
@@ -138,7 +140,10 @@ function CompareCell({ data }: { data: AnalysisResponse | null | undefined }) {
               : "#e2604f"
         }
       />
-      <Metric label={t("card.atr")} value={`$${fmtPrice(data.atr_14)}`} />
+      <Metric
+        label={t("card.atr").replace("{tf}", tfLabel)}
+        value={`$${fmtPrice(data.atr_14)}`}
+      />
     </div>
   );
 }

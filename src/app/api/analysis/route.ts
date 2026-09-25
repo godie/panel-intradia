@@ -71,20 +71,20 @@ function buildAnalysis(
   const ema55Res = calculateEMA(closes, 55);
   const ema200Res = calculateEMA(closes, 200);
 
-  // RSI(14) on 4h closes.
+  // RSI(14) on the requested timeframe's closes.
   const rsiRes = calculateRSI(closes, 14);
 
-  // MACD(12, 26, 9) on 4h closes — Appel defaults.
+  // MACD(12, 26, 9) on the requested timeframe's closes — Appel defaults.
   const macdRes = calculateMACD(closes, 12, 26, 9);
   // MACD/signal crossover + histogram momentum flip detection.
   const macdCross = macdRes.available
     ? detectMacdCross(macdRes.macdLine, macdRes.signalLine, macdRes.histogram)
     : null;
 
-  // ATR(14) on 4h — volatility measure (Wilder's smoothing).
+  // ATR(14) on the requested timeframe — volatility measure (Wilder's smoothing).
   const atrRes = calculateATR(highs, lows, closes, 14);
 
-  // VWAP(20) on 4h — Volume Weighted Average Price, rolling 20 candles.
+  // VWAP(20) on the requested timeframe — Volume Weighted Average Price, rolling 20 candles.
   const vwapRes = calculateVWAP(highs, lows, closes, volumes, 20);
 
   // Stochastic oscillator (14, 3) — %K and %D momentum indicator.
@@ -103,7 +103,7 @@ function buildAnalysis(
   // Ichimoku Kinko Hyo (9, 26, 52) — cloud indicator.
   const ichimokuRes = calculateIchimoku(highs, lows, closes);
 
-  // Bollinger Bands (20, 2) on 4h — SMA ± 2 stddev.
+  // Bollinger Bands (20, 2) on the requested timeframe — SMA ± 2 stddev.
   const bbRes = calculateBollingerBands(closes, 20, 2);
 
   // Bollinger squeeze detection — bandwidth < 3% indicates compressed volatility.
