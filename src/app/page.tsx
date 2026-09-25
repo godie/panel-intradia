@@ -312,8 +312,13 @@ export default function Page() {
       <div className="relative z-10 flex min-h-screen flex-col">
         <TickerTape items={tickerItems} />
 
-        {/* Header */}
-        <header className="border-b border-white/5 bg-card/40 backdrop-blur-sm">
+        {/* Header. Deliberately NO `backdrop-blur`/`filter`/`transform` here:
+            `backdrop-filter` creates a stacking context AND a containing block
+            for fixed-position descendants. That trapped the language dropdown's
+            z-50 behind the cards and made the alerts modal (`fixed inset-0`,
+            rendered inside this header) resolve against the header's box
+            instead of the viewport, so it appeared crammed at the top. */}
+        <header className="border-b border-white/5 bg-card/40">
           <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-[#4fa8d8]/30 bg-[#4fa8d8]/10">

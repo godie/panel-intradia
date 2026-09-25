@@ -86,7 +86,7 @@ export function PriceAlertsButton({
           aria-label={t("alerts.title")}
         >
           <div
-            className="relative w-full max-w-md mx-4 rounded-xl border border-white/10 bg-card shadow-2xl"
+            className="relative w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto rounded-xl border border-white/10 bg-card shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
