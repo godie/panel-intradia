@@ -2,7 +2,10 @@
 
 import { useSyncExternalStore } from "react";
 import { io, type Socket } from "socket.io-client";
-import { buildGatewaySocketUrl } from "@/lib/socket-url";
+import {
+  buildGatewaySocketTarget,
+  type GatewaySocketTarget,
+} from "@/lib/socket-url";
 
 /**
  * use-tick-stream — subscribe to real-time price ticks from the tick-stream
@@ -15,17 +18,18 @@ import { buildGatewaySocketUrl } from "@/lib/socket-url";
  * its connection.
  * NEVER connect to `http://localhost:3005` directly (sandbox rule).
  *
- * The URL is auto-detected at runtime via `buildSocketUrl()`:
- *  - If the page is already served from the gateway (port 81), use a
- *    relative URL (`/_tick-stream/socket.io/`) so the same origin is reused.
- *  - Otherwise (e.g. Next.js dev port 3000), explicitly point the socket
- *    at the gateway while preserving the page protocol.
+ * The URL is auto-detected at runtime via `buildGatewaySocketTarget()`:
+ *  - If the page is already served from the gateway (port 81), reuse the same
+ *    origin.
+ *  - Otherwise (e.g. Next.js dev port 3000), point at the gateway on :81 while
+ *    preserving the page protocol.
  *
- * The socket.io client `path` option is set to "/socket.io/" so the
- * resulting request URLs become
- *   `http(s)://hostname[:81]/_tick-stream/socket.io/` which Caddy
- * forwards to the tick-stream service and the mini-service handles at its
- * socket.io endpoint.
+ * The gateway prefix goes in `path`, never in the URL:
+ *   io("http://host:81", { path: "/_tick-stream/socket.io/" })
+ * Caddy's `handle_path` strips `/_tick-stream`, so the mini-service sees the
+ * plain `/socket.io/` its engine serves. Putting the prefix in the URL makes
+ * socket.io-client use it as the namespace and the server answers "Invalid
+ * namespace" — verified against a real gateway.
  *
  * Events from the server:
  *  - `tick`         { symbol, price, time }    — one price update per symbol
@@ -111,18 +115,21 @@ function getSnapshot(): TickState {
 // mini-service. The shared helper preserves HTTPS for secure deployments.
 const TICK_STREAM_PORT = "3005";
 
-function buildSocketUrl(): string {
+function buildSocketTarget(): GatewaySocketTarget {
   if (typeof window === "undefined") {
-    // SSR safety — return a relative URL; the singleton only inits on client.
-    return buildGatewaySocketUrl(TICK_STREAM_PORT);
+    // SSR safety — the singleton only inits on the client.
+    return buildGatewaySocketTarget(TICK_STREAM_PORT);
   }
-  return buildGatewaySocketUrl(TICK_STREAM_PORT, window.location);
+  return buildGatewaySocketTarget(TICK_STREAM_PORT, window.location);
 }
 
 function ensureSocket(): Socket {
   if (socket) return socket;
-  const sock = io(buildSocketUrl(), {
-    path: "/socket.io/",
+  const target = buildSocketTarget();
+  const sock = io(target.url || undefined, {
+    // The gateway prefix lives in `path`, NOT in the URL — socket.io-client
+    // would otherwise read the URL's path as the namespace. See socket-url.ts.
+    path: target.path,
     transports: ["websocket"],
     reconnection: true,
     reconnectionAttempts: Infinity,

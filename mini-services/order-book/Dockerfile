@@ -8,15 +8,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates wget \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy deps + code
-COPY mini-services/order-book/package.json ./
-COPY mini-services/order-book/bun.lock* ./
+# The service imports the shared `../websocket-security` module, so the image
+# layout has to mirror the repo (service one level below mini-services/) or the
+# import resolves to a path that doesn't exist and the container dies on boot.
+# Build context is the repo root.
+COPY mini-services/order-book/package.json ./mini-services/order-book/
+COPY mini-services/order-book/bun.lock* ./mini-services/order-book/
 
-# Install dependencies
-RUN bun install --frozen-lockfile
+RUN cd mini-services/order-book && bun install --frozen-lockfile
 
-# Copy source
-COPY mini-services/order-book/ ./
+COPY mini-services/websocket-security.ts ./mini-services/
+COPY mini-services/order-book/ ./mini-services/order-book/
+
+WORKDIR /app/mini-services/order-book
 
 EXPOSE 3004
 

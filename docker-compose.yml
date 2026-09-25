@@ -30,6 +30,10 @@ services:
       PORT: "8000"
       HOSTNAME: 0.0.0.0
       DATABASE_URL: file:/app/db/custom.db
+      # Where /api/status probes the mini-services from inside this container.
+      # Same names Caddy uses, so the status page mirrors the gateway upstream.
+      TICK_STREAM_UPSTREAM: tick-stream:3005
+      ORDER_BOOK_UPSTREAM: order-book:3004
     volumes:
       - app_db:/app/db
     networks:

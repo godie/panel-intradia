@@ -51,6 +51,7 @@ import {
   Keyboard,
   Plus,
   ArrowLeftRight,
+  Activity,
 } from "lucide-react";
 
 const REFRESH_MS = 60_000;
@@ -437,6 +438,16 @@ export default function Page() {
               >
                 <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden />
                 <span className="hidden sm:inline">{t("compare.button")}</span>
+              </Link>
+
+              <Link
+                href="/status"
+                className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-foreground/70 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
+                aria-label={t("status.title")}
+                title={t("status.subtitle")}
+              >
+                <Activity className="h-3.5 w-3.5" aria-hidden />
+                <span className="hidden sm:inline">{t("status.title")}</span>
               </Link>
 
               <PriceAlertsButton

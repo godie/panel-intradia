@@ -86,7 +86,13 @@ Lo más común es que la región del host bloquee `api.binance.com`. Solución:
 docker compose exec app sh -c 'curl -I https://api.binance.com/api/v3/ping'
 docker compose exec app sh -c 'curl -I https://api.binance.us/api/v3/ping'
 ```
-Si `binance.us` responde pero `.com` no, edita `src/lib/binance.ts` línea 9 cambiando la URL base. (Próximamente esto será automático con la abstracción de providers.)
+Si `binance.us` responde pero `.com` no, no hace falta tocar código: apuntá la variable de entorno al endpoint US y reiniciá.
+```bash
+# docker-compose.yml → service `app` → environment:
+BINANCE_BASE_URL: https://api.binance.us/api/v3
+```
+En Railway: Service → Variables → `BINANCE_BASE_URL=https://api.binance.us/api/v3`.
+La variable se lee en cada request, así que un restart alcanza.
 
 **Caddy arranca antes que el app y se cae:**
 Espera 30 segundos, los healthchecks hacen retry. Si sigue fallando:

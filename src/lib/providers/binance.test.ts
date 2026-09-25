@@ -1,6 +1,37 @@
-import { describe, it, expect } from "vitest";
-import { parseKlines, parseTicker } from "./binance";
+import { describe, it, expect, afterEach } from "vitest";
+import { parseKlines, parseTicker, resolveBinanceBase } from "./binance";
 import type { Kline, Ticker24h } from "./types";
+
+describe("resolveBinanceBase", () => {
+  const original = process.env.BINANCE_BASE_URL;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.BINANCE_BASE_URL;
+    else process.env.BINANCE_BASE_URL = original;
+  });
+
+  it("defaults to api.binance.com", () => {
+    delete process.env.BINANCE_BASE_URL;
+    expect(resolveBinanceBase()).toBe("https://api.binance.com/api/v3");
+  });
+
+  it("honours BINANCE_BASE_URL (the US geo-block workaround)", () => {
+    process.env.BINANCE_BASE_URL = "https://api.binance.us/api/v3";
+    expect(resolveBinanceBase()).toBe("https://api.binance.us/api/v3");
+  });
+
+  it("strips trailing slashes so URLs don't double up", () => {
+    process.env.BINANCE_BASE_URL = "https://api.binance.us/api/v3///";
+    expect(resolveBinanceBase()).toBe("https://api.binance.us/api/v3");
+  });
+
+  it("treats blank / whitespace-only values as unset", () => {
+    process.env.BINANCE_BASE_URL = "   ";
+    expect(resolveBinanceBase()).toBe("https://api.binance.com/api/v3");
+    process.env.BINANCE_BASE_URL = "";
+    expect(resolveBinanceBase()).toBe("https://api.binance.com/api/v3");
+  });
+});
 
 describe("parseKlines", () => {
   it("converts Binance raw kline arrays into Kline objects", () => {

@@ -12,36 +12,68 @@ const SERVICE_PATHS: Record<string, string> = {
   "3004": "/_order-book",
 };
 
+export type GatewaySocketTarget = {
+  /**
+   * Origin to hand to `io()`. Deliberately carries NO path: socket.io-client
+   * turns a URL path into the connection's *namespace*, and the mini-services
+   * only serve "/".
+   */
+  url: string;
+  /**
+   * Engine.IO path INCLUDING the gateway prefix — pass this as `opts.path`.
+   * Caddy's `handle_path` strips the prefix, so the mini-service receives the
+   * plain `/socket.io/` its engine expects.
+   */
+  path: string;
+};
+
 /**
- * Build the base URL used to reach a Socket.IO mini-service through the gateway.
- * The returned URL includes the Caddy path prefix so that the socket.io
- * `path: "/socket.io/"` option resolves to `{prefix}/socket.io/`.
+ * buildGatewaySocketTarget — where to point a Socket.IO client at a
+ * mini-service, split into the two halves socket.io-client needs separately.
  *
- * Routing is path-based (not query-param-based) so a client can never
- * influence which upstream receives its connection.
+ * Both halves matter, and swapping them fails in a very non-obvious way:
  *
- * Usage:
- *   io(buildGatewaySocketUrl("3005"), { path: "/socket.io/" }, ...)
+ *   const t = buildGatewaySocketTarget("3005", window.location);
+ *   io(t.url, { path: t.path, transports: ["websocket"] })
+ *
+ * Putting the prefix in the URL instead — `io("http://host/_tick-stream/socket.io/")`
+ * — makes socket.io-client use "/_tick-stream/socket.io" as the namespace and
+ * send the engine handshake to the bare origin. Caddy then routes that to the
+ * default upstream (the Next app) and the server answers "Invalid namespace".
+ * Verified against a real gateway, not just by string comparison.
  */
-export function buildGatewaySocketUrl(
+export function buildGatewaySocketTarget(
   servicePort: string,
   location?: SocketLocation,
-): string {
-  const path = SERVICE_PATHS[servicePort] ?? "/";
-  const endpoint = `${path}/socket.io/`;
+): GatewaySocketTarget {
+  const prefix = SERVICE_PATHS[servicePort] ?? "";
+  const path = `${prefix}/socket.io/`;
 
   if (!location) {
-    // SSR fallback — relative URL reuses the page origin.
-    return endpoint;
+    // SSR — the client only calls this in the browser. An empty url makes
+    // socket.io-client fall back to the page's own location.
+    return { url: "", path };
   }
 
+  // Already served by the gateway (or by whatever proxies it) → same origin.
   if (location.port === GATEWAY_PORT) {
-    return endpoint;
+    return { url: originOf(location), path };
   }
 
+  // A secure page can't open a plain-HTTP socket; hit the gateway on 443.
   if (location.protocol === "https:") {
-    return `https://${location.hostname}${endpoint}`;
+    return { url: `https://${location.hostname}`, path };
   }
 
-  return `${location.protocol}//${location.hostname}:${GATEWAY_PORT}${endpoint}`;
+  // Plain-HTTP page (e.g. the dev server on :3000) → the gateway on :81.
+  return {
+    url: `${location.protocol}//${location.hostname}:${GATEWAY_PORT}`,
+    path,
+  };
+}
+
+function originOf(location: SocketLocation): string {
+  return `${location.protocol}//${location.hostname}${
+    location.port ? `:${location.port}` : ""
+  }`;
 }

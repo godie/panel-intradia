@@ -52,6 +52,24 @@ describe("createProviderRouter", () => {
     await expect(router.getKlines("BTCUSDT")).rejects.toThrow(/bybit is unhealthy/);
   });
 
+  it("names every provider's failure, not just the last one tried", async () => {
+    // The real-world case: Binance is reachable but geo-blocked (HTTP 451)
+    // while Bybit's health probe also fails. The message must keep both.
+    const binance = makeProvider(
+      "binance",
+      new UpstreamError("Binance responded 451 Unavailable For Legal Reasons", "binance"),
+      null,
+      true,
+    );
+    const bybit = makeProvider("bybit", fakeKlines, null, false);
+    const router = createProviderRouter([binance, bybit]);
+
+    await expect(router.getKlines("BTCUSDT")).rejects.toThrow(
+      /binance: Binance responded 451 Unavailable For Legal Reasons/,
+    );
+    await expect(router.getKlines("BTCUSDT")).rejects.toThrow(/bybit is unhealthy/);
+  });
+
   it("treats a null ticker as success (no throw)", async () => {
     const binance = makeProvider("binance", fakeKlines, null, true);
     const router = createProviderRouter([binance]);

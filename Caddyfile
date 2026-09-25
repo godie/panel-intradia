@@ -1,10 +1,21 @@
-:81 {
+# Listen port. docker-compose leaves PORT unset (→ 81); hosts that inject a
+# port (Railway) get theirs, since a public service must listen on $PORT.
+:{$PORT:81} {
 	# Path-based routing for Socket.IO mini-services.
 	# Never proxy a request to a client-supplied upstream address or port.
 	# The path prefix is fixed — a client cannot influence which upstream
 	# receives its connection.
+	#
+	# `handle_path` (not `handle`) is required: it STRIPS the prefix, so the
+	# mini-service receives the plain `/socket.io/` its engine.io server is
+	# configured with. With `handle` the prefix arrives intact and every
+	# request 404s.
+	#
+	# The client must put the prefix in `opts.path`, never in the URL —
+	# socket.io-client reads a URL path as the *namespace* and would answer
+	# "Invalid namespace". See src/lib/socket-url.ts.
 
-	handle /_tick-stream/* {
+	handle_path /_tick-stream/* {
 		reverse_proxy {$TICK_STREAM_UPSTREAM:localhost:3005} {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
@@ -13,7 +24,7 @@
 		}
 	}
 
-	handle /_order-book/* {
+	handle_path /_order-book/* {
 		reverse_proxy {$ORDER_BOOK_UPSTREAM:localhost:3004} {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
