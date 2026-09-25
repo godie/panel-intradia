@@ -65,3 +65,5 @@ mini-services/*/node_modules/
 mini-services/*/service.log
 mini-services/*/.bun/
 db/
+# Tool output artifacts — never commit these
+tool-results/

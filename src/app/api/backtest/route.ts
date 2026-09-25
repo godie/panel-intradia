@@ -38,6 +38,7 @@ import type { CustomStrategy } from "@/lib/custom-strategies";
 import { customStrategyToStrategy } from "@/lib/custom-strategies";
 import { STRATEGY_LIST } from "@/lib/strategies";
 import type { StrategyAction } from "@/lib/strategies";
+import { isValidSymbolFormat } from "@/lib/providers/symbols";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,10 +46,6 @@ export const dynamic = "force-dynamic";
 const VALID_INTERVALS: BacktestInterval[] = ["15m", "1h", "4h", "1d"];
 const VALID_ACTIONS: StrategyAction[] = ["BUY", "HOLD", "SHORT", "WAIT"];
 const VALID_SIZING: PositionSizing[] = ["full", "fixed_fractional", "half_kelly", "kelly"];
-
-function isValidSymbolFormat(s: string): boolean {
-  return /^[A-Z]{2,12}USDT$/.test(s) && s.length >= 6 && s.length <= 16;
-}
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
