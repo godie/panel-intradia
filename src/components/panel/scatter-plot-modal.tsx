@@ -230,7 +230,7 @@ export function ScatterPlotModal({
               {assetA} ↔ {assetB}
             </h3>
             <p className="text-[10px] text-muted-foreground">
-              Scatter de returns · {interval} · {limit} velas
+              {t("scatter.title").replace("{interval}", interval).replace("{limit}", String(limit))}
             </p>
           </div>
           <button

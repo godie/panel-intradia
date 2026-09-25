@@ -47,10 +47,10 @@ export function RsiGauge({ rsi, unavailable, series, timeframe }: Props) {
     zone === "overbought" ? "#e2604f" : zone === "oversold" ? "#5fbf8f" : "#e8b04b";
   const label =
     zone === "overbought"
-      ? "Sobrecomprado"
+      ? t("rsi.overbought")
       : zone === "oversold"
-        ? "Sobrevendido"
-        : "Neutral";
+        ? t("rsi.oversold")
+        : t("common.neutral");
 
   // Mini RSI sparkline (last 40 points).
   const spark = (series ?? [])
