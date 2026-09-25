@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useLanguage } from "@/hooks/use-language";
 import { SYMBOL_META } from "@/lib/types";
 import { X, Loader2, TrendingUp, TrendingDown } from "lucide-react";
 
@@ -55,6 +56,7 @@ export function ScatterPlotModal({
   open,
   onClose,
 }: Props) {
+  const { t } = useLanguage();
   const [data, setData] = useState<ReturnsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,7 +237,7 @@ export function ScatterPlotModal({
             type="button"
             onClick={onClose}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
-            aria-label="Cerrar"
+            aria-label={t("common.close")}
           >
             <X className="h-4 w-4" aria-hidden />
           </button>

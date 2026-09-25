@@ -84,7 +84,7 @@ export function KeyboardHelpModal({ open, onClose }: Props) {
             type="button"
             onClick={onClose}
             className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
-            aria-label="Cerrar"
+            aria-label={t("common.close")}
           >
             <X className="h-4 w-4" aria-hidden />
           </button>

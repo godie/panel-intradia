@@ -211,7 +211,7 @@ export function RangeBar({
       {/* Scale labels */}
       <div className="flex justify-between text-[10px] text-muted-foreground/70 tnum">
         <span>${fmtP(min)}</span>
-        <span className="text-muted-foreground/50">rango S/R</span>
+        <span className="text-muted-foreground/50">{t("rangeBar.ariaLabel")}</span>
         <span>${fmtP(max)}</span>
       </div>
     </div>

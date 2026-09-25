@@ -16,19 +16,7 @@ const ALLOWED = [
  * compares by equality, so a stale entry fails the test too.
  * Each entry is "<file> :: <literal>".
  */
-const KNOWN_DEBT: string[] = [
-  "src/components/panel/sparkline.tsx :: Mini gráfico sparkline de precio con EMA55 y EMA200 superpuestas",
-  "src/components/panel/price-alerts-button.tsx :: Cerrar",
-  "src/components/panel/price-alerts-button.tsx :: Eliminar alerta",
-  "src/components/panel/keyboard-help-modal.tsx :: Cerrar",
-  "src/components/panel/scatter-plot-modal.tsx :: Cerrar",
-  "src/components/panel/strategy-consensus.tsx :: Neutral",
-  "src/components/panel/strategy-consensus.tsx :: Buy",
-  "src/components/panel/correlation-matrix.tsx :: Número de velas",
-  "src/components/panel/stop-loss-selector.tsx :: Multiplicador ATR del stop loss",
-  "src/components/panel/language-selector.tsx :: Select language",
-  "src/components/panel/range-bar.tsx :: rango S/R",
-];
+const KNOWN_DEBT: string[] = [];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
