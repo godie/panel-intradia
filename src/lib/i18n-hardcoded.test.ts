@@ -12,11 +12,13 @@ const ALLOWED = [
 ];
 
 /**
- * Hardcoded strings we know about. This list MUST shrink: the assertion below
- * compares by equality, so a stale entry fails the test too.
+ * Hardcoded strings we know about. Empty on purpose: no new debt is accepted
+ * here. Any entry means someone deferred translation work, and the equality
+ * assertion below fails both on new debt and on stale entries. Do not re-add
+ * anything — translate it instead.
  * Each entry is "<file> :: <literal>".
  */
-const KNOWN_DEBT: string[] = [];
+const KNOWN_DEBT: string[] = []; // empty on purpose: no new debt is accepted
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
