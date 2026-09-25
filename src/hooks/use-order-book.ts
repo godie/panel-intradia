@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import { buildGatewaySocketUrl } from "@/lib/socket-url";
+import {
+  buildGatewaySocketTarget,
+  type GatewaySocketTarget,
+} from "@/lib/socket-url";
 
 export type OrderLevel = { price: number; qty: number };
 
@@ -28,23 +31,19 @@ export type OrderBookState = {
  * port 3004) and exposes the latest L2 depth snapshot per symbol.
  *
  * Connection: auto-detects gateway vs direct-dev-server (same pattern as
- * useTickStream). Routes through Caddy when served directly in development,
- * preserves HTTPS for secure deployments, and uses a relative URL when already
- * behind the gateway.
+ * useTickStream). The gateway prefix goes in `path`, NOT in the URL —
+ * socket.io-client reads a URL path as the namespace. See socket-url.ts.
  *
- * The socket.io client `path` is set to "/socket.io/" to match the server
- * side — the previous "/" collided with the mini-service's /health
- * endpoint and was intercepted by engine.io with a 400 "Transport unknown".
- *
- * Caddy routes `/_order-book/*` to this service (path-based, not query-param).
+ * Caddy routes `/_order-book/*` to this service (path-based, not query-param)
+ * and `handle_path` strips the prefix before proxying.
  *
  * Only the top-of-book (best bid + best ask) is consumed by the RangeBar
  * right now, but the full 20 levels are available for future use (depth
  * chart, bid/ask imbalance, etc.).
  */
-function buildSocketUrl(): string {
-  if (typeof window === "undefined") return buildGatewaySocketUrl("3004");
-  return buildGatewaySocketUrl("3004", window.location);
+function buildSocketTarget(): GatewaySocketTarget {
+  if (typeof window === "undefined") return buildGatewaySocketTarget("3004");
+  return buildGatewaySocketTarget("3004", window.location);
 }
 
 export function useOrderBook(enabled: boolean = true): OrderBookState {
@@ -59,8 +58,9 @@ export function useOrderBook(enabled: boolean = true): OrderBookState {
   useEffect(() => {
     if (!enabled) return;
 
-    const socket = io(buildSocketUrl(), {
-      path: "/socket.io/",
+    const target = buildSocketTarget();
+    const socket = io(target.url || undefined, {
+      path: target.path,
       transports: ["websocket"],
       reconnection: true,
       reconnectionAttempts: Infinity,

@@ -6,6 +6,15 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUN_BIN="$(command -v bun || echo /usr/local/bin/bun)"
 
+# `setsid` is Linux-only — on macOS/BSD it doesn't exist, so the services would
+# silently never start. Plain `nohup ... &` is enough to survive this script
+# exiting (SIGHUP is ignored).
+if command -v setsid >/dev/null 2>&1; then
+  SETSID="setsid"
+else
+  SETSID=""
+fi
+
 # Kill any existing instances
 pkill -9 -f "next dev" 2>/dev/null
 pkill -9 -f "mini-services/tick-stream" 2>/dev/null
@@ -15,14 +24,14 @@ sleep 1
 # Start Next.js dev server (port 3000)
 (
   cd "$ROOT"
-  setsid nohup "$BUN_BIN" run dev > dev.log 2>&1 < /dev/null &
+  $SETSID nohup "$BUN_BIN" run dev > dev.log 2>&1 < /dev/null &
 ) &
 
 # Start mini-services
 for svc in tick-stream order-book; do
   (
     cd "$ROOT/mini-services/$svc"
-    setsid nohup "$BUN_BIN" run dev > /tmp/$svc.log 2>&1 < /dev/null &
+    $SETSID nohup "$BUN_BIN" run dev > /tmp/$svc.log 2>&1 < /dev/null &
   ) &
 done
 
