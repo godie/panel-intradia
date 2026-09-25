@@ -1719,6 +1719,9 @@ const fr: Dict = {
 
   "card.spotPrice": "Prix spot · USD",
   "card.change24h": "24h",
+  "card.stateAlcista": "Haussier",
+  "card.stateBajista": "Baissier",
+  "card.stateComprimido": "Comprimé",
   "card.tickBadge": "TICK",
   "card.tickAgo": "tick il y a",
   "card.bollinger": "BOLLINGER",
