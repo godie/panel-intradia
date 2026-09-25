@@ -17,9 +17,6 @@ const ALLOWED = [
  * Each entry is "<file> :: <literal>".
  */
 const KNOWN_DEBT: string[] = [
-  "src/app/page.tsx :: Actualizar ahora los datos del panel",
-  "src/app/page.tsx :: Exportar análisis actual como JSON",
-  "src/app/page.tsx :: Atajos: R=refrescar, C=colapsar todo, E=expandir todo, ?=ayuda",
   "src/components/panel/sparkline.tsx :: Mini gráfico sparkline de precio con EMA55 y EMA200 superpuestas",
   "src/components/panel/price-alerts-button.tsx :: Cerrar",
   "src/components/panel/price-alerts-button.tsx :: Eliminar alerta",
