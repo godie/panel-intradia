@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cerrar toda la deuda de i18n del dashboard (una clave que falta en francés y 18 literales hardcodeados en componentes) y dejar tres tests que impidan que vuelva a acumularse.
+**Goal:** Traducir los 18 literales que el detector es *capaz de ver* y las 3 claves que faltaban en francés (más las claves nuevas asociadas), y dejar tres tests que impidan que esa deuda vuelva. **No cierra toda la deuda de i18n**: el detector de la Task 3 es un escáner de líneas, no un parser de JSX, y queda estructuralmente ciego a varias clases de literales (atributos con template literal, texto JSX en su propia línea, valores de atributo en comillas simples, y literales que comparten línea con una llamada `t(`). Esas clases se difieren explícitamente — ver *Additional findings* para la deuda concreta y el follow-up.
 
 **Architecture:** Tres capas. (1) Un test de paridad que compara los 4 diccionarios entre sí. (2) Un test que valida que cada clave literal pasada a `t()` exista. (3) Un test que escanea los componentes buscando literales visibles, con una allowlist de tokens no traducibles y una lista `KNOWN_DEBT` que **debe encogerse** con cada fix (el test falla si aparece deuda nueva *o* si una entrada de la lista quedó obsoleta). Los fixes en sí son mecánicos: agregar la clave en los 4 idiomas (o reusar una existente) y reemplazar el literal por `t()`.
 
@@ -690,7 +690,9 @@ git commit -m "test(i18n): la lista de deuda hardcodeada queda vacia"
 
 Recomendación: un plan aparte de borrado de código muerto. **No** mezclarlo con i18n: son 46 archivos y el riesgo de borrar algo que se iba a usar es una decisión de producto, no de traducción.
 
-**`scatter-plot-modal.tsx` no se renderiza en ningún lado** (verificado por grep). Se traduce igual (Task 6) porque es barato, pero si se decide borrarlo, la Task 6 pierde su Step 4.
+**`scatter-plot-modal.tsx` SÍ se renderiza** (corrección del review final: la afirmación original "no se renderiza en ningún lado" era falsa). `correlation-matrix.tsx:7` lo importa y `:301` lo renderiza, así que es alcanzable haciendo clic en una celda fuera de la diagonal del heatmap de correlación. Sus ~15 strings hardcodeados (p. ej. `scatter-plot-modal.tsx:316` "Divergentes", `:320` "Regresión") son deuda **viva y visible al usuario**, no el caso "componente muerto barato de traducir" que asumía el plan. Es un ítem de follow-up real, **no** un candidato a borrado de código muerto.
+
+**Puntos ciegos del detector `findLiterals` (deuda real que el guard NO ve).** El detector es un escáner de líneas, no un parser de JSX. No matchea: (a) atributos con template literal `` title={`…`} ``, (b) texto JSX en su propia línea entre tags, (c) valores de atributo en comillas simples de menos de 3 caracteres, y (d) cualquier literal que comparta línea con una llamada `t(` (la línea entera se salta). Deuda concreta que esto esconde, verificada por el reviewer: `asset-card.tsx:502` ("Cruce"), `sparkline.tsx:310` ("Precio"), `correlation-matrix.tsx:134` ("Correlación no disponible"), `:146` ("Correlación (Pearson)"), `scatter-plot-modal.tsx:316` ("Divergentes"), `:320` ("Regresión"), `page.tsx:539` ("No se pudo cargar el análisis."), `macd-panel.tsx:132` (aria-label con template literal), más los 11 tooltips `` title={`…`} `` ya estacionados durante la ejecución. **Fix del follow-up:** extender `findLiterals` para que también matchee texto JSX en su propia línea y atributos con template literal, y luego traducir lo que aparezca. Extender el matcher es un follow-up deliberado, no parte de este plan.
 
 **`backtest.close` es un duplicado de `common.close`** (mismo valor, 4 idiomas). Candidato a unificar en el plan de limpieza.
 
@@ -708,7 +710,7 @@ Recomendación: un plan aparte de borrado de código muerto. **No** mezclarlo co
 | 4 literales invisibles al regex | Task 6 |
 | Falsos positivos (tipos, comentarios, arrow params) | documentados en Context; el detector los ignora por diseño (salta comentarios y líneas con `t(`) |
 | 46 primitivos shadcn muertos | Additional findings (fuera de alcance, con recomendación) |
-| `scatter-plot-modal` no renderizado | Additional findings |
+| `scatter-plot-modal` SÍ renderizado (deuda viva, no código muerto) | Additional findings |
 | `backtest.close` duplicado | Additional findings |
 
 **2. Placeholder scan:** sin TBD/TODO. Todos los steps con código tienen el código. Las traducciones están escritas en los 4 idiomas, no descritas.

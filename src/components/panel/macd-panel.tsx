@@ -129,7 +129,7 @@ export function MacdPanel({ macd, series, unavailable, timeframe, macdCross, bar
       <div
         className="relative w-full"
         style={{ height: BAR_H * 2 }}
-        aria-label={`Histograma MACD, último valor ${histValue.toFixed(2)}`}
+        aria-label={t("macd.histogramAria").replace("{value}", histValue.toFixed(2))}
         role="img"
       >
         {/* Baseline */}

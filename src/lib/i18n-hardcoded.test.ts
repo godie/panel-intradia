@@ -17,6 +17,17 @@ const ALLOWED = [
  * assertion below fails both on new debt and on stale entries. Do not re-add
  * anything — translate it instead.
  * Each entry is "<file> :: <literal>".
+ *
+ * IMPORTANT — `KNOWN_DEBT === []` means "no literal of the classes this
+ * detector can see", NOT "the codebase has no hardcoded strings". `findLiterals`
+ * is a line-scanner, structurally blind to (at least):
+ *   - template-literal attribute values, e.g. title={`…`}
+ *   - own-line JSX text (text sitting on its own line between tags)
+ *   - single-quoted attribute values shorter than 3 characters
+ *   - any literal sharing a line with a `t()` call (the line is skipped)
+ * Real user-visible Spanish remains in these blind spots. Do not read the empty
+ * list as a clean i18n state. See the plan's "Additional findings" for the
+ * concrete file:line debt and the follow-up to extend the matcher.
  */
 const KNOWN_DEBT: string[] = []; // empty on purpose: no new debt is accepted
 
@@ -29,7 +40,13 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Attribute values and single-line JSX text, skipping translated lines. */
+/**
+ * Attribute values and single-line JSX text, skipping translated lines.
+ * Heuristic, not a JSX parser: it sees double-quoted attributes with >=3 chars
+ * and text before a same-line `>`, and misses template-literal attributes,
+ * own-line JSX text, short single-quoted values, and anything on a line that
+ * contains `t(`. See the KNOWN_DEBT note above.
+ */
 function findLiterals(file: string): string[] {
   const found: string[] = [];
   const lines = readFileSync(file, "utf8").split("\n");

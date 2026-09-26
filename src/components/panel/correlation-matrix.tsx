@@ -143,7 +143,7 @@ export function CorrelationMatrix({ pollMs = 120_000 }: Props) {
       {/* Header with timeframe + window selectors */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          Correlación (Pearson)
+          {t("overview.correlation")}
         </span>
         <div className="ml-auto flex items-center gap-1">
           {/* Timeframe selector */}
