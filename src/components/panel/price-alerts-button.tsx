@@ -101,7 +101,7 @@ export function PriceAlertsButton({
                 type="button"
                 onClick={() => setOpen(false)}
                 className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
-                aria-label="Cerrar"
+                aria-label={t("common.close")}
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>
@@ -213,7 +213,7 @@ export function PriceAlertsButton({
                           type="button"
                           onClick={() => onRemove(alert.id)}
                           className="rounded p-1 text-muted-foreground/50 transition-colors hover:bg-white/10 hover:text-[#e2604f]"
-                          aria-label="Eliminar alerta"
+                          aria-label={t("alerts.deleteAria")}
                         >
                           <Trash2 className="h-3 w-3" aria-hidden />
                         </button>

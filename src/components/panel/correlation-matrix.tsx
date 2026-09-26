@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/hooks/use-language";
 import { SYMBOL_META } from "@/lib/types";
 import { Loader2 } from "lucide-react";
 import { ScatterPlotModal } from "./scatter-plot-modal";
@@ -64,6 +65,7 @@ function interpretCorrelation(r: number | null): string {
  * Fetched from /api/correlation?interval=X&limit=Y (120s cache per combo).
  */
 export function CorrelationMatrix({ pollMs = 120_000 }: Props) {
+  const { t } = useLanguage();
   const [data, setData] = useState<Response | null>(null);
   const [loading, setLoading] = useState(true);
   const [interval, setIntervalVal] = useState<string>("4h");
@@ -141,7 +143,7 @@ export function CorrelationMatrix({ pollMs = 120_000 }: Props) {
       {/* Header with timeframe + window selectors */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          Correlación (Pearson)
+          {t("overview.correlation")}
         </span>
         <div className="ml-auto flex items-center gap-1">
           {/* Timeframe selector */}
@@ -167,7 +169,7 @@ export function CorrelationMatrix({ pollMs = 120_000 }: Props) {
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
             className="rounded-md border border-white/8 bg-black/20 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground focus-visible:outline-2 focus-visible:outline-[#4fa8d8]"
-            aria-label="Número de velas"
+            aria-label={t("correlation.limitAria")}
           >
             {WINDOW_SIZES.map((w) => (
               <option key={w} value={w} className="bg-card text-foreground">

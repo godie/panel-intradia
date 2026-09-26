@@ -88,8 +88,8 @@ export function StrategyConsensus({ data }: Props) {
         </div>
         <div className="mt-1 flex justify-between text-[9px] text-muted-foreground/50">
           <span className="text-[#e2604f]">{t("strategy.shortLabel")}</span>
-          <span>Neutral</span>
-          <span className="text-[#5fbf8f]">Buy</span>
+          <span>{t("common.neutral")}</span>
+          <span className="text-[#5fbf8f]">{t("strategy.buyLabel")}</span>
         </div>
       </div>
 
