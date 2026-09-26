@@ -54,3 +54,53 @@ model CrossEvent {
   @@index([symbol, type, detectedAt])
   @@index([detectedAt])
 }
+
+/// Paper-trading bot config — a single row (id "default"). No real orders
+/// are ever placed; this only drives the simulated BotTrade lifecycle.
+model BotConfig {
+  id                 String    @id @default("default")
+  symbol             String    @default("BTCUSDT")
+  initialCapital     Float     @default(1000)
+  /// Realized equity — only updated when a BotTrade closes (mirrors
+  /// runBacktest's equity accounting in src/lib/backtest.ts).
+  equity             Float     @default(1000)
+  minConfidence      Int       @default(60)
+  stopLossPct        Float     @default(5)
+  takeProfitPct      Float     @default(10)
+  maxHoldTicks       Int       @default(20)
+  positionSizing     String    @default("full")
+  fixedFractionalPct Float     @default(25)
+  feeBps             Int       @default(10)
+  isActive           Boolean   @default(true)
+  lastTickAt         DateTime?
+  updatedAt          DateTime  @updatedAt
+}
+
+/// One simulated trade opened/closed by the bot engine (src/lib/bot/engine.ts).
+model BotTrade {
+  id              String    @id @default(cuid())
+  symbol          String
+  /// "BUY" or "SHORT".
+  action          String
+  /// "OPEN" or "CLOSED".
+  status          String
+  entryPrice      Float
+  entryTime       DateTime
+  /// BotConfig.equity snapshot at entry — the basis for position sizing.
+  entryEquity     Float
+  positionSizePct Float
+  confidence      Int
+  /// Consensus level at entry, e.g. "strong_buy".
+  decisionLabel   String
+  ticksOpen       Int       @default(0)
+  exitPrice       Float?
+  exitTime        DateTime?
+  /// "stop_loss" | "take_profit" | "max_hold" | "signal_exit".
+  exitReason      String?
+  pnl             Float?
+  pnlPct          Float?
+  feesPaid        Float?
+
+  @@index([status])
+  @@index([symbol, entryTime])
+}

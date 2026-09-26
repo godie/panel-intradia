@@ -50,7 +50,7 @@ function decimalsForPrice(price: number): number {
   return 4;
 }
 
-function buildAnalysis(
+export function buildAnalysis(
   symbol: string,
   klines: import("@/lib/providers/types").Kline[],
   ticker: Awaited<ReturnType<typeof providerRouter.getTicker24h>>["ticker"],
