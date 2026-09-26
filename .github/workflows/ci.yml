@@ -82,6 +82,9 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Generate Prisma client
+        run: bun run db:generate
+
       - name: Run tests
         run: bun test
 
