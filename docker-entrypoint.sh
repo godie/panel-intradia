@@ -40,5 +40,12 @@ if [ "${SKIP_DB_INIT:-0}" = "0" ]; then
   echo "[entrypoint] DB ready."
 fi
 
+# ALL_IN_ONE=1 runs the whole stack (app + both mini-services + Caddy) in this
+# single container — see docker/all-in-one.sh. Opt-in so compose keeps running
+# one process per container.
+if [ "${ALL_IN_ONE:-0}" = "1" ]; then
+  exec /usr/local/bin/all-in-one.sh
+fi
+
 # Replace shell with the container command (PID 1 signal handling).
 exec "$@"

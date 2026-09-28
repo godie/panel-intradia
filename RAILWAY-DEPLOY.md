@@ -84,7 +84,56 @@ https://panel-intradia-prod.up.railway.app/
 
 ---
 
-## Opción B: stack completo (app + mini-services + Caddy)
+## Opción B: all-in-one en 1 servicio (la que entra en el plan Free)
+
+Corre **todo en un contenedor**: la app (8000), `tick-stream` (3005),
+`order-book` (3004) y Caddy en el puerto público. Es la misma topología que
+`docker-compose.yml`, sin necesitar 4 servicios — Railway en **plan Free corta
+en 3**, así que Caddy como servicio aparte no entra.
+
+- **Root Directory**: `.` · **Dockerfile**: `Dockerfile` · **Start command**: el default
+- **Variables**:
+  ```
+  ALL_IN_ONE=1
+  CADDY_PORT=8081
+  PORT=8000
+  DATABASE_URL=file:/app/db/custom.db
+  BINANCE_BASE_URL=https://api.binance.us/api/v3
+  CORS_ORIGINS=https://<tu-dominio>.up.railway.app
+  ```
+- **Volume**: montar en `/app/db`
+- **Dominio**: público, con **target port 8081** (donde escucha Caddy)
+
+Caddy proxea `/_tick-stream/*` y `/_order-book/*` a los mini-services locales y
+todo lo demás a la app, así que el browser habla con **un solo origen** y no hay
+que tocar el frontend. `CADDY_PORT` es 8081 (no 81) para no necesitar la
+capability de puertos privilegiados, y `CORS_ORIGINS` es el dominio público de
+este mismo servicio (el `Origin` que manda el browser).
+
+### Verificar que quedó bien
+
+Abrí `https://<tu-dominio>/status`. La página combina las dos señales y te dice
+cuál es el problema:
+
+| Diagnóstico | Significa |
+|---|---|
+| Todo en orden | servidor y browser llegan |
+| El servidor llega pero el browser no | gateway/paths mal (`CORS_ORIGINS`, `handle_path`) |
+| El browser llega pero el servidor no | `TICK_STREAM_UPSTREAM` / `ORDER_BOOK_UPSTREAM` mal |
+| Ninguno llega | mini-services no arrancaron |
+
+> Con el all-in-one no hacen falta `TICK_STREAM_UPSTREAM` /
+> `ORDER_BOOK_UPSTREAM`: el probe server-side usa los defaults
+> (`localhost:3005` / `localhost:3004`), que es donde escuchan los
+> mini-services dentro del mismo contenedor.
+
+---
+
+## Opción C: stack completo en 4 servicios (requiere plan pago)
+
+Sólo si tenés un plan que permita 4 servicios. Es la misma topología que la
+Opción B pero con Caddy como servicio aparte y los mini-services en la red
+privada (`<servicio>.railway.internal`).
 
 Replica lo que corre en Docker local: **4 servicios**, y **sólo Caddy con
 dominio público**. Los otros tres quedan en la red privada

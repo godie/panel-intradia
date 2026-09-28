@@ -1,6 +1,8 @@
-# Listen port. docker-compose leaves PORT unset (→ 81); hosts that inject a
-# port (Railway) get theirs, since a public service must listen on $PORT.
-:{$PORT:81} {
+# Listen port. Deliberately NOT `$PORT`: in the all-in-one image (app +
+# mini-services + Caddy in one container) `PORT` is Next's, so Caddy needs its
+# own variable. docker-compose leaves it unset (→ 81); the all-in-one sets it
+# (→ 8081, above the privileged range so it needs no capability).
+:{$CADDY_PORT:81} {
 	# Path-based routing for Socket.IO mini-services.
 	# Never proxy a request to a client-supplied upstream address or port.
 	# The path prefix is fixed — a client cannot influence which upstream
