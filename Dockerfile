@@ -126,10 +126,13 @@ COPY --from=deps    --chown=bun:bun /app/node_modules ./node_modules
 COPY --chown=bun:bun docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Persistent SQLite directory — bind-mount a volume here in compose.
+# Persistent SQLite directory — a Docker/Railway volume mounts here.
 RUN mkdir -p /app/db && chown -R bun:bun /app/db
 
-USER bun
+# NOTE: deliberately NO `USER bun`. A mounted volume is owned by root, so the
+# entrypoint (which starts as root) chowns /app/db and then re-execs itself as
+# `bun`. Without that, `prisma db push` dies with "unable to open database
+# file" because the app user cannot write to the root-owned mount.
 
 EXPOSE 8000 3004 3005
 
