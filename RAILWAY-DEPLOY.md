@@ -178,6 +178,12 @@ DB vacía (se pierde el historial de cruces).
 DATABASE_URL=file:/app/db/custom.db
 ```
 
+> **El dueño del volumen lo maneja el entrypoint.** Un volumen monta como
+> `root` y la app corre como `bun`, así que `docker-entrypoint.sh` arranca como
+> root, hace `chown -R bun:bun /app/db` y se re-ejecuta con `setpriv` para que
+> el `prisma db push` y el server corran sin privilegios. Sin eso el arranque
+> muere con `unable to open database file: /app/db/custom.db`.
+
 ### Opción 2: Postgres (si algún día hace falta)
 
 Sólo tiene sentido si pasás a **varias réplicas** o necesitás escritores
