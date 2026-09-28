@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useLanguage } from "@/hooks/use-language";
 
 type Props = {
   closes: number[];
@@ -61,6 +62,7 @@ export function Sparkline({
   ichimokuKijun,
   height = 150,
 }: Props) {
+  const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -295,7 +297,7 @@ export function Sparkline({
       <canvas
         ref={canvasRef}
         style={{ width: "100%", height }}
-        aria-label="Mini gráfico sparkline de precio con EMA55 y EMA200 superpuestas"
+        aria-label={t("sparkline.ariaLabel")}
         role="img"
       />
       {/* Legend */}

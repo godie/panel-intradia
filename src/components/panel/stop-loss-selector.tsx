@@ -84,7 +84,7 @@ export function StopLossSelector({
           value={multiplier}
           onChange={(e) => handleMultiplierChange(Number(e.target.value))}
           className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[9px] font-medium text-foreground/80 focus-visible:outline-2 focus-visible:outline-[#b48cff]"
-          aria-label="Multiplicador ATR del stop loss"
+          aria-label={t("stopLoss.multiplierAria")}
         >
           {MULTIPLIERS.map((m) => (
             <option key={m} value={m} className="bg-card text-foreground">

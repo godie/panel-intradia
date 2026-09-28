@@ -404,7 +404,7 @@ export default function Page() {
                 onClick={() => fetchAll(true)}
                 disabled={refreshing}
                 className="inline-flex items-center gap-2 rounded-md border border-[#4fa8d8]/30 bg-[#4fa8d8]/10 px-3.5 py-1.5 text-xs font-medium text-[#4fa8d8] transition-colors hover:bg-[#4fa8d8]/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8] disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Actualizar ahora los datos del panel"
+                aria-label={t("header.refreshAria")}
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
@@ -429,7 +429,7 @@ export default function Page() {
                 onClick={() => exportSnapshot(tickerItems.filter((i): i is AnalysisResponse => i != null))}
                 className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-foreground/70 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
                 aria-label={t("header.export")}
-                title="Exportar análisis actual como JSON"
+                title={t("header.exportAria")}
               >
                 <Download className="h-3.5 w-3.5" aria-hidden />
                 <span className="hidden sm:inline">{t("header.export")}</span>
@@ -469,7 +469,7 @@ export default function Page() {
                 type="button"
                 onClick={() => setHelpOpen(true)}
                 className="hidden items-center gap-1 rounded-md border border-white/8 bg-black/20 px-2.5 py-1.5 text-[10px] text-muted-foreground/50 transition-colors hover:bg-white/10 hover:text-foreground/80 focus-visible:outline-2 focus-visible:outline-[#4fa8d8] md:inline-flex"
-                title="Atajos: R=refrescar, C=colapsar todo, E=expandir todo, ?=ayuda"
+                title={t("header.shortcutsAria")}
                 aria-label={t("header.shortcuts")}
               >
                 <Keyboard className="h-3 w-3" aria-hidden />

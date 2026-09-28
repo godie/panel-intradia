@@ -86,8 +86,10 @@ export function MacdPanel({ macd, series, unavailable, timeframe, macdCross, bar
           }`}
         >
           <Zap className="h-3 w-3 animate-pulse" aria-hidden />
-          Cruce MACD {macdCross.direction === "bullish" ? "alcista" : "bajista"} · hace{" "}
-          {macdCross.candles_since_cross} vela(s)
+          {t(macdCross.direction === "bullish" ? "macd.crossBull" : "macd.crossBear").replace(
+            "{n}",
+            String(macdCross.candles_since_cross ?? 0),
+          )}
         </div>
       )}
 
@@ -103,8 +105,11 @@ export function MacdPanel({ macd, series, unavailable, timeframe, macdCross, bar
             }`}
           >
             <Zap className="h-2.5 w-2.5" aria-hidden />
-            Giro momentum {macdCross.momentum_flip_direction === "bullish" ? "alcista" : "bajista"} · hace{" "}
-            {macdCross.candles_since_flip} vela(s)
+            {t(
+              macdCross.momentum_flip_direction === "bullish"
+                ? "macd.momentumBull"
+                : "macd.momentumBear",
+            ).replace("{n}", String(macdCross.candles_since_flip ?? 0))}
           </div>
         )}
 
@@ -124,7 +129,7 @@ export function MacdPanel({ macd, series, unavailable, timeframe, macdCross, bar
       <div
         className="relative w-full"
         style={{ height: BAR_H * 2 }}
-        aria-label={`Histograma MACD, último valor ${histValue.toFixed(2)}`}
+        aria-label={t("macd.histogramAria").replace("{value}", histValue.toFixed(2))}
         role="img"
       >
         {/* Baseline */}

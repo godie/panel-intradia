@@ -13,7 +13,7 @@ import { useLanguage } from "@/hooks/use-language";
  * Uses a click-outside-to-close pattern.
  */
 export function LanguageSelector() {
-  const { lang, setLang } = useLanguage();
+  const { t, lang, setLang } = useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -36,7 +36,7 @@ export function LanguageSelector() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-foreground/70 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
-        aria-label="Select language"
+        aria-label={t("header.languageAria")}
         aria-expanded={open}
       >
         <Globe className="h-3.5 w-3.5" aria-hidden />
