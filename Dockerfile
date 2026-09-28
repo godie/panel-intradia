@@ -65,6 +65,13 @@ RUN bunx prisma generate
 FROM node:${NODE_VERSION}-bookworm-slim AS node-bin
 
 # =============================================================================
+# Caddy binary, copied out of the official image so the ALL_IN_ONE variant can
+# proxy without needing a fourth service on the host. Caddy's official builds
+# are static (CGO disabled), so the Alpine binary runs on this Debian image.
+# =============================================================================
+FROM caddy:2-alpine AS caddy-bin
+
+# =============================================================================
 # Stage 3: builder — build the Next.js standalone bundle.
 # =============================================================================
 FROM base AS builder
@@ -125,6 +132,13 @@ COPY --from=deps    --chown=bun:bun /app/node_modules ./node_modules
 # is a no-op; if the volume is fresh, it creates the schema.
 COPY --chown=bun:bun docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Caddy + its config + the all-in-one launcher, for hosts that can't run the
+# four compose services (see docker/all-in-one.sh, enabled with ALL_IN_ONE=1).
+COPY --from=caddy-bin /usr/bin/caddy /usr/local/bin/caddy
+COPY --chown=bun:bun Caddyfile /etc/caddy/Caddyfile
+COPY --chown=bun:bun docker/all-in-one.sh /usr/local/bin/all-in-one.sh
+RUN chmod +x /usr/local/bin/all-in-one.sh
 
 # Persistent SQLite directory — a Docker/Railway volume mounts here.
 RUN mkdir -p /app/db && chown -R bun:bun /app/db
