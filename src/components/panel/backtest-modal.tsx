@@ -39,6 +39,7 @@ import {
   Download,
   Upload,
 } from "lucide-react";
+import { WalkForwardModal } from "@/components/panel/walk-forward-modal";
 
 type Props = {
   /** The strategy to backtest. May be a predefined id (e.g. "trend_buy") or
@@ -109,6 +110,7 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
   const [saved, setSaved] = useState<SavedBacktest[]>([]);
   const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
   const [compareView, setCompareView] = useState<SavedBacktest[] | null>(null);
+  const [walkForwardOpen, setWalkForwardOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -964,6 +966,15 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                       <Save className="h-3.5 w-3.5" aria-hidden />
                       {t("backtest.save")}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setWalkForwardOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#b48cff]/30 bg-[#b48cff]/8 px-3 py-1.5 text-[11px] font-medium text-[#b48cff] transition-colors hover:bg-[#b48cff]/15"
+                      title={t("backtest.walkForwardDesc")}
+                    >
+                      <BarChart3 className="h-3.5 w-3.5" aria-hidden />
+                      {t("backtest.walkForward")}
+                    </button>
                     {saveMsg && (
                       <span className="text-[11px] text-[#5fbf8f] flex items-center gap-1 animate-card-enter">
                         <Check className="h-3 w-3" aria-hidden />
@@ -1289,6 +1300,25 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
           </div>
         </div>
       </div>
+
+      <WalkForwardModal
+        strategy={strategy}
+        predefined={predefined}
+        defaultSymbol={symbol}
+        currentParams={{
+          interval,
+          minConfidence,
+          initialCapital,
+          stopLossPct,
+          takeProfitPct,
+          maxHoldCandles,
+          positionSizing,
+          fixedFractionalPct,
+          feeBps,
+        }}
+        open={walkForwardOpen}
+        onClose={() => setWalkForwardOpen(false)}
+      />
     </div>
   );
 }
