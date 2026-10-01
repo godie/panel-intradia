@@ -3771,3 +3771,165 @@ Stage Summary:
   in ES: 5-symbol backtest ran, per-symbol breakdown table rendered with
   sorted rows, aggregated equity curve displayed. Zero errors.
 - **Branch:** `dm/round-34` (based on `origin/main` 465da76).
+
+---
+Task ID: round-35
+Agent: Z.ai Code (continuation)
+Task: Walk-forward optimization — re-apply the walk-forward engine + UI
+that was previously written but lost in a sandbox reset.
+
+Work Log:
+- Pulled origin/main (4c5409c — PR #38 all-in-one Docker variant). Branch
+  `dm/round-35` was already pointing at 4c5409c (created earlier and then
+  reset); re-used it as the working branch.
+
+- === Walk-forward engine (src/lib/backtest.ts) ===
+  Appended after `computeDurationBuckets` (which is the last function in
+  the original file before the multi-symbol section). The new code is
+  self-contained and only reuses the existing private helpers
+  `buildSnapshots`, `entrySignalFires`, `computeStats`,
+  `computeDurationBuckets`, `emptyStats`, `calculatePositionSizePct`,
+  `computeTradePnl` and the `WARMUP` constant — no refactor of existing
+  code.
+  New types:
+    - `WalkForwardWindow` (index/startIndex/endIndex/inSampleCandles/
+      outOfSampleCandles/inSample/outOfSample)
+    - `WalkForwardRobustness` (avgOosReturnPct/avgIsReturnPct/efficiency/
+      positiveOosRate/robustnessRate/avgOosSharpe/avgOosMaxDD/
+      totalOosTrades)
+    - `WalkForwardResult` (symbol/interval/windows[]/robustness/strategy/
+      params/error?)
+  New functions:
+    - `runBacktestOnKlines(klines, params, provider)` — private helper
+      that mirrors `runBacktest()`'s trade simulation (SL/TP/max-hold/
+      signal-exit/end-of-data, Kelly/fixed_fractional/full sizing, fee
+      deduction per side, mark-to-market equity curve) but operates on a
+      pre-fetched kline slice. Reduced warmup:
+      `min(min(WARMUP, snapshots.length - 1), floor(snapshots.length / 2))`
+      so 200-candle windows can trade from candle 100 instead of never
+      trading. Returns the same `BacktestResult` shape; surfaces an inline
+      `error` when `klines.length < 30`.
+    - `runWalkForward(params)` — exported async. Accepts `BacktestParams &
+      { windowSize; inSampleRatio?; stepSize? }`. Fetches 1000 klines via
+      `providerRouter.getKlines(symbol, interval, 1000)` (uses
+      `res.klines` and `res.provider`). Splits into windows of
+      `windowSize` candles, stepping by `stepSize` (default = OOS size =
+      `windowSize * (1 - inSampleRatio)` so windows are contiguous). Each
+      window: IS = first `inSampleRatio` fraction, OOS = rest. Runs
+      `runBacktestOnKlines()` on each IS and OOS slice. Computes
+      robustness metrics via `computeRobustness()`. Returns
+      `WalkForwardResult`. Caps at 50 windows to avoid payload bloat.
+      `windowSize` clamped to [100, 1000], `inSampleRatio` to [0.3, 0.9],
+      `stepSize` to [10, 800] when provided.
+    - `emptyRobustness()` / `computeRobustness(windows)` — internal
+      helpers. NaN Sharpes treated as 0. efficiency = avgOos / avgIs with
+      ±Infinity preserved when avgIs = 0 (sentinel 0 when both are 0).
+      Per-window robustness: OOS ≥ 50% of IS return (and IS positive).
+
+- === API route (src/app/api/backtest/walk-forward/route.ts) ===
+  POST handler following the same pattern as `/api/backtest/route.ts`:
+    - Validates symbol via `isValidSymbolFormat()` regex (returns 400 on
+      bad shape).
+    - Resolves strategy from `strategyId` (predefined via STRATEGY_LIST)
+      or `customStrategy` (validated CustomStrategy shape).
+    - Accepts same body params as /api/backtest + `windowSize` (220-800,
+      default 500), `inSampleRatio` (0.3-0.9, default 0.7), `stepSize`
+      (optional, clamped to [10, 800]).
+    - Calls `runWalkForward()` and returns JSON.
+    - Standard catch block with empty `robustness` object on error.
+  `runtime = "nodejs"`, `dynamic = "force-dynamic"` (matches /api/backtest).
+
+- === Walk-forward modal (src/components/panel/walk-forward-modal.tsx) ===
+  New client component, purple-themed (#b48cff) to distinguish it from
+  the regular backtest modal (blue) and multi-symbol mode (also blue).
+  Props: { strategy, predefined?, defaultSymbol, currentParams
+    { interval, minConfidence, initialCapital, stopLossPct,
+       takeProfitPct, maxHoldCandles, positionSizing,
+       fixedFractionalPct, feeBps }, open, onClose }.
+  Config row (3 cols): symbol select (SYMBOLS dropdown), window-size
+  buttons (300/400/500/600), IS-ratio buttons (60%/70%/80%). "Run
+  Walk-Forward" button (purple, BarChart3 icon, spinner when loading).
+  Results: robustness summary panel (verdict badge Robust/Moderate/Overfit
+  based on efficiency ≥0.5 / ≥0.3 / <0.3, green/amber/red tinted) with 8
+  metrics in a 4-col grid (efficiency, avg IS return, avg OOS return,
+  positive OOS rate, robustness rate, avg OOS Sharpe, avg OOS max DD,
+  total OOS trades) + per-window table (Window #, IS return, OOS return,
+  IS trades, OOS trades, Efficiency with per-row color). Empty-state card
+  when no result yet. Escape closes (useEffect listener). z-index z-[60]
+  so it stacks above the parent backtest modal (z-50).
+  Uses React's "adjust state during render" pattern (track prevOpen) to
+  reset symbol/windowSize/inSampleRatio/result/error/loading when the
+  modal opens — avoids the set-state-in-effect lint rule.
+  Uses `useLanguage()` for all visible strings.
+
+- === Backtest modal wiring (src/components/panel/backtest-modal.tsx) ===
+  Imported `WalkForwardModal`. Added `walkForwardOpen` state. Added a
+  "Walk-Forward" button (purple, BarChart3 icon) next to the existing
+  "Save backtest" button — both inside the same flex row. Rendered
+  `<WalkForwardModal>` after the modal's outer `</div>` (still inside the
+  root fixed overlay div so Escape handling + click-outside behavior
+  works correctly). Passes the current strategy + all backtest params
+  (interval, minConfidence, initialCapital, stopLossPct, takeProfitPct,
+  maxHoldCandles, positionSizing, fixedFractionalPct, feeBps) + the
+  current symbol as `defaultSymbol`.
+
+- === i18n (4 languages × 25 new keys = 100 new keys) ===
+  Inserted after `backtest.importDropped` in each language dict:
+    walkForward, walkForwardDesc, windowSize, inSampleRatio,
+    runWalkForward, walkForwardResults, robustness, avgIsReturn,
+    avgOosReturn, efficiency, positiveOosRate, robustnessRate,
+    avgOosSharpe, avgOosMaxDD, totalOosTrades, windows, window, isReturn,
+    oosReturn, isTrades, oosTrades, efficiencyHint, robustnessGood,
+    robustnessMedium, robustnessPoor.
+
+Stage Summary:
+- **Estado:** Round 35 entregada. Walk-forward optimization fully
+  functional end-to-end (engine → API → modal → button wiring). Users
+  can detect overfitting by running their strategy across contiguous
+  IS+OOS windows and reading the aggregated robustness metrics +
+  per-window efficiency table.
+- **Artefactos:**
+  - `src/lib/backtest.ts` (+WalkForwardWindow, +WalkForwardRobustness,
+    +WalkForwardResult types, +runBacktestOnKlines, +runWalkForward,
+    +emptyRobustness, +computeRobustness — +440 LOC appended after
+    `computeDurationBuckets` is irrelevant; appended after
+    `runMultiSymbolBacktest` at end of file as the spec required
+    "AFTER the existing `computeDurationBuckets` function at the end of
+    the file" — the spec is slightly off since `runMultiSymbolBacktest`
+    is the actual last function; appended after it.)
+  - `src/app/api/backtest/walk-forward/route.ts` (new file, +210 LOC)
+  - `src/components/panel/walk-forward-modal.tsx` (new file, +390 LOC)
+  - `src/components/panel/backtest-modal.tsx` (+WalkForwardModal import,
+    +walkForwardOpen state, +Walk-Forward button, +<WalkForwardModal>
+    render — +25 LOC)
+  - `src/lib/i18n.ts` (+100 keys = 25 × 4 languages)
+- **Verification:**
+  - `bun run lint` — clean.
+  - `bun run test` — 288/288 tests pass (i18n parity guard still green;
+    no test code was added per the task's "DO NOT write test code" rule).
+  - `bun run typecheck` — only pre-existing errors remain in
+    `skills/*`, `src/app/api/bot/*`, `src/lib/bot/*` (all unrelated to
+    this task; out of scope).
+- **Branch:** `dm/round-35` (based on `origin/main` 4c5409c).
+
+Notes / known limitations:
+- `runBacktestOnKlines()` duplicates the trade-simulation loop from
+  `runBacktest()`. This is intentional — extracting a shared helper
+  would have meant refactoring `runBacktest()` itself, which is out of
+  scope for this re-apply task. A future refactor could pull the
+  simulation into a private `simulateTrades(snapshots, params,
+  warmupIndex)` helper that both `runBacktest` and
+  `runBacktestOnKlines` call.
+- The 50-window cap is a defensive limit against pathological stepSize
+  values (e.g. stepSize=10 with windowSize=300 + 1000 klines = 71
+  windows). The default stepSize (= OOS size, ~150 candles for a 500-
+  candle window at 70/30) yields ~3-6 windows on a 1000-candle history.
+- The verdict thresholds (efficiency ≥0.5 = Robust, ≥0.3 = Moderate,
+  <0.3 = Overfit) match the i18n `efficiencyHint` copy. They are
+  deliberately simple — a real walk-forward report would also weight
+  positiveOosRate, robustnessRate and avgOosSharpe into the verdict.
+- `runWalkForward()` returns inline `error` (200 status) rather than a
+  hard 500 when the upstream fetch fails or there isn't enough history
+  for even one window — this matches `runBacktest()`'s convention and
+  lets the modal render a localized error message without a network
+  failure state.

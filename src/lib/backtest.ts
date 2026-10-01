@@ -1092,3 +1092,443 @@ export async function runMultiSymbolBacktest(
     errors,
   };
 }
+
+// ============================================================
+// WALK-FORWARD OPTIMIZATION
+// ============================================================
+
+/**
+ * WalkForwardWindow — a single IS/OOS slice of the historical klines.
+ *
+ * Walk-forward analysis splits the historical series into N overlapping or
+ * contiguous windows. Each window has two contiguous segments: an in-sample
+ * (IS) portion where the strategy was tuned (we re-run it here just to
+ * record its realized return), and an out-of-sample (OOS) portion that
+ * immediately follows, which simulates "trading the strategy live" on data
+ * it never saw. The robustness metrics in WalkForwardResult aggregate the
+ * OOS performance across all windows.
+ */
+export type WalkForwardWindow = {
+  /** Sequential window index (1-based for display). */
+  index: number;
+  /** Inclusive start index of the window inside the fetched klines array. */
+  startIndex: number;
+  /** Exclusive end index of the window inside the fetched klines array. */
+  endIndex: number;
+  /** Number of candles in the IS portion. */
+  inSampleCandles: number;
+  /** Number of candles in the OOS portion. */
+  outOfSampleCandles: number;
+  /** BacktestResult for the IS portion. */
+  inSample: BacktestResult;
+  /** BacktestResult for the OOS portion. */
+  outOfSample: BacktestResult;
+};
+
+/**
+ * Aggregated robustness metrics across all walk-forward windows.
+ *
+ * - `avgOosReturnPct` / `avgIsReturnPct` — mean of totalReturnPct across
+ *   OOS / IS windows respectively. A robust strategy has OOS returns close
+ *   to IS returns.
+ * - `efficiency` — avgOosReturnPct / avgIsReturnPct. >0.5 = robust,
+ *   <0.3 = overfit. Clamped to a finite number; if IS is 0 we use a
+ *   sentinel (0 when OOS is also 0, ±Infinity otherwise).
+ * - `positiveOosRate` — fraction of windows whose OOS return > 0.
+ * - `robustnessRate` — fraction of windows whose OOS return is within 50%
+ *   of the IS return (i.e. efficiency per-window >= 0.5).
+ * - `avgOosSharpe` / `avgOosMaxDD` — mean Sharpe / max drawdown across OOS
+ *   windows (NaN Sharpe treated as 0).
+ * - `totalOosTrades` — sum of OOS trade counts.
+ */
+export type WalkForwardRobustness = {
+  avgOosReturnPct: number;
+  avgIsReturnPct: number;
+  efficiency: number;
+  positiveOosRate: number;
+  robustnessRate: number;
+  avgOosSharpe: number;
+  avgOosMaxDD: number;
+  totalOosTrades: number;
+};
+
+export type WalkForwardResult = {
+  symbol: string;
+  interval: string;
+  windows: WalkForwardWindow[];
+  robustness: WalkForwardRobustness;
+  strategy: { id: string; name: string; action: string };
+  params: {
+    windowSize: number;
+    inSampleRatio: number;
+    minConfidence: number;
+    initialCapital: number;
+    stopLossPct: number;
+    takeProfitPct: number;
+    maxHoldCandles: number;
+    positionSizing: PositionSizing;
+    fixedFractionalPct: number;
+    feeBps: number;
+  };
+  error?: string;
+};
+
+/**
+ * Run a backtest on a pre-fetched slice of klines. Same trade simulation
+ * logic as runBacktest(), but with a reduced warmup so it works on the
+ * smaller windows used by walk-forward analysis.
+ *
+ * The warmup is `min(WARMUP, snapshots.length - 1, floor(snapshots.length / 2))`
+ * — for a 200-candle window this lets us trade from candle 100 instead of
+ * waiting for the full 200-candle EMA200 warmup (which would never trade
+ * at all on small windows). We still need at least 30 candles to compute
+ * the minimum viable indicator series.
+ */
+function runBacktestOnKlines(
+  klines: Kline[],
+  params: BacktestParams,
+  provider: ProviderId,
+): BacktestResult {
+  const {
+    symbol,
+    interval,
+    strategy,
+    action,
+    minConfidence = 60,
+    initialCapital = 10_000,
+    stopLossPct = 5,
+    takeProfitPct = 10,
+    maxHoldCandles = 50,
+    positionSizing = "full",
+    fixedFractionalPct = 25,
+    feeBps = 10,
+  } = params;
+
+  if (klines.length < 30) {
+    return {
+      symbol,
+      interval,
+      candlesAnalyzed: klines.length,
+      provider,
+      trades: [],
+      equityCurve: [],
+      stats: emptyStats(initialCapital),
+      durationBuckets: [],
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      error: `Insufficient historical data (${klines.length} candles; need at least 30 for walk-forward window).`,
+    };
+  }
+
+  const snapshots = buildSnapshots(klines, symbol);
+  const warmupIndex = Math.min(
+    Math.min(WARMUP, snapshots.length - 1),
+    Math.floor(snapshots.length / 2),
+  );
+
+  // --- Trade simulation (mirrors runBacktest) ---
+  const trades: BacktestTrade[] = [];
+  const equityCurve: EquityPoint[] = [];
+
+  let equity = initialCapital;
+  let peakEquity = initialCapital;
+  let maxDrawdownPct = 0;
+  let totalFees = 0;
+
+  let inPosition = false;
+  let entryIndex = -1;
+  let entryPrice = 0;
+  let entryTime = 0;
+  let tradeAction = action;
+  let positionSizePct = 100;
+  let entryEquity = 0;
+
+  const isShortStrategy = action === "SHORT";
+  const positionDirection = isShortStrategy ? -1 : 1;
+  const feePerSide = feeBps / 10_000;
+
+  for (let i = 0; i < snapshots.length; i++) {
+    const snap = snapshots[i];
+
+    if (inPosition) {
+      const priceMovePct = ((snap.close - entryPrice) / entryPrice) * 100;
+      const tradePctRaw = priceMovePct * positionDirection;
+      let exitReason: BacktestTrade["exitReason"] | null = null;
+
+      if (tradePctRaw <= -stopLossPct) exitReason = "stop_loss";
+      else if (tradePctRaw >= takeProfitPct) exitReason = "take_profit";
+      else if (i - entryIndex >= maxHoldCandles) exitReason = "max_hold";
+      else if (!entrySignalFires(strategy, snap, minConfidence)) {
+        exitReason = "signal_exit";
+      } else if (i === snapshots.length - 1) {
+        exitReason = "end_of_data";
+      }
+
+      if (exitReason !== null) {
+        const exitPrice = snap.close;
+        const entryNotional = (entryEquity * positionSizePct) / 100;
+        const { netPnl, netPnlPct, feesPaid } = computeTradePnl({
+          entryPrice,
+          exitPrice,
+          positionDirection,
+          entryNotional,
+          feePerSide,
+        });
+        totalFees += feesPaid;
+        equity += netPnl;
+        if (equity < 0) equity = 0;
+
+        trades.push({
+          entryIndex,
+          exitIndex: i,
+          entryPrice,
+          exitPrice,
+          entryTime,
+          exitTime: snap.time,
+          pnl: netPnl,
+          pnlPct: netPnlPct,
+          holdCandles: i - entryIndex,
+          exitReason,
+          action: tradeAction,
+          positionSizePct,
+          feesPaid,
+        });
+
+        inPosition = false;
+        entryIndex = -1;
+        entryPrice = 0;
+        entryTime = 0;
+      }
+    }
+
+    if (!inPosition && i >= warmupIndex) {
+      if (entrySignalFires(strategy, snap, minConfidence)) {
+        inPosition = true;
+        entryIndex = i;
+        entryPrice = snap.close;
+        entryTime = snap.time;
+        tradeAction = action;
+        positionSizePct = calculatePositionSizePct(positionSizing, trades, fixedFractionalPct);
+        entryEquity = equity;
+      }
+    }
+
+    let markedEquity = equity;
+    if (inPosition) {
+      const entryNotional = (entryEquity * positionSizePct) / 100;
+      const openPnlPct = ((snap.close - entryPrice) / entryPrice) * 100 * positionDirection;
+      const entryFeePaid = entryNotional * feePerSide;
+      markedEquity = equity + (entryNotional * openPnlPct) / 100 - entryFeePaid;
+    }
+    equityCurve.push({
+      candleIndex: i,
+      time: snap.time,
+      equity: markedEquity,
+      inPosition,
+    });
+
+    if (markedEquity > peakEquity) peakEquity = markedEquity;
+    if (peakEquity > 0) {
+      const dd = ((peakEquity - markedEquity) / peakEquity) * 100;
+      if (dd > maxDrawdownPct) maxDrawdownPct = dd;
+    }
+  }
+
+  const stats = computeStats(trades, equity, initialCapital, maxDrawdownPct, totalFees, equityCurve, interval);
+  const durationBuckets = computeDurationBuckets(trades);
+
+  return {
+    symbol,
+    interval,
+    candlesAnalyzed: snapshots.length,
+    provider,
+    trades,
+    equityCurve,
+    stats,
+    durationBuckets,
+    strategy: { id: strategy.id, name: strategy.name, action },
+    params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+  };
+}
+
+/**
+ * Run a walk-forward optimization: fetch a long history, split it into
+ * overlapping IS+OOS windows, run the strategy on each segment, and
+ * aggregate OOS performance into robustness metrics.
+ *
+ * The window is `windowSize` candles long. The first `inSampleRatio`
+ * fraction is the IS portion; the remainder is the OOS portion. The
+ * window slides forward by `stepSize` candles each iteration (default =
+ * OOS size, so windows are contiguous and don't overlap).
+ */
+export async function runWalkForward(
+  params: BacktestParams & { windowSize: number; inSampleRatio?: number; stepSize?: number },
+): Promise<WalkForwardResult> {
+  const {
+    symbol,
+    interval,
+    strategy,
+    action,
+    minConfidence = 60,
+    initialCapital = 10_000,
+    stopLossPct = 5,
+    takeProfitPct = 10,
+    maxHoldCandles = 50,
+    positionSizing = "full",
+    fixedFractionalPct = 25,
+    feeBps = 10,
+    windowSize,
+    inSampleRatio = 0.7,
+    stepSize,
+  } = params;
+
+  const safeWindowSize = Math.max(100, Math.min(1000, Math.floor(windowSize)));
+  const safeRatio = Math.max(0.3, Math.min(0.9, inSampleRatio));
+  const oosSize = Math.max(20, Math.floor(safeWindowSize * (1 - safeRatio)));
+  const isSize = Math.max(30, safeWindowSize - oosSize);
+  const effectiveWindow = isSize + oosSize;
+  const effectiveStep = stepSize != null && Number.isFinite(stepSize)
+    ? Math.max(10, Math.floor(stepSize))
+    : oosSize;
+
+  const baseParams: BacktestParams = {
+    symbol,
+    interval,
+    limit: 1000,
+    strategy,
+    action,
+    minConfidence,
+    initialCapital,
+    stopLossPct,
+    takeProfitPct,
+    maxHoldCandles,
+    positionSizing,
+    fixedFractionalPct,
+    feeBps,
+  };
+
+  let provider: ProviderId = "binance";
+  let klines: Kline[] = [];
+  try {
+    const res = await providerRouter.getKlines(symbol, interval, 1000);
+    klines = res.klines;
+    provider = res.provider;
+  } catch {
+    return {
+      symbol,
+      interval,
+      windows: [],
+      robustness: emptyRobustness(),
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { windowSize: safeWindowSize, inSampleRatio: safeRatio, minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      error: "Failed to fetch historical klines from upstream provider.",
+    };
+  }
+
+  if (klines.length < effectiveWindow) {
+    return {
+      symbol,
+      interval,
+      windows: [],
+      robustness: emptyRobustness(),
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { windowSize: safeWindowSize, inSampleRatio: safeRatio, minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      error: `Insufficient historical data (${klines.length} candles; need at least ${effectiveWindow} for one ${isSize}/${oosSize} IS/OOS window).`,
+    };
+  }
+
+  const windows: WalkForwardWindow[] = [];
+  for (let start = 0; start + effectiveWindow <= klines.length; start += effectiveStep) {
+    const isSlice = klines.slice(start, start + isSize);
+    const oosSlice = klines.slice(start + isSize, start + effectiveWindow);
+    const isResult = runBacktestOnKlines(isSlice, { ...baseParams, limit: isSlice.length }, provider);
+    const oosResult = runBacktestOnKlines(oosSlice, { ...baseParams, limit: oosSlice.length }, provider);
+    windows.push({
+      index: windows.length + 1,
+      startIndex: start,
+      endIndex: start + effectiveWindow,
+      inSampleCandles: isSize,
+      outOfSampleCandles: oosSize,
+      inSample: isResult,
+      outOfSample: oosResult,
+    });
+    // Cap the number of windows so a 1000-candle history with a tiny step
+    // size doesn't blow up the response payload.
+    if (windows.length >= 50) break;
+  }
+
+  const robustness = computeRobustness(windows);
+
+  return {
+    symbol,
+    interval,
+    windows,
+    robustness,
+    strategy: { id: strategy.id, name: strategy.name, action },
+    params: { windowSize: safeWindowSize, inSampleRatio: safeRatio, minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+  };
+}
+
+/** Empty robustness object (used when no windows could be built). */
+function emptyRobustness(): WalkForwardRobustness {
+  return {
+    avgOosReturnPct: 0,
+    avgIsReturnPct: 0,
+    efficiency: 0,
+    positiveOosRate: 0,
+    robustnessRate: 0,
+    avgOosSharpe: 0,
+    avgOosMaxDD: 0,
+    totalOosTrades: 0,
+  };
+}
+
+/**
+ * Aggregate OOS performance across all walk-forward windows into the
+ * robustness metrics. NaN Sharpes are treated as 0; efficiency = avgOos /
+ * avgIs with Infinity / -Infinity preserved when avgIs is 0.
+ */
+function computeRobustness(windows: WalkForwardWindow[]): WalkForwardRobustness {
+  if (windows.length === 0) return emptyRobustness();
+  const n = windows.length;
+  let sumIsReturn = 0;
+  let sumOosReturn = 0;
+  let positiveOosCount = 0;
+  let robustCount = 0;
+  let sumOosSharpe = 0;
+  let sumOosMaxDD = 0;
+  let totalOosTrades = 0;
+  for (const w of windows) {
+    const isRet = w.inSample.stats.totalReturnPct;
+    const oosRet = w.outOfSample.stats.totalReturnPct;
+    sumIsReturn += isRet;
+    sumOosReturn += oosRet;
+    if (oosRet > 0) positiveOosCount++;
+    // Per-window robustness: OOS within 50% of IS (and IS positive).
+    if (isRet > 0 && oosRet >= isRet * 0.5) robustCount++;
+    const sharpe = Number.isFinite(w.outOfSample.stats.sharpeRatio)
+      ? w.outOfSample.stats.sharpeRatio
+      : 0;
+    sumOosSharpe += sharpe;
+    sumOosMaxDD += w.outOfSample.stats.maxDrawdownPct;
+    totalOosTrades += w.outOfSample.stats.totalTrades;
+  }
+  const avgIs = sumIsReturn / n;
+  const avgOos = sumOosReturn / n;
+  let efficiency: number;
+  if (avgIs === 0) {
+    efficiency = avgOos === 0 ? 0 : avgOos > 0 ? Infinity : -Infinity;
+  } else {
+    efficiency = avgOos / avgIs;
+  }
+  return {
+    avgOosReturnPct: Math.round(avgOos * 100) / 100,
+    avgIsReturnPct: Math.round(avgIs * 100) / 100,
+    efficiency: Number.isFinite(efficiency) ? Math.round(efficiency * 100) / 100 : efficiency,
+    positiveOosRate: Math.round((positiveOosCount / n) * 1000) / 10,
+    robustnessRate: Math.round((robustCount / n) * 1000) / 10,
+    avgOosSharpe: Math.round((sumOosSharpe / n) * 100) / 100,
+    avgOosMaxDD: Math.round((sumOosMaxDD / n) * 100) / 100,
+    totalOosTrades,
+  };
+}
