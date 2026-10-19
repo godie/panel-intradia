@@ -18,13 +18,17 @@ ARG NODE_VERSION=24
 # =============================================================================
 # Stage 1: base — install bun + system deps once.
 # =============================================================================
-FROM oven/bun:${BUN_VERSION} AS base
+FROM oven/bun:${BUN_VERSION}-alpine AS base
 WORKDIR /app
-# Install minimal tools we need at build time (git for some deps, wget
-# for HEALTHCHECKs, ca-certificates for HTTPS upstreams).
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates wget \
- && rm -rf /var/lib/apt/lists/*
+# Alpine (musl) keeps the base ~100 MB smaller than the Debian variant.
+#   - bash + util-linux: the entrypoint/all-in-one scripts use `set -u`,
+#     `wait -n` and `setpriv` (not available in BusyBox sh)
+#   - openssl: Prisma engines link against libssl on musl
+#   - libstdc++ / libc6-compat: native modules and the Node binary
+#   - wget + ca-certificates: HEALTHCHECKs and HTTPS upstreams
+RUN apk add --no-cache \
+    bash ca-certificates wget openssl libstdc++ libc6-compat util-linux \
+ && rm -rf /var/cache/apk/*
 
 # =============================================================================
 # Stage 2: deps — install dependencies for the dashboard AND mini-services.
@@ -50,6 +54,40 @@ RUN cd mini-services/order-book  && bun install --frozen-lockfile
 RUN bunx prisma generate
 
 # =============================================================================
+# Stage 2b: prod-deps — runtime-only dependencies.
+#
+# The runner used to copy the FULL `node_modules` (devDependencies included:
+# eslint, vitest, vite, typescript, SWC, …), which was ~1.27 GB of the image.
+# Installing with `--production` and pruning build-only binaries keeps only
+# what the standalone server, the mini-services and `prisma db push` need.
+# Must use the same base (musl) as the runtime, so native modules match.
+# =============================================================================
+FROM base AS prod-deps
+WORKDIR /app
+
+COPY package.json bun.lock* ./
+COPY prisma ./prisma
+COPY .env* ./
+
+RUN bun install --frozen-lockfile --production
+
+# Generate the client for the runtime (Prisma ships the engine here).
+RUN bunx prisma generate
+
+# Build-only binaries that never execute at runtime:
+#   - @next/swc-* / @swc/core-*: compilers (the bundle is already built)
+#   - lightningcss-*: CSS transform for Tailwind at build time
+#   - *gnu* variants: this image is Alpine/musl; the glibc copies are dead
+#     weight (~150 MB across Next, sharp and libvips).
+RUN rm -rf \
+      node_modules/@next/swc-* \
+      node_modules/@swc/core-* \
+      node_modules/lightningcss-* \
+      node_modules/@img/sharp-linux-* \
+      node_modules/@img/sharp-libvips-linux-* \
+      node_modules/.cache
+
+# =============================================================================
 # Node.js runtime for the Next.js build.
 #
 # Why: the oven/bun image ships a `node` shim
@@ -60,9 +98,10 @@ RUN bunx prisma generate
 # officially supports, so the builder gets the real thing; it lands in
 # /usr/local/bin, which wins the PATH lookup over the fallback-bin shim.
 # Used by the builder stage only — the runner still serves the bundle with
-# Bun (CMD ["bun", "server.js"]).
+# Bun (CMD ["bun", "server.js"]). Must be the Alpine (musl) build so it runs
+# on the Alpine base.
 # =============================================================================
-FROM node:${NODE_VERSION}-bookworm-slim AS node-bin
+FROM node:${NODE_VERSION}-alpine AS node-bin
 
 # =============================================================================
 # Caddy binary, copied out of the official image so the ALL_IN_ONE variant can
@@ -95,6 +134,24 @@ ENV HOSTNAME=0.0.0.0
 RUN bun run build
 
 # =============================================================================
+# Stage 3b: runtime tree — merge standalone + prod deps in a throwaway stage.
+#
+# Copying `.next/standalone` and then the full `node_modules` directly into
+# the runner leaves the production modules duplicated in two layers (Docker
+# layers are additive). Merging here means the runner receives ONE layer with
+# the union of both trees.
+# =============================================================================
+FROM base AS runtime
+WORKDIR /app
+
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/mini-services ./mini-services
+COPY --from=builder /app/prisma ./prisma
+COPY --from=prod-deps /app/node_modules ./node_modules
+
+# =============================================================================
 # Stage 4: runner — minimal runtime image with everything inside.
 # =============================================================================
 FROM base AS runner
@@ -110,22 +167,9 @@ ENV DATABASE_URL=file:/app/db/custom.db
 # Next.js standalone server binds to HOSTNAME; default may be localhost.
 ENV HOSTNAME=0.0.0.0
 
-# Copy the standalone bundle + static assets + public.
-COPY --from=builder --chown=bun:bun /app/.next/standalone ./
-COPY --from=builder --chown=bun:bun /app/.next/static ./.next/static
-COPY --from=builder --chown=bun:bun /app/public ./public
-
-# Copy mini-services (sources + their node_modules) so they can be run
-# from this image by docker-compose.
-COPY --from=builder --chown=bun:bun /app/mini-services ./mini-services
-
-# Copy Prisma schema + full node_modules from the deps stage so the app
-# (generated client + query engine) and the startup script (prisma CLI via
-# `bunx prisma db push`) both work at runtime without re-installing anything.
-# Cherry-picking only prisma/@prisma breaks the CLI (transitive deps like
-# `effect` would be missing).
-COPY --from=builder --chown=bun:bun /app/prisma ./prisma
-COPY --from=deps    --chown=bun:bun /app/node_modules ./node_modules
+# Copy the merged runtime tree (standalone + static + public + mini-services
+# + prisma schema + production-only node_modules) as a single layer.
+COPY --from=runtime --chown=bun:bun /app ./
 
 # Startup script: initialize the SQLite DB if needed, then exec the
 # standalone Next.js server. If a legacy DB already has tables, db push

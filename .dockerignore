@@ -1,6 +1,7 @@
 # Build / runtime artifacts that bloat the image and aren't needed.
 node_modules
-.next
+**/node_modules
+**/.next
 .git
 .gitignore
 docs
