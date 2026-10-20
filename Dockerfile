@@ -3,8 +3,9 @@
 # Panel Cuantitativo // Intradía — production Dockerfile (multi-stage).
 #
 # Outputs:
-#   - Next.js standalone build (`.next/standalone/`)
-#   - All node_modules / bun-installed deps for the mini-services
+#   - Next.js standalone build (`.next/standalone/`), including the traced
+#     node_modules the server actually requires
+#   - The mini-services with their own (small) node_modules
 #   - Prisma client + schema + prisma CLI (used at startup to create/push the DB)
 #
 # Used by `docker-compose.yml` as the base image for the `app`,
@@ -54,38 +55,32 @@ RUN cd mini-services/order-book  && bun install --frozen-lockfile
 RUN bunx prisma generate
 
 # =============================================================================
-# Stage 2b: prod-deps — runtime-only dependencies.
+# Stage 2b: prisma-cli — the ONLY node_modules the runner needs besides what
+# the standalone bundle already traced.
 #
-# The runner used to copy the FULL `node_modules` (devDependencies included:
-# eslint, vitest, vite, typescript, SWC, …), which was ~1.27 GB of the image.
-# Installing with `--production` and pruning build-only binaries keeps only
-# what the standalone server, the mini-services and `prisma db push` need.
-# Must use the same base (musl) as the runtime, so native modules match.
+# History: the runner used to copy the whole `node_modules` (1.27 GB with
+# devDependencies, 604 MB with `--production`). Next's standalone output is
+# already a traced tree (≈150 MB) containing exactly the modules the server
+# requires at runtime — copying the full tree on top of it added nothing but
+# half a gigabyte of duplicates. The one thing tracing cannot see is the
+# Prisma CLI that `docker-entrypoint.sh` runs for `prisma db push`, because it
+# is spawned as a subprocess; this stage installs just that package (plus
+# @prisma/config + @prisma/engines/…) in an isolated directory.
+#
+# The version is read from the lockfile-resolved package so the CLI always
+# matches the @prisma/client that Next traced into the bundle.
+# Must use the same base (musl) as the runtime, so the schema engine matches.
 # =============================================================================
-FROM base AS prod-deps
-WORKDIR /app
+FROM base AS prisma-cli
+WORKDIR /cli
 
-COPY package.json bun.lock* ./
-COPY prisma ./prisma
-COPY .env* ./
+COPY --from=deps /app/node_modules/prisma/package.json /tmp/prisma-package.json
 
-RUN bun install --frozen-lockfile --production
-
-# Generate the client for the runtime (Prisma ships the engine here).
-RUN bunx prisma generate
-
-# Build-only binaries that never execute at runtime:
-#   - @next/swc-* / @swc/core-*: compilers (the bundle is already built)
-#   - lightningcss-*: CSS transform for Tailwind at build time
-#   - *gnu* variants: this image is Alpine/musl; the glibc copies are dead
-#     weight (~150 MB across Next, sharp and libvips).
-RUN rm -rf \
-      node_modules/@next/swc-* \
-      node_modules/@swc/core-* \
-      node_modules/lightningcss-* \
-      node_modules/@img/sharp-linux-* \
-      node_modules/@img/sharp-libvips-linux-* \
-      node_modules/.cache
+RUN echo '{"name":"prisma-cli","private":true}' > package.json \
+ && PRISMA_VERSION="$(bun -e 'console.log(require("/tmp/prisma-package.json").version)')" \
+ && echo "[prisma-cli] installing prisma@${PRISMA_VERSION}" \
+ && bun add "prisma@${PRISMA_VERSION}" \
+ && rm -rf /cli/node_modules/.cache /cli/bun.lock
 
 # =============================================================================
 # Node.js runtime for the Next.js build.
@@ -134,12 +129,12 @@ ENV HOSTNAME=0.0.0.0
 RUN bun run build
 
 # =============================================================================
-# Stage 3b: runtime tree — merge standalone + prod deps in a throwaway stage.
+# Stage 3b: runtime tree — assemble and prune in a throwaway stage.
 #
-# Copying `.next/standalone` and then the full `node_modules` directly into
-# the runner leaves the production modules duplicated in two layers (Docker
-# layers are additive). Merging here means the runner receives ONE layer with
-# the union of both trees.
+# The tree is exactly what Next traced (`.next/standalone`) plus the Prisma
+# CLI. Everything is assembled and pruned HERE so the runner receives one
+# final layer instead of a chain of add-then-delete layers (Docker layers are
+# additive: a `rm` in a later stage never shrinks the image).
 # =============================================================================
 FROM base AS runtime
 WORKDIR /app
@@ -149,7 +144,32 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/mini-services ./mini-services
 COPY --from=builder /app/prisma ./prisma
-COPY --from=prod-deps /app/node_modules ./node_modules
+# `prisma db push` subprocess (see docker-entrypoint.sh). Merges into the
+# standalone `node_modules` without overwriting any traced module.
+COPY --from=prisma-cli /cli/node_modules ./node_modules
+
+# Runtime dead weight, all inside the single layer copied into the runner:
+#   - glibc native builds of sharp/libvips: this image is Alpine/musl, so the
+#     *-linux-arm64/x64 copies (without "musl") can never be loaded (~16 MB)
+#   - typescript: a peer dependency that only @prisma/client declares; the
+#     build already ran and the standalone server never type-checks (~19 MB)
+#   - @prisma/client wasm engines / query compilers for databases this app
+#     does not use (SQLite is the only provider in prisma/schema.prisma).
+#     Kept: *sqlite*. (~40 MB)
+#   - prisma CLI maps and docs
+RUN rm -rf \
+      node_modules/@img/sharp-linux-* \
+      node_modules/@img/sharp-libvips-linux-* \
+      node_modules/typescript \
+      node_modules/@prisma/client/runtime/query_engine_bg.cockroachdb.* \
+      node_modules/@prisma/client/runtime/query_engine_bg.mysql.* \
+      node_modules/@prisma/client/runtime/query_engine_bg.postgresql.* \
+      node_modules/@prisma/client/runtime/query_engine_bg.sqlserver.* \
+      node_modules/@prisma/client/runtime/query_compiler_bg.cockroachdb.* \
+      node_modules/@prisma/client/runtime/query_compiler_bg.mysql.* \
+      node_modules/@prisma/client/runtime/query_compiler_bg.postgresql.* \
+      node_modules/@prisma/client/runtime/query_compiler_bg.sqlserver.* \
+      node_modules/.cache
 
 # =============================================================================
 # Stage 4: runner — minimal runtime image with everything inside.
