@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Download, Loader2, Trash2 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import type { BacktestResult } from "@/lib/backtest";
+import { loadWatchlist } from "@/lib/symbol-manager";
 import { EquityCurveCanvas } from "./equity-curve";
 import { TradeTable } from "./trade-table";
 import { formatPrice } from "./format";
@@ -54,6 +55,9 @@ export default function TabHistory() {
   const [error, setError] = useState<string | null>(null);
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+
+  /** Watchlist del dashboard para autocompletar el filtro. */
+  const watchlist = useMemo(() => loadWatchlist(), []);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -165,12 +169,18 @@ export default function TabHistory() {
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
+          list="backtest-symbol-filter-options"
           value={filterSymbol}
           onChange={(e) => setFilterSymbol(e.target.value)}
           aria-label={t("backtestUI.filterSymbol")}
           placeholder="BTCUSDT"
           className="w-40 rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs font-mono focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
         />
+        <datalist id="backtest-symbol-filter-options">
+          {watchlist.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
         <select
           value={filterStrategyId}
           onChange={(e) => setFilterStrategyId(e.target.value)}

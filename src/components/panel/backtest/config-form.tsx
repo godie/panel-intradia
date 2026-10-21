@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import type { BacktestInterval, PositionSizing } from "@/lib/backtest";
 import type { CustomStrategy } from "@/lib/custom-strategies";
+import { loadWatchlist } from "@/lib/symbol-manager";
 import { useLanguage } from "@/hooks/use-language";
 
 export type BacktestFormConfig = {
@@ -68,6 +70,11 @@ export function BacktestConfigForm({ value, onChange, variant }: Props) {
   const set = (patch: Partial<BacktestFormConfig>) =>
     onChange({ ...value, ...patch });
 
+  // Watchlist del dashboard (5 default + pares agregados por el usuario):
+  // autocomplete nativo via <datalist>; el input sigue aceptando cualquier
+  // par USDT válido (la validación que importa es validateSymbol/server).
+  const watchlist = useMemo(() => loadWatchlist(), []);
+
   void variant; // mismas brains para ambas tabs en v1
 
   return (
@@ -76,11 +83,17 @@ export function BacktestConfigForm({ value, onChange, variant }: Props) {
         {t("backtest.symbol")}
         <input
           type="text"
+          list="backtest-symbol-options"
           value={value.symbol}
           onChange={(e) => set({ symbol: e.target.value.toUpperCase() })}
           className={INPUT_CLS}
         />
       </label>
+      <datalist id="backtest-symbol-options">
+        {watchlist.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
 
       <div className={LABEL_CLS}>
         <span className={LABEL_CLS.replace("block ", "")}>{t("backtest.interval")}</span>
