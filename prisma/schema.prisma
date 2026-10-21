@@ -104,3 +104,46 @@ model BotTrade {
   @@index([status])
   @@index([symbol, entryTime])
 }
+
+/// One persisted backtest run — config + full engine result. Rows are
+/// created by POST /api/backtest/runs and listed by GET /api/backtest/runs
+/// (summary columns only; resultJson is only served by GET /runs/:id).
+model BacktestRun {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  /// Uppercase USDT pair, e.g. "BTCUSDT".
+  symbol       String
+  /// "15m" | "1h" | "4h" | "1d".
+  interval     String
+  candles      Int
+  /// Predefined strategy id, or null when the run used a custom strategy.
+  strategyId   String?
+  strategyName String
+  isCustom     Boolean
+  /// JSON: { minConfidence, initialCapital, stopLossPct, takeProfitPct,
+  /// maxHoldCandles, positionSizing, fixedFractionalPct, feeBps }.
+  config       String
+  /// Denormalized summary columns — GET /runs lists without resultJson.
+  totalTrades    Int
+  winRatePct     Float
+  totalReturnPct Float
+  maxDrawdownPct Float
+  profitFactor   Float
+  /// Serialized BacktestResult (trades + equityCurve + stats), capped at
+  /// 1 MB by src/lib/backtest-db.ts (deterministic trade truncation).
+  resultJson   String
+
+  @@index([createdAt(sort: Desc)])
+  @@index([symbol, interval])
+  @@index([strategyId])
+}
+
+/// Saved backtest configuration preset — reused with one click from the
+/// dedicated /backtest page (apply / save / delete).
+model BacktestPreset {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  name      String   @unique
+  /// JSON: same shape as BacktestRun.config plus symbol/interval/limit.
+  config    String
+}
