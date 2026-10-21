@@ -1323,7 +1323,7 @@ export async function POST(req: NextRequest) {
 Notas para el executor (NO dejarlas en el código final):
 - `resolveStrategy(ref as Record<string, unknown>)` recibe `{ strategyId }` **o** `{ customStrategy }` — su firma actual (`backtest-request.ts`) ya maneja ambas; el cast es solo porque el TS estrecho no infiere la union pasable. Si el cast choca, tipar `Resolved` con `StrategyResolution` importado en vez de redefinir.
 - La entry de resolución inválida usa `strategyId: "unknown"`: buildComparisonRows la muestra como fila error sin competir.
-- `action as Parameters<...>`: `resolveStrategy` devuelve `StrategyAction` y el engine espera exactamente eso; el cast es sólo para la estrechez de `BacktestParams.action`.
+- `action as Parameters<...>`: `resolveStrategy` devuelve `StrategyAction` y el engine espera exactamente eso; el cast es solo para la estrechez de `BacktestParams.action`.
 
 - [ ] **Step 2: Verificación en vivo con dev server (RED→GREEN del endpoint)**
 
