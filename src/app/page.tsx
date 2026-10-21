@@ -51,6 +51,7 @@ import {
   Keyboard,
   Plus,
   ArrowLeftRight,
+  BarChart3,
   Activity,
 } from "lucide-react";
 
@@ -443,6 +444,16 @@ export default function Page() {
               >
                 <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden />
                 <span className="hidden sm:inline">{t("compare.button")}</span>
+              </Link>
+
+              <Link
+                href="/backtest"
+                className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-foreground/70 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fa8d8]"
+                aria-label={t("backtestUI.title")}
+                title={t("backtestUI.title")}
+              >
+                <BarChart3 className="h-3.5 w-3.5" aria-hidden />
+                <span className="hidden sm:inline">{t("backtestUI.nav")}</span>
               </Link>
 
               <Link
