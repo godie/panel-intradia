@@ -145,7 +145,7 @@ Consumidores a actualizar (rename mecánico):
 
 - Sólo rename de las 5 claves en `buildAnalysisSnapshot`.
 - **No** se le agrega `timeframe` a `buildAnalysisSnapshot`. Ese objeto es un
-  *fixture parcial* que sólo alimenta `strategy.evaluate()` (ya se construye con
+  *fixture parcial* que solo alimenta `strategy.evaluate()` (ya se construye con
   `as unknown as AnalysisResponse`, así que la ausencia de campos no la detecta
   TypeScript), y ninguna estrategia lee `timeframe`. Si una futura estrategia lo
   lee, el lugar a arreglar es ese cast.

@@ -9,6 +9,7 @@
  */
 
 import type { BacktestInterval, PositionSizing } from "@/lib/backtest";
+import { isValidSymbolFormat } from "@/lib/providers/symbols";
 import { customStrategyToStrategy } from "@/lib/custom-strategies";
 import type { ConditionType, CustomStrategy } from "@/lib/custom-strategies";
 import { STRATEGY_LIST } from "@/lib/strategies";
@@ -178,5 +179,98 @@ export function parseCustomStrategy(
       conditions,
       createdAt: typeof s.createdAt === "number" ? s.createdAt : Date.now(),
     },
+  };
+}
+
+export type StrategyRef = { strategyId: string } | { customStrategy: CustomStrategy };
+
+export type StrategyRefsParse =
+  | { ok: true; refs: StrategyRef[] }
+  | { ok: false; error: string };
+
+/**
+ * POST /api/backtest/compare: validación de ≤10 estrategias mixtas (ids
+ * predefinidos y custom del builder). Cualquier item inválido rechaza TODO
+ * el pedido — el error por estrategia que rompe upstream es de corrida, no
+ * de request shape.
+ */
+export function parseStrategyRefs(
+  body: Record<string, unknown>,
+): StrategyRefsParse {
+  const raw = body.strategies;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return {
+      ok: false,
+      error:
+        "Provide strategies: non-empty array of predefined ids or customStrategy objects.",
+    };
+  }
+  if (raw.length > 10) {
+    return { ok: false, error: "Maximum 10 strategies allowed in compare mode." };
+  }
+
+  const refs: StrategyRef[] = [];
+  for (const item of raw) {
+    if (typeof item === "string") {
+      if (!item.trim()) {
+        return { ok: false, error: "Empty strategy id in strategies array." };
+      }
+      // VERBATIM (solo trim): resolveStrategy es case-sensitive y los ids
+      // predefinidos son lowercase snake ("trend_buy", "breakout_short").
+      refs.push({ strategyId: item.trim() });
+      continue;
+    }
+    if (item != null && typeof item === "object" && !Array.isArray(item)) {
+      const parsed = parseCustomStrategy(item as Record<string, unknown>);
+      if (!parsed.ok) {
+        return {
+          ok: false,
+          error: "Invalid customStrategy item in strategies array.",
+        };
+      }
+      refs.push({ customStrategy: parsed.strategy });
+      continue;
+    }
+    return {
+      ok: false,
+      error: "Each strategy must be a predefined id string or a customStrategy object.",
+    };
+  }
+  return { ok: true, refs };
+}
+
+export type CompareBaseConfig = {
+  symbol: string;
+  interval: BacktestInterval;
+  limit: number;
+  tradeLimits: TradeLimits;
+};
+
+/**
+ * Base config del compare con los MISMO mensajes/defaults que /api/backtest
+ * (una sola fuente de verdad: parseTradeLimits clampa y normaliza).
+ */
+export function parseCompareConfig(
+  body: Record<string, unknown>,
+): { ok: true; config: CompareBaseConfig } | { ok: false; error: string } {
+  const symbol = typeof body.symbol === "string" ? body.symbol.toUpperCase() : "";
+  if (!isValidSymbolFormat(symbol)) {
+    return {
+      ok: false,
+      error: "Invalid or missing symbol (use a USDT pair, e.g. BTCUSDT).",
+    };
+  }
+  const interval =
+    typeof body.interval === "string" ? (body.interval as BacktestInterval) : "4h";
+  if (!VALID_INTERVALS.includes(interval)) {
+    return { ok: false, error: `Invalid interval: ${interval}` };
+  }
+  const limit = typeof body.limit === "number" ? body.limit : 500;
+  if (!Number.isFinite(limit) || limit < 50 || limit > 1000) {
+    return { ok: false, error: "limit must be between 50 and 1000." };
+  }
+  return {
+    ok: true,
+    config: { symbol, interval, limit, tradeLimits: parseTradeLimits(body) },
   };
 }

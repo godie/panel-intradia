@@ -40,6 +40,9 @@ import {
   Upload,
 } from "lucide-react";
 import { WalkForwardModal } from "@/components/panel/walk-forward-modal";
+import { EquityCurveCanvas } from "./backtest/equity-curve";
+import { TradeTable } from "./backtest/trade-table";
+import { formatNumber } from "./backtest/format";
 
 type Props = {
   /** The strategy to backtest. May be a predefined id (e.g. "trend_buy") or
@@ -60,14 +63,6 @@ const CANDLE_OPTIONS = [
   { value: 500, labelKey: "backtest.candles" },
   { value: 1000, labelKey: "backtest.candles" },
 ];
-
-const REASON_KEYS: Record<BacktestTrade["exitReason"], string> = {
-  stop_loss: "backtest.reasonStopLoss",
-  take_profit: "backtest.reasonTakeProfit",
-  max_hold: "backtest.reasonMaxHold",
-  signal_exit: "backtest.reasonSignalExit",
-  end_of_data: "backtest.reasonEnd",
-};
 
 /**
  * BacktestModal — lets the user run a strategy against historical klines and
@@ -111,8 +106,6 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
   const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
   const [compareView, setCompareView] = useState<SavedBacktest[] | null>(null);
   const [walkForwardOpen, setWalkForwardOpen] = useState(false);
-
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Re-sync the symbol when the modal opens with a new defaultSymbol.
   useEffect(() => {
@@ -293,148 +286,6 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
-
-  // Draw equity curve on the canvas.
-  useEffect(() => {
-    if (!open || !result || result.equityCurve.length === 0) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const cssW = canvas.clientWidth;
-    const cssH = canvas.clientHeight;
-    canvas.width = Math.floor(cssW * dpr);
-    canvas.height = Math.floor(cssH * dpr);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
-
-    // Background.
-    ctx.fillStyle = "rgba(10,13,18,0.4)";
-    ctx.fillRect(0, 0, cssW, cssH);
-
-    const curve = result.equityCurve;
-    const padL = 44;
-    const padR = 12;
-    const padT = 12;
-    const padB = 22;
-    const plotW = cssW - padL - padR;
-    const plotH = cssH - padT - padB;
-
-    // Y range: include a bit of headroom.
-    const equities = curve.map((p) => p.equity);
-    let yMin = Math.min(...equities, result.params.initialCapital);
-    let yMax = Math.max(...equities, result.params.initialCapital);
-    if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || yMin === yMax) {
-      yMin = result.params.initialCapital * 0.95;
-      yMax = result.params.initialCapital * 1.05;
-    }
-    const yPad = (yMax - yMin) * 0.08;
-    yMin -= yPad;
-    yMax += yPad;
-
-    const x = (i: number) => padL + (i / (curve.length - 1)) * plotW;
-    const y = (val: number) => padT + (1 - (val - yMin) / (yMax - yMin)) * plotH;
-
-    // Horizontal gridlines + Y-axis labels.
-    ctx.strokeStyle = "rgba(255,255,255,0.06)";
-    ctx.lineWidth = 1;
-    ctx.font = "10px ui-monospace, monospace";
-    ctx.fillStyle = "rgba(139,150,165,0.6)";
-    const gridLines = 4;
-    for (let i = 0; i <= gridLines; i++) {
-      const yPos = padT + (plotH * i) / gridLines;
-      ctx.beginPath();
-      ctx.moveTo(padL, yPos);
-      ctx.lineTo(padL + plotW, yPos);
-      ctx.stroke();
-      const val = yMax - ((yMax - yMin) * i) / gridLines;
-      ctx.textAlign = "right";
-      ctx.fillText(`$${formatNumber(val)}`, padL - 6, yPos + 3);
-    }
-
-    // Initial capital baseline.
-    const baselineY = y(result.params.initialCapital);
-    ctx.strokeStyle = "rgba(139,150,165,0.5)";
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(padL, baselineY);
-    ctx.lineTo(padL + plotW, baselineY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // In-position regions (light shaded backgrounds).
-    ctx.fillStyle = "rgba(95,191,143,0.06)";
-    let regionStart: number | null = null;
-    for (let i = 0; i < curve.length; i++) {
-      const inPos = curve[i].inPosition;
-      if (inPos && regionStart === null) regionStart = i;
-      if ((!inPos || i === curve.length - 1) && regionStart !== null) {
-        const end = inPos ? i : i - 1;
-        if (end >= regionStart) {
-          ctx.fillRect(x(regionStart), padT, x(end) - x(regionStart), plotH);
-        }
-        regionStart = null;
-      }
-    }
-
-    // Gradient fill under the equity curve.
-    const finalEq = curve[curve.length - 1].equity;
-    const isPositive = finalEq >= result.params.initialCapital;
-    const lineColor = isPositive ? "#5fbf8f" : "#e2604f";
-    const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
-    if (isPositive) {
-      grad.addColorStop(0, "rgba(95,191,143,0.25)");
-      grad.addColorStop(1, "rgba(95,191,143,0.01)");
-    } else {
-      grad.addColorStop(0, "rgba(226,96,79,0.25)");
-      grad.addColorStop(1, "rgba(226,96,79,0.01)");
-    }
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(x(0), padT + plotH);
-    for (let i = 0; i < curve.length; i++) {
-      ctx.lineTo(x(i), y(curve[i].equity));
-    }
-    ctx.lineTo(x(curve.length - 1), padT + plotH);
-    ctx.closePath();
-    ctx.fill();
-
-    // Equity line — colored by direction vs initial capital.
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    for (let i = 0; i < curve.length; i++) {
-      const px = x(i);
-      const py = y(curve[i].equity);
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.strokeStyle = lineColor;
-    ctx.stroke();
-
-    // Final equity marker dot.
-    ctx.fillStyle = finalEq >= result.params.initialCapital ? "#5fbf8f" : "#e2604f";
-    ctx.beginPath();
-    ctx.arc(x(curve.length - 1), y(finalEq), 3.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // X-axis labels: first, middle, last timestamps.
-    ctx.fillStyle = "rgba(139,150,165,0.6)";
-    ctx.font = "10px ui-monospace, monospace";
-    ctx.textAlign = "left";
-    ctx.fillText(formatTime(curve[0].time), padL, cssH - 6);
-    ctx.textAlign = "center";
-    if (curve.length > 2) {
-      ctx.fillText(
-        formatTime(curve[Math.floor(curve.length / 2)].time),
-        padL + plotW / 2,
-        cssH - 6,
-      );
-    }
-    ctx.textAlign = "right";
-    ctx.fillText(formatTime(curve[curve.length - 1].time), padL + plotW, cssH - 6);
-  }, [open, result]);
 
   if (!open) return null;
 
@@ -1002,11 +853,7 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                         </span>
                       </span>
                     </div>
-                    <canvas
-                      ref={canvasRef}
-                      className="w-full h-44 rounded-md border border-white/8 bg-background/40"
-                      aria-label={t("backtest.equityCurve")}
-                    />
+                    <EquityCurveCanvas result={result} ariaLabel={t("backtest.equityCurve")} />
                   </div>
 
                   {/* Per-symbol breakdown (only for multi-symbol results) */}
@@ -1087,66 +934,7 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
                         ({result.trades.length})
                       </span>
                     </h4>
-                    {result.trades.length === 0 ? (
-                      <div className="rounded-md border border-white/8 bg-background/30 p-6 text-center text-xs text-muted-foreground">
-                        {t("backtest.noTrades")}
-                      </div>
-                    ) : (
-                      <div className="rounded-md border border-white/8 bg-background/30 max-h-72 overflow-y-auto custom-scrollbar">
-                        <table className="w-full text-[11px] font-mono">
-                          <thead className="sticky top-0 bg-card/95 backdrop-blur-sm">
-                            <tr className="text-left text-muted-foreground">
-                              <th className="px-2.5 py-1.5 font-medium">#</th>
-                              <th className="px-2.5 py-1.5 font-medium">{t("backtest.entry")}</th>
-                              <th className="px-2.5 py-1.5 font-medium">{t("backtest.exit")}</th>
-                              <th className="px-2.5 py-1.5 font-medium text-right">{t("backtest.price")}</th>
-                              <th className="px-2.5 py-1.5 font-medium text-right">{t("backtest.pnl")}</th>
-                              <th className="px-2.5 py-1.5 font-medium text-right">{t("backtest.hold")}</th>
-                              <th className="px-2.5 py-1.5 font-medium">{t("backtest.reason")}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {result.trades.map((tr, idx) => {
-                              const positive = tr.pnl >= 0;
-                              return (
-                                <tr
-                                  key={idx}
-                                  className="border-t border-white/5 hover:bg-white/3"
-                                >
-                                  <td className="px-2.5 py-1.5 text-muted-foreground">
-                                    {idx + 1}
-                                  </td>
-                                  <td className="px-2.5 py-1.5 text-foreground/80">
-                                    {formatTime(tr.entryTime)}
-                                  </td>
-                                  <td className="px-2.5 py-1.5 text-foreground/80">
-                                    {formatTime(tr.exitTime)}
-                                  </td>
-                                  <td className="px-2.5 py-1.5 text-right text-foreground/80">
-                                    {formatPrice(tr.entryPrice)} →{" "}
-                                    {formatPrice(tr.exitPrice)}
-                                  </td>
-                                  <td
-                                    className={`px-2.5 py-1.5 text-right font-semibold ${
-                                      positive ? "text-[#5fbf8f]" : "text-[#e2604f]"
-                                    }`}
-                                  >
-                                    {positive ? "+" : ""}
-                                    {tr.pnlPct.toFixed(2)}%
-                                  </td>
-                                  <td className="px-2.5 py-1.5 text-right text-muted-foreground">
-                                    {tr.holdCandles}
-                                  </td>
-                                  <td className="px-2.5 py-1.5 text-muted-foreground">
-                                    {t(REASON_KEYS[tr.exitReason])}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
+                    <TradeTable trades={result.trades} />
                   </div>
                   )}
                 </>
@@ -1511,31 +1299,8 @@ function MetricCard({
   );
 }
 
-/** Format a USD value compactly (e.g., 12345 → "12,345" or 1234567 → "1.23M"). */
-function formatNumber(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (abs >= 10_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
-}
 
-/** Format a candle timestamp as a compact date (YYYY-MM-DD or MM-DD HH). */
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
-/** Format a price with the right precision based on its magnitude. */
-function formatPrice(p: number): string {
-  if (!Number.isFinite(p)) return "—";
-  if (p >= 1000) return p.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (p >= 1) return p.toFixed(2);
-  return p.toFixed(4);
-}
 
 /** Format a risk ratio (Sharpe, Sortino, Calmar) — NaN → "—". */
 function formatRatio(r: number): string {

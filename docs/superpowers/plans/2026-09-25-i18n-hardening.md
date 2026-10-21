@@ -356,7 +356,7 @@ git commit -m "test(i18n): detector de literales visibles con deuda conocida exp
 - Modify: `src/lib/i18n-hardcoded.test.ts` (borrar 3 entradas de `KNOWN_DEBT`)
 
 **Interfaces:**
-- Produces (claves i18n nuevas, usadas sólo acá): `header.refreshAria`, `header.exportAria`, `header.shortcutsAria`.
+- Produces (claves i18n nuevas, usadas solo acá): `header.refreshAria`, `header.exportAria`, `header.shortcutsAria`.
 
 - [ ] **Step 1: Agregar las 3 claves a los 4 diccionarios**
 
@@ -510,7 +510,7 @@ const { t } = useLanguage();
 
 - [ ] **Step 4: Borrar las 11 entradas de `KNOWN_DEBT`**
 
-Eliminar del array todas las entradas de `page.tsx`… **no**: las de `page.tsx` ya se borraron en Task 4. Borrar sólo las 11 que quedan (sparkline, price-alerts ×2, keyboard-help, scatter-plot, strategy-consensus ×2, correlation-matrix, stop-loss, language-selector, range-bar).
+Eliminar del array todas las entradas de `page.tsx`… **no**: las de `page.tsx` ya se borraron en Task 4. Borrar solo las 11 que quedan (sparkline, price-alerts ×2, keyboard-help, scatter-plot, strategy-consensus ×2, correlation-matrix, stop-loss, language-selector, range-bar).
 
 - [ ] **Step 5: Verificar**
 
