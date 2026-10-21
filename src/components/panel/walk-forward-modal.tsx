@@ -21,6 +21,11 @@ import type {
   PositionSizing,
   WalkForwardResult,
 } from "@/lib/backtest";
+import {
+  classifyEfficiency,
+  computeEfficiency,
+  type RobustnessVerdict,
+} from "@/lib/backtest";
 
 type Props = {
   /** The strategy to backtest. May be a predefined id or a full custom strategy. */
@@ -47,6 +52,35 @@ type Props = {
 
 const WINDOW_SIZES = [300, 400, 500, 600];
 const IS_RATIOS = [0.6, 0.7, 0.8];
+
+// Verdict → color / label / table tone lookups (no nested ternaries).
+const VERDICT_COLOR: Record<RobustnessVerdict, string> = {
+  good: "#5fbf8f",
+  medium: "#e8b04b",
+  poor: "#e2604f",
+  none: "#8b96a5",
+};
+
+const VERDICT_KEY: Record<Exclude<RobustnessVerdict, "none">, string> = {
+  good: "backtest.robustnessGood",
+  medium: "backtest.robustnessMedium",
+  poor: "backtest.robustnessPoor",
+};
+
+type MetricTone = "positive" | "warn" | "negative" | "neutral" | "purple";
+const TONE_TEXT: Record<MetricTone, string> = {
+  positive: "text-[#5fbf8f]",
+  warn: "text-[#e8b04b]",
+  negative: "text-[#e2604f]",
+  neutral: "text-muted-foreground",
+  purple: "text-[#b48cff]",
+};
+const VERDICT_TONE: Record<RobustnessVerdict, Exclude<MetricTone, "purple">> = {
+  good: "positive",
+  medium: "warn",
+  poor: "negative",
+  none: "neutral",
+};
 
 /**
  * WalkForwardModal — run a walk-forward optimization on the current strategy.
@@ -152,33 +186,13 @@ export function WalkForwardModal({
 
   if (!open) return null;
 
-  // Robustness verdict based on efficiency.
+  // Robustness verdict based on efficiency (shared with the per-window
+  // table and the engine: classifyEfficiency() >= 0.5 robust, >= 0.3
+  // moderate, else overfit; null/non-finite → no verdict).
   const r = result?.robustness;
-  const efficiency = r?.efficiency;
-  const verdict: "good" | "medium" | "poor" | "none" =
-    efficiency == null || !Number.isFinite(efficiency)
-      ? "none"
-      : efficiency >= 0.5
-        ? "good"
-        : efficiency >= 0.3
-          ? "medium"
-          : "poor";
-  const verdictColor =
-    verdict === "good"
-      ? "#5fbf8f"
-      : verdict === "medium"
-        ? "#e8b04b"
-        : verdict === "poor"
-          ? "#e2604f"
-          : "#8b96a5";
-  const verdictLabel =
-    verdict === "good"
-      ? t("backtest.robustnessGood")
-      : verdict === "medium"
-        ? t("backtest.robustnessMedium")
-        : verdict === "poor"
-          ? t("backtest.robustnessPoor")
-          : "—";
+  const verdict = classifyEfficiency(r?.efficiency ?? null);
+  const verdictColor = VERDICT_COLOR[verdict];
+  const verdictLabel = verdict === "none" ? "—" : t(VERDICT_KEY[verdict]);
 
   const strategyLabel = predefined ? t(strategy.name) : strategy.name;
 
@@ -385,7 +399,7 @@ export function WalkForwardModal({
                   />
                   <RobustnessMetric
                     label={t("backtest.avgOosMaxDD")}
-                    value={r ? `-${r.avgOosMaxDD.toFixed(2)}%` : "—"}
+                    value={r ? formatDrawdownPct(r.avgOosMaxDD) : "—"}
                     tone="negative"
                   />
                   <RobustnessMetric
@@ -394,9 +408,6 @@ export function WalkForwardModal({
                   />
                 </div>
 
-                <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
-                  {t("backtest.efficiencyHint")}
-                </p>
               </div>
 
               {/* Per-window table */}
@@ -424,32 +435,13 @@ export function WalkForwardModal({
                       </thead>
                       <tbody>
                         {result.windows.map((w) => {
-                          const isRet = w.inSample.stats.totalReturnPct;
-                          const oosRet = w.outOfSample.stats.totalReturnPct;
-                          const eff =
-                            isRet !== 0
-                              ? oosRet / isRet
-                              : oosRet === 0
-                                ? 0
-                                : oosRet > 0
-                                  ? Infinity
-                                  : -Infinity;
-                          const effTone =
-                            !Number.isFinite(eff)
-                              ? "neutral"
-                              : eff >= 0.5
-                                ? "positive"
-                                : eff >= 0.3
-                                  ? "warn"
-                                  : "negative";
-                          const effColor =
-                            effTone === "positive"
-                              ? "text-[#5fbf8f]"
-                              : effTone === "warn"
-                                ? "text-[#e8b04b]"
-                                : effTone === "negative"
-                                  ? "text-[#e2604f]"
-                                  : "text-muted-foreground";
+                          const isRet = w.inSample.returnPct;
+                          const oosRet = w.outOfSample.returnPct;
+                          // Per-window efficiency is oosRet/isRet for that
+                          // window only — not the aggregated efficiency in
+                          // result.robustness (which averages all windows).
+                          const eff = computeEfficiency(isRet, oosRet);
+                          const effColor = TONE_TEXT[VERDICT_TONE[classifyEfficiency(eff)]];
                           return (
                             <tr key={w.index} className="border-b border-white/5 hover:bg-white/[0.02]">
                               <td className="px-2 py-1.5 text-foreground/80 font-semibold">#{w.index}</td>
@@ -466,17 +458,18 @@ export function WalkForwardModal({
                                 {oosRet.toFixed(2)}%
                               </td>
                               <td className="px-2 py-1.5 text-right text-muted-foreground">
-                                {w.inSample.stats.totalTrades}
+                                {w.inSample.trades}
                               </td>
                               <td className="px-2 py-1.5 text-right text-muted-foreground">
-                                {w.outOfSample.stats.totalTrades}
+                                {w.outOfSample.trades}
                               </td>
                               <td className={`px-2 py-1.5 text-right font-semibold ${effColor}`}>
-                                {Number.isFinite(eff) ? eff.toFixed(2) : "∞"}
+                                {eff != null ? eff.toFixed(2) : "—"}
                               </td>
                             </tr>
                           );
                         })}
+                          {/* Per-window efficiency is oosRet/isRet for that window only; it is not the same as the aggregated `efficiency` in `result.robustness`. Total OOS trades is the sum of oosTrades across all windows. */}
                       </tbody>
                     </table>
                   </div>
@@ -510,16 +503,9 @@ function RobustnessMetric({
   label: string;
   value: string;
   hint?: string;
-  tone?: "positive" | "negative" | "neutral" | "purple";
+  tone?: MetricTone;
 }) {
-  const toneColor =
-    tone === "positive"
-      ? "text-[#5fbf8f]"
-      : tone === "negative"
-        ? "text-[#e2604f]"
-        : tone === "purple"
-          ? "text-[#b48cff]"
-          : "text-foreground";
+  const toneColor = TONE_TEXT[tone];
   return (
     <div className="rounded-md border border-white/8 bg-background/40 p-2">
       <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70 mb-0.5 truncate">
@@ -545,9 +531,14 @@ function formatPctRaw(n: number | undefined | null): string {
   return `${n.toFixed(1)}%`;
 }
 
-/** Format a risk ratio — NaN / Infinity → "∞" / "—". */
+/** Format a risk ratio — NaN / non-finite → "∞" / "—". */
 function formatRatio(r: number | undefined | null): string {
   if (r == null) return "—";
   if (!Number.isFinite(r)) return r > 0 ? "∞" : "—";
   return r.toFixed(2);
+}
+
+/** Format a drawdown magnitude (4.55 → -4.55%), without faking -0.00%. */
+function formatDrawdownPct(n: number): string {
+  return `${n > 0 ? "-" : ""}${n.toFixed(2)}%`;
 }
