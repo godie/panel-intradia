@@ -23,16 +23,16 @@ tests) y `POST /api/backtest` / `POST /api/backtest/walk-forward` se reusan tal 
 
 - Nueva página `src/app/backtest/page.tsx` (client component, `"use client"`), link "Backtest" en
   el header junto a Comparar y Status.
-- **El modal actual coexiste**: sigue disponible desde las cards para contexto rápido.
+- El modal actual coexiste: sigue disponible desde las cards para contexto rápido.
 - Ruta visible #4 junto a `/`, `/comparar`, `/status`.
 
 ## Endpoints nuevos (todos `export const runtime = "nodejs"`)
 
 1. **`POST /api/backtest/compare`** — comparación de estrategias con el mismo config.
    Body: `{ config, strategies }` donde strategies son ids predefinidos o `CustomStrategy`
-   (cap 10). El server descarga klines **una vez** por (símbolo, intervalo, velas) — cacheada
-   60s vía `lib/cache.ts` — y las pasa a cada backtest. Response:
-   `[{ strategyId, name, action, error?, BacktestResult? }]` — un fallo por estrategia no aborta
+   (cap 10). El server descarga klines una sola vez por (símbolo, intervalo, velas), las cachea
+   60s en `lib/cache.ts` y las pasa a cada backtest. Response:
+   `[{ strategyId, name, action, error?, BacktestResult? }]`: un fallo por estrategia no aborta
    las demás (se marca `error` a nivel de estrategia, nunca datos fabricados).
 2. **`POST /api/backtest/runs`** — persiste config + `BacktestResult` completo + metadatos en
    SQLite; devuelve `id`.
@@ -81,24 +81,24 @@ model BacktestPreset {
 
 - `resultJson` como String (SQLite no tiene JSON útil en Prisma; patrón ya usado en el repo).
 - Contraste con cruces (CrossEvent): ahí la escritura es fire-and-forget porque la respuesta del
-  API no depende de la BD. Aquí POST/DELETE **sí** devuelven el resultado real (id created,
-  confirmación de borrado): el guardado es parte del workflow pedido, no un efecto colateral.
+  API no depende de la BD. Aquí POST/DELETE sí devuelven el resultado real (id created,
+  confirmación de borrado), porque el guardado es parte del workflow pedido.
   Los errores de lectura incidental (ej. listar presets al abrir la página) sí se degradan a
   banner sin bloquear la página.
 
 ## Layout de la página (3 tabs)
 
-Header common: brand + estado de conexión (reusar patrón del dashboard). Desktop fullscreen
-minimizado de chrome alrededor.
+Header solo con brand y estado de conexión (patrón del dashboard); en desktop se aprovecha la
+altura completa de la ventana.
 
 ### Tab 1 · Corrida
 - Config panel (columna izquierda sticky, `lg:grid-cols-[320px_1fr]`): símbolo, intervalo
   (15m/1h/4h/1d), velas (220/500/1000), capital, minConfidence, SL/TP, maxHold, sizing
   (full/fixedFractional), fees, estrategia (predefinida o del builder).
 - Derecha: equity curve grande Canvas HiDPI (reusar el render del modal si es trivial de extraer
-  a `components/panel/backtest/`, si no re-implementar — se usa una sola vez en la página),
-  métricas destacadas, trade list scroll a ancho completo, acciones: Guardar en BD, Walk-Forward
-  (embed inline, NO modal), aplicar/guardar presets.
+  a `components/panel/backtest/`, si no re-implementar), métricas destacadas, trade list scroll
+  a ancho completo, acciones: Guardar en BD, Walk-Forward (embed inline, NO modal),
+  aplicar/guardar presets.
 
 ### Tab 2 · Comparación
 - Mismo config + multiselección de las 7 estrategias predefinidas (checkboxes) y customs del
@@ -116,22 +116,22 @@ minimizado de chrome alrededor.
 Cross-tab: i18n completo vía `t()` (`backtestUI.*` keys, 4 idiomas); errores en banner por tab
 (nunca datos fabricados); spinner por tab; responsive mobile single-column.
 
-## Persistencia y límites (reglas anti-mala-práctica)
+## Persistencia y límites
 
 - Todo backtesting artefacto es **server-side** (SQLite), excepto el watchlist de cards que ya
   usa localStorage por diseño. Presets: ≤ 20, name ≤ 80 chars.
 - Compare/runs: ≤ 10 estrategias; intervalo ∈ `VALID_INTERVALS`; velas ≤ 1000; símbolo
   validado con `isValidSymbolFormat`.
-- `resultJson` cap defensivo de **1 MB** por run (real: ~100–400 KB en 500 velas); si excede,
+- `resultJson` con cap de 1 MB por run (real: ~100–400 KB en 500 velas); si excede,
   truncado de trades determinístico (nunca se fabrican datos).
-- Errores: `{ error }` con 400 (validación) / 502 (Binance) / 500 (BD) — contrato de
+- Errores: `{ error }` con 400 (validación) / 502 (Binance) / 500 (BD), el mismo contrato de
   `/api/analysis`. Nunca respuesta parcial fabricada.
 - Sin auto-purge en v1 (BD en volumen docker local); borrado manual por fila.
 
 ## Testing
 
-- **TDD obligatorio en helpers puros** (`src/lib/*.test.ts`), todo nuevo lógica testable vive en
-  `src/lib/`:
+- **TDD obligatorio en helpers puros** (`src/lib/*.test.ts`): toda lógica nueva testable vive en
+  `src/lib/`.
   - `backtest-compare.ts` — builder de tabla de comparación: campo de entrada
     `[strategyId, BacktestResult]`, salida filas de métricas + flags de "mejor de columna".
     Tests: lista vacía, empates, un solo elemento, NaN/Infinity, 10 estrategias.
@@ -144,7 +144,7 @@ Cross-tab: i18n completo vía `t()` (`backtestUI.*` keys, 4 idiomas); errores en
 
 ## Entrega
 
-Rama `feat/backtest-ui` (creada sobre main post-squash de PR #41 `5dad277`). Commits:
+Rama `feat/backtest-ui` (creada sobre main después del squash de PR #41 `5dad277`). Commits:
 
 1. Schema Prisma + helpers puros (TDD)
 2. Endpoints `compare` / `runs` / `presets`

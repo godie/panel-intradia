@@ -1856,12 +1856,12 @@ En `src/components/panel/backtest-modal.tsx`:
    import { EquityCurveCanvas } from "./backtest/equity-curve";
    import { TradeTable } from "./backtest/trade-table";
    ```
-   (relative rule incontrado — AGENTS.md §2),
+   (imports relativos dentro de `src/components/panel/`, según el §2 de AGENTS.md),
 2. Reemplazar el useEffect del canvas (ancla línea 298–290) y su `<canvas>` (líneas ~1006) por `<EquityCurveCanvas result={result} />` (guardado con `result &&`).
 3. Reemplazar la `<table>` de trades por `<TradeTable trades={result.trades} />`.
 4. `REASON_KEYS` ya no se usa en el modal → borrarlo del modal (queda en trade-table).
 5. `canvasRef` y su `useRef` ya no se usan → borrar.
-6. Revisar si el modal usa trades table variables adicionales (`t("backtest.entry")`…): aqui NO crear keys nuevas — todo lo que el modal ya tenía sigue funcionando igual.
+6. Revisar si el modal usa variables adicionales en la tabla de trades (`t("backtest.entry")`…): aquí NO crear keys nuevas — todo lo que el modal ya tenía sigue funcionando igual.
 
 - [ ] **Step 4: Verificación — suite + typecheck + lint + smoke visual del modal**
 
@@ -2411,8 +2411,7 @@ const runCompare = useCallback(async () => {
 
 Tabla (desktop) — `overflow-x-auto` con `<table>`:
 - `<th>`: estrategia | trades | winRate | retorno | drawdown | PF (con `backtest.*` existentes cuando aplique).
-- Cada `<td>` de métrica: si `row.best[k]` → chip `bg-[#5FBF8F]/15 text-[#5FBF8F]` + `t("backtestUI.bestMark")` como `title` (y el valor en bold).
-- Fila `row.summary === null` → el `row.error` en un `<td colSpan>` con icono `AlertTriangle` (buscar el import exacto que rayos `AlertTriangle` ya está usado en el repo — sí, en backtest-modal — reusar).
+- Cada `<td>` de métrica: si `row.best[k]` → chip `bg-[#5FBF8F]/15 text-[#5FBF8F]` + `t("backtestUI.bestMark")` como `title` (y el valor en bold).- Fila `row.summary === null` → el `row.error` en un `<td colSpan>` con icono `AlertTriangle` (ya está importado en `backtest-modal.tsx`; reusar).
 - Click en fila con summary → `setExpanded(row.strategyId === expanded ? null : row.strategyId)`; debajo renderiza el `EquityCurveCanvas` + `TradeTable` del `entries.get(row.strategyId)?.result`.
 - Sección arriba: multiselección con checkboxes (una por estrategia predefinida `STRATEGY_LIST` + una por custom del builder), botones `selectAll`/`selectNone` que setean o vacían el Set. Contador visual `selected.size/7+customList.length`.
 - Botón guardar comparación: por cada entry CON resultado → un POST `/api/backtest/runs` secuencial (mismo body shape del save de tab-run usando el `config` actual + `result` de la entry). Feedback con count guardado.
