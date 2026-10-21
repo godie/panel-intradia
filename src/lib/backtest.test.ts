@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
+import { STRATEGY_LIST } from "@/lib/strategies";
+import type { Kline } from "@/lib/providers/types";
 import {
   calculatePositionSizePct,
   computeTradePnl,
   computeStats,
   computeDurationBuckets,
   emptyStats,
+  runBacktest,
   type BacktestTrade,
 } from "./backtest";
 
@@ -35,6 +38,62 @@ function tradeHold(holdCandles: number): BacktestTrade {
 function equityCurve(equities: number[]): { candleIndex: number; time: number; equity: number; inPosition: boolean }[] {
   return equities.map((equity, i) => ({ candleIndex: i, time: i, equity, inPosition: false }));
 }
+
+describe("runBacktest con preloadedKlines", () => {
+  /** 260 velas planas (suficiente para el warmup ≥220): precio flat. */
+  function makeKlines(n: number): Kline[] {
+    return Array.from({ length: n }, (_, i) => ({
+      openTime: 1_700_000_000_000 + i * 3_600_000,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volume: 1_000,
+      closeTime: 1_700_000_000_000 + i * 3_600_000 + 3_599_999,
+      quoteVolume: 100_000,
+      trades: 100,
+    }));
+  }
+
+  it("usa las klines pre-cargadas SIN pegarle al provider (warmup suficiente)", async () => {
+    const result = await runBacktest({
+      symbol: "BTCUSDT",
+      interval: "4h",
+      limit: 260,
+      strategy: STRATEGY_LIST.find((s) => s.id === "hold")!,
+      action: "HOLD",
+      preloadedKlines: makeKlines(260),
+      preloadedProvider: "binance",
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.candlesAnalyzed).toBe(260);
+  });
+
+  it("error inline (sin fetch) si las pre-cargadas son insuficientes", async () => {
+    const result = await runBacktest({
+      symbol: "BTCUSDT",
+      interval: "4h",
+      limit: 10,
+      strategy: STRATEGY_LIST.find((s) => s.id === "hold")!,
+      action: "HOLD",
+      preloadedKlines: makeKlines(10),
+    });
+    expect(result.error).toContain("Insufficient historical data");
+  });
+
+  it("error inline (sin fetch) si las pre-cargadas vienen vacías", async () => {
+    const result = await runBacktest({
+      symbol: "BTCUSDT",
+      interval: "4h",
+      limit: 500,
+      strategy: STRATEGY_LIST.find((s) => s.id === "hold")!,
+      action: "HOLD",
+      preloadedKlines: [],
+      preloadedProvider: "binance",
+    });
+    expect(result.error).toContain("Insufficient historical data");
+  });
+});
 
 describe("calculatePositionSizePct", () => {
   it("returns 100 for 'full' regardless of trade history", () => {

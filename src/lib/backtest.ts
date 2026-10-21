@@ -24,6 +24,7 @@
 
 import { providerRouter } from "@/lib/providers/router";
 import type { Kline, ProviderId } from "@/lib/providers/types";
+import { getCached, setCached } from "@/lib/cache";
 import {
   calculateEMA,
   calculateRSI,
@@ -78,6 +79,12 @@ export type BacktestParams = {
   /** Trading fee per side in basis points (1 bp = 0.01%). Default 10 (0.10%).
    *  Set to 0 to disable fees. Binance spot maker/taker is ~10 bp. */
   feeBps?: number;
+  /** Preloaded klines — when provided the engine SKIPS the provider fetch
+   *  (used by POST /api/backtest/compare to share ONE upstream fetch across
+   *  all N strategy runs). Same warmup rules apply (≥220 candles). */
+  preloadedKlines?: Kline[];
+  /** Provider the preloaded klines came from (for the result metadata). */
+  preloadedProvider?: ProviderId;
 };
 
 export type BacktestTrade = {
@@ -720,26 +727,28 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
   // Cap limit to provider max (1000) and ensure we have enough warmup.
   const safeLimit = Math.max(220, Math.min(1000, Math.floor(limit)));
 
-  let provider: ProviderId = "binance";
-  let klines: Kline[] = [];
-  try {
-    const res = await providerRouter.getKlines(symbol, interval, safeLimit);
-    klines = res.klines;
-    provider = res.provider;
-  } catch {
-    return {
-      symbol,
-      interval,
-      candlesAnalyzed: 0,
-      provider,
-      trades: [],
-      equityCurve: [],
-      stats: emptyStats(initialCapital),
-      durationBuckets: [],
-      strategy: { id: strategy.id, name: strategy.name, action },
-      params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
-      error: "Failed to fetch historical klines from upstream provider.",
-    };
+  let provider: ProviderId = params.preloadedProvider ?? "binance";
+  let klines: Kline[] = params.preloadedKlines ?? [];
+  if (!params.preloadedKlines) {
+    try {
+      const res = await providerRouter.getKlines(symbol, interval, safeLimit);
+      klines = res.klines;
+      provider = res.provider;
+    } catch {
+      return {
+        symbol,
+        interval,
+        candlesAnalyzed: 0,
+        provider,
+        trades: [],
+        equityCurve: [],
+        stats: emptyStats(initialCapital),
+        durationBuckets: [],
+        strategy: { id: strategy.id, name: strategy.name, action },
+        params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+        error: "Failed to fetch historical klines from upstream provider.",
+      };
+    }
   }
 
   if (klines.length < 220) {
@@ -1543,4 +1552,25 @@ export async function runWalkForward(
     strategy: { id: strategy.id, name: strategy.name, action },
     params: { windowSize: plan.windowSize, inSampleRatio: plan.inSampleRatio, minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
   };
+}
+
+/**
+ * Klines para corridas de backtest EN SERVIDOR con cache TTL de 60s.
+ * POST /api/backtest/compare la llama UNA VEZ antes de correr N estrategias
+ * e inyecta el resultado via preloadedKlines — así N estrategias comparten
+ * la misma respuesta de upstream (regla del spec: N estrategias NO
+ * significan N descargas de Binance).
+ */
+export async function fetchKlinesCached(
+  symbol: string,
+  interval: BacktestInterval,
+  limit: number,
+): Promise<{ klines: Kline[]; provider: ProviderId }> {
+  const safeLimit = Math.max(220, Math.min(1000, Math.floor(limit)));
+  const key = `backtest:klines:${symbol}:${interval}:${safeLimit}`;
+  const hit = getCached<{ klines: Kline[]; provider: ProviderId }>(key);
+  if (hit) return hit;
+  const res = await providerRouter.getKlines(symbol, interval, safeLimit);
+  setCached(key, res);
+  return res;
 }
