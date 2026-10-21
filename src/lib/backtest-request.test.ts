@@ -1,11 +1,105 @@
 import { describe, it, expect } from "vitest";
 import {
+  parseCompareConfig,
   parseCustomStrategy,
+  parseStrategyRefs,
   parseTradeLimits,
   resolveStrategy,
   VALID_INTERVALS,
   clampNumber,
 } from "./backtest-request";
+
+describe("parseStrategyRefs", () => {
+  const base = { minConfidence: 60 };
+  void base;
+
+  it("sin strategies válido (vacío / no-array) → ok:false", () => {
+    for (const body of [{ strategies: [] }, {}, { strategies: "trend_buy" }]) {
+      const out = parseStrategyRefs(body);
+      expect(out.ok).toBe(false);
+      if (!out.ok) expect(out.error).toContain("strategies");
+    }
+  });
+
+  it(">10 estrategias → ok:false con el cap explícito en el mensaje", () => {
+    const many = Array.from({ length: 11 }, () => "trend_buy");
+    const out = parseStrategyRefs({ strategies: many });
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.error).toContain("10");
+  });
+
+  it("ids predefinidos pasan por strategyId en orden, con trim y uppercase", () => {
+    const out = parseStrategyRefs({ strategies: ["trend_buy", " breakout_short "] });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.refs).toEqual([{ strategyId: "TREND_BUY" }, { strategyId: "BREAKOUT_SHORT" }]);
+    }
+  });
+
+  it("customStrategy válido pasa por parseCustomStrategy", () => {
+    const custom = {
+      id: "c1",
+      name: "Mi LX",
+      action: "BUY",
+      conditions: [{ type: "rsi_below", threshold: 30 }],
+    };
+    const out = parseStrategyRefs({ strategies: [custom] });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.refs[0]).toEqual({
+        customStrategy: { ...custom, createdAt: expect.any(Number) },
+      });
+    }
+  });
+
+  it("cualquier item inválido rechaza TODO el pedido (nunca silencioso)", () => {
+    // Shape inválido: sin condiciones (la única que tenía no era string.type).
+    const bad = [
+      { id: "c1", name: "x", action: "BUY", conditions: [] },
+      { id: "c1", name: "x", action: "BUY", conditions: [{ type: 123 }] },
+    ];
+    expect(parseStrategyRefs({ strategies: bad }).ok).toBe(false);
+    expect(parseStrategyRefs({ strategies: [42] }).ok).toBe(false);
+    expect(parseStrategyRefs({ strategies: [null] }).ok).toBe(false);
+    expect(
+      parseStrategyRefs({ strategies: ["trend_buy", { no: true }] }).ok,
+    ).toBe(false);
+  });
+});
+
+describe("parseCompareConfig", () => {
+  it("symbol inválido o faltante → ok:false", () => {
+    for (const body of [{}, { symbol: "corto" }, { symbol: "BTC/USD" }]) {
+      expect(parseCompareConfig(body).ok).toBe(false);
+    }
+  });
+
+  it("interval fuera de VALID_INTERVALS → ok:false", () => {
+    expect(parseCompareConfig({ symbol: "BTCUSDT", interval: "9m" }).ok).toBe(false);
+  });
+
+  it("limit numérico fuera de [50,1000] → ok:false; string cae al default (igual que /api/backtest)", () => {
+    for (const limit of [49, 1500]) {
+      expect(parseCompareConfig({ symbol: "BTCUSDT", limit }).ok).toBe(false);
+    }
+    expect(parseCompareConfig({ symbol: "BTCUSDT", limit: "600" })).toEqual({
+      ok: true,
+      config: expect.objectContaining({ limit: 500 }),
+    });
+  });
+
+  it("caso mínimo válido: defaults interval 4h / limit 500 y tradeLimits de parseTradeLimits", () => {
+    const out = parseCompareConfig({ symbol: "ethusdt" });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.config.symbol).toBe("ETHUSDT");
+      expect(out.config.interval).toBe("4h");
+      expect(out.config.limit).toBe(500);
+      expect(out.config.tradeLimits.minConfidence).toBe(60);
+      expect(out.config.tradeLimits.positionSizing).toBe("full");
+    }
+  });
+});
 
 describe("clampNumber", () => {
   it("clamps into the range", () => {
