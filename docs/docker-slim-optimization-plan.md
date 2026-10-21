@@ -1,6 +1,7 @@
 # Docker — plan de optimización de la imagen de producción (`dm/docker-slim`)
 
-> Scope: rama `dm/docker-slim` (base: `a5db40f`, ya con standalone traced).
+> Scope: rama `dm/docker-slim` rebaseada sobre `main` (PR #39 landed);
+> base docker: `003e504` (standalone traced).
 > Meta: reducir el tamaño de la imagen runtime sin perder funcionalidad.
 > Resultado: **544 MB → 406 MB (−138 MB, −25 %)**, verificado end-to-end
 > con `docker build`, arranque en volumen fresco, healthchecks y
@@ -39,7 +40,7 @@
 
 ## Cómo estaba antes de la mejora
 
-Estado de partida de `dm/docker-slim` (commit `a5db40f`, imagen construida el
+Estado de partida de `dm/docker-slim` (commit `003e504`, imagen construida el
 día anterior como `panelcuantitativo/app:alpine`):
 
 - **Imagen: 544 MB** (y el `panelcuantitativo/app:latest` pre-standalone, de
@@ -58,7 +59,7 @@ día anterior como `panelcuantitativo/app:alpine`):
 
 ## Cómo está ahora
 
-Estado final (commits `2e4f41f` + `b777168`), con mediciones reales:
+Estado final (commits `d4077e5` + `b4bd74a`), con mediciones reales:
 
 - **Imagen: 406 MB** (−138 MB, −25 % respecto a 544 MB), tags
   `panelcuantitativo/app:latest` y `:alpine` apuntando al contenido slim.
@@ -90,7 +91,7 @@ Tabla por área (estimado del plan vs medido):
 
 `docker-entrypoint.sh` (1 commit) y `Dockerfile` (2 commits):
 
-1. **`2e4f41f` — perf(docker): −115 MB**
+1. **`d4077e5` — perf(docker): −115 MB**
    - Base: `util-linux` y `wget` fuera; `su-exec` entra.
    - Entrypoint: `setpriv` → `su-exec bun:bun`.
    - Etapa `caddy-upx` (alpine + upx) comprime el binario; el runner copia desde ahí.
@@ -100,7 +101,7 @@ Tabla por área (estimado del plan vs medido):
      creado y chowneado ahí mismo.
    - Runner: `COPY --chmod=755 --chown=bun:bun` para los scripts; sin
      `RUN chmod`, sin `RUN mkdir /app/db`.
-2. **`b777168` — perf(docker): purgar libquery_engine y docs (−23 MB)**
+2. **`b4bd74a` — perf(docker): purgar libquery_engine y docs (−23 MB)**
    - El árbol trazado por Next ya traía su propia copia de `@prisma/engines` con
      `libquery_engine` (15 MB) que la purga de la etapa `prisma-cli` no
      alcanzaba (COPY no borra archivos ya presentes) → purga también en la
