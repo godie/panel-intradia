@@ -11,6 +11,7 @@
  */
 
 import { db } from "./db";
+import type { AnalysisResponse } from "./types";
 
 const DEDUP_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours for EMA/MACD crosses
 const MOMENTUM_DEDUP_MS = 2 * 60 * 60 * 1000; // 2 hours for momentum flips
@@ -68,6 +69,64 @@ export async function recordCrossIfNew(input: RecordInput): Promise<void> {
     // DB errors must never break the API response.
     console.error("[cross-history] record error:", err);
   }
+}
+
+export type CrossCandidate = {
+  symbol: string;
+  type: CrossEventType;
+  direction: CrossDirection;
+  price: number;
+  candlesAgo: number;
+};
+
+/**
+ * collectCrossCandidates — función pura: recibe un payload ya computado y
+ * devuelve los cruces fresh ahora mismo. [] cuando no hay spot price
+ * (no hay nada que registrar) o no hay señal fresh. Sin I/O.
+ */
+export function collectCrossCandidates(
+  payload: AnalysisResponse,
+): CrossCandidate[] {
+  const out: CrossCandidate[] = [];
+  const price = payload.spot_price;
+  if (price == null || !Number.isFinite(price)) return out;
+
+  const push = (
+    type: CrossEventType,
+    direction: CrossDirection,
+    candlesAgo: number,
+  ): void => {
+    out.push({ symbol: payload.symbol, type, direction, price, candlesAgo });
+  };
+
+  const ema = payload.cross_info;
+  if (ema?.happened && ema.direction) {
+    push("ema", ema.direction, ema.candles_since_cross ?? 0);
+  }
+
+  const macd = payload.macd_cross;
+  if (macd?.happened && macd.direction) {
+    push("macd", macd.direction, macd.candles_since_cross ?? 0);
+  }
+  if (macd?.momentum_flip && macd.momentum_flip_direction) {
+    push("momentum", macd.momentum_flip_direction, macd.candles_since_flip ?? 0);
+  }
+
+  const breakout = payload.squeeze_breakout;
+  if (breakout?.happened && breakout.direction) {
+    push("squeeze_breakout", breakout.direction, breakout.candles_since_breakout ?? 0);
+  }
+
+  if (payload.bollinger_squeeze?.is_squeezed) {
+    push("squeeze", "neutral", 0);
+  }
+
+  const stoch = payload.stoch_cross;
+  if (stoch?.happened && stoch.direction) {
+    push("stoch_cross", stoch.direction, stoch.candles_since_cross ?? 0);
+  }
+
+  return out;
 }
 
 export type CrossHistoryEntry = {
