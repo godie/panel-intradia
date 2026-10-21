@@ -28,11 +28,11 @@ describe("parseStrategyRefs", () => {
     if (!out.ok) expect(out.error).toContain("10");
   });
 
-  it("ids predefinidos pasan por strategyId en orden, con trim y uppercase", () => {
+  it("ids predefinidos pasan por strategyId verbatim (resolveStrategy es case-sensitive)", () => {
     const out = parseStrategyRefs({ strategies: ["trend_buy", " breakout_short "] });
     expect(out.ok).toBe(true);
     if (out.ok) {
-      expect(out.refs).toEqual([{ strategyId: "TREND_BUY" }, { strategyId: "BREAKOUT_SHORT" }]);
+      expect(out.refs).toEqual([{ strategyId: "trend_buy" }, { strategyId: "breakout_short" }]);
     }
   });
 

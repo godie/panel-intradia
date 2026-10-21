@@ -215,7 +215,9 @@ export function parseStrategyRefs(
       if (!item.trim()) {
         return { ok: false, error: "Empty strategy id in strategies array." };
       }
-      refs.push({ strategyId: item.trim().toUpperCase() });
+      // VERBATIM (solo trim): resolveStrategy es case-sensitive y los ids
+      // predefinidos son lowercase snake ("trend_buy", "breakout_short").
+      refs.push({ strategyId: item.trim() });
       continue;
     }
     if (item != null && typeof item === "object" && !Array.isArray(item)) {
