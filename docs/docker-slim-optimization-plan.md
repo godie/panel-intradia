@@ -123,6 +123,26 @@ Tabla por área (estimado del plan vs medido):
   `/_order-book/socket.io/` con CORS correcto (403 sin Origin / 200 con
   `Origin: http://localhost:81`).
 
+## Mini-services: misma receta (355 → 158 MB)
+
+Los Dockerfiles propios de `mini-services/tick-stream` y `mini-services/order-book`
+(la variante standalone de cada servicio; el compose usa la imagen del app) pasaron
+por el mismo tratamiento:
+
+| | Antes | Ahora |
+|---|---|---|
+| Base | `oven/bun` Debian + `apt-get install wget ca-certificates` | `oven/bun` **alpine** (musl) + solo `ca-certificates` (wget es applet de BusyBox) |
+| node_modules | intactos | purgados en la MISMA layer (`.md`/`.map`/`.d.ts`/, `test`/`tests`/`docs`/`__tests__`) |
+| Usuario | root | `USER bun` + `COPY --chown=bun:bun` (no tocan volúmenes/db, no necesitan el entrypoint) |
+| **Tamaño** | **386 MB c/u** | **158 MB c/u (−228 MB, −59 %)** |
+
+Verificación: ambos contenedores boot con `/health` correcto y
+`binanceConnected: true`, corren como `bun`, y `mini-services/validate-service.sh`
+PASA para los dos (contrato de `/health`, handshake en `/socket.io/` con
+Origin permitido, 403 sin Origin/extranjero, 404 en ruta desconocida). Nota:
+el :3005 del host estaba ocupado por un túnel ssh ajeno, la validación corrió
+en un contenedor con el repo montado.
+
 ## Cómo replicar / desplegar
 
 ```bash
