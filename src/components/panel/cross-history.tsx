@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SYMBOL_META, type CrossState } from "@/lib/types";
+import type { CrossEventType, CrossDirection } from "@/lib/cross-history";
 import { useLanguage } from "@/hooks/use-language";
 import {
   TrendingUp,
@@ -10,10 +11,11 @@ import {
   Activity,
   History,
   Loader2,
+  Gauge,
+  Target,
+  Percent,
+  Minus,
 } from "lucide-react";
-
-type CrossEventType = "ema" | "macd" | "momentum";
-type CrossDirection = "bullish" | "bearish";
 
 type CrossEvent = {
   id: string;
@@ -48,7 +50,35 @@ const TYPE_META: Record<
     color: "#b48cff",
     icon: TrendingUp,
   },
+  squeeze: {
+    label: "Bollinger squeeze",
+    short: "SQZ",
+    color: "#8b96a5",
+    icon: Gauge,
+  },
+  squeeze_breakout: {
+    label: "Squeeze breakout",
+    short: "SQZ↑",
+    color: "#e2604f",
+    icon: Target,
+  },
+  stoch_cross: {
+    label: "Cruce Stochastic",
+    short: "STO",
+    color: "#5fbf8f",
+    icon: Percent,
+  },
 };
+
+// Defensa anti-crash: si el server añade un tipo que este bundle (posible
+// cache vieja) no conoce, la fila se renderiza neutral en vez de caer toda
+// la página (el crash "reading 'icon'" fue el síntoma del bug cruzado).
+const UNKNOWN_META = {
+  label: "Cross",
+  short: "?",
+  color: "#8b96a5",
+  icon: Activity,
+} as const;
 
 function fmtRelative(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -260,11 +290,16 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
           {!loading && !error && events.length > 0 && (
             <ol className="relative max-h-80 space-y-1.5 overflow-y-auto scroll-thin pr-2">
               {events.map((ev) => {
-                const meta = TYPE_META[ev.type];
+                const meta = TYPE_META[ev.type] ?? UNKNOWN_META;
                 const Icon = meta.icon;
                 const bullish = ev.direction === "bullish";
-                const dirColor = bullish ? "#5fbf8f" : "#e2604f";
-                const DirIcon = bullish ? TrendingUp : TrendingDown;
+                const isNeutral = ev.direction === "neutral";
+                const dirColor = bullish
+                  ? "#5fbf8f"
+                  : isNeutral
+                    ? "#8b96a5"
+                    : "#e2604f";
+                const DirIcon = bullish ? TrendingUp : isNeutral ? Minus : TrendingDown;
                 return (
                   <li
                     key={ev.id}
