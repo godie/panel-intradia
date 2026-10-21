@@ -22,13 +22,19 @@ ARG NODE_VERSION=24
 FROM oven/bun:${BUN_VERSION}-alpine AS base
 WORKDIR /app
 # Alpine (musl) keeps the base ~100 MB smaller than the Debian variant.
-#   - bash + util-linux: the entrypoint/all-in-one scripts use `set -u`,
-#     `wait -n` and `setpriv` (not available in BusyBox sh)
+#   - bash: the entrypoint/all-in-one scripts use `set -u` and `wait -n`
+#     (not available in BusyBox sh)
+#   - su-exec: ~150 KB replacement for util-linux's `setpriv` used by the
+#     entrypoint to drop from root to the `bun` user (it execs, so the app
+#     still runs as PID 1 and keeps receiving SIGTERM)
 #   - openssl: Prisma engines link against libssl on musl
 #   - libstdc++ / libc6-compat: native modules and the Node binary
-#   - wget + ca-certificates: HEALTHCHECKs and HTTPS upstreams
+#   - ca-certificates: HTTPS upstreams. NO wget: BusyBox ships a wget applet
+#     that covers the Dockerfile and compose HEALTHCHECKs (`wget -q --spider`
+#     is supported) — the GNU binary was ~1 MB for nothing.
+#   - NO util-linux: setpriv was its only consumer; replaced by su-exec.
 RUN apk add --no-cache \
-    bash ca-certificates wget openssl libstdc++ libc6-compat util-linux \
+    bash ca-certificates openssl libstdc++ libc6-compat su-exec \
  && rm -rf /var/cache/apk/*
 
 # =============================================================================
@@ -70,6 +76,13 @@ RUN bunx prisma generate
 # The version is read from the lockfile-resolved package so the CLI always
 # matches the @prisma/client that Next traced into the bundle.
 # Must use the same base (musl) as the runtime, so the schema engine matches.
+#
+# Engine purge: the CLI only runs `prisma db push`, which is served by the
+# schema-engine binary alone. The query-engine is dead weight here — at
+# runtime the SQLite query engine lives in the *generated client* inside the
+# traced standalone node_modules (.prisma/client/libquery_engine-*.so.node),
+# never in @prisma/engines. prisma-fmt is only used for `prisma format`.
+# Deleting them in this throwaway stage keeps ~40 MB out of the final layer.
 # =============================================================================
 FROM base AS prisma-cli
 WORKDIR /cli
@@ -80,7 +93,14 @@ RUN echo '{"name":"prisma-cli","private":true}' > package.json \
  && PRISMA_VERSION="$(bun -e 'console.log(require("/tmp/prisma-package.json").version)')" \
  && echo "[prisma-cli] installing prisma@${PRISMA_VERSION}" \
  && bun add "prisma@${PRISMA_VERSION}" \
- && rm -rf /cli/node_modules/.cache /cli/bun.lock
+ && rm -rf /cli/node_modules/.cache /cli/bun.lock \
+ && rm -f /cli/node_modules/@prisma/engines/query-engine-* \
+           /cli/node_modules/@prisma/engines/prisma-fmt-*
+
+# Runtime-tree pruning list shared by the CLI-merge and the standalone tree:
+# docs, source maps and TypeScript declarations are never read at runtime.
+# Test suites inside packages likewise (nobody `require()`s a package's own
+# tests). Pruned in throwaway stages so the runner gets one final layer.
 
 # =============================================================================
 # Node.js runtime for the Next.js build.
@@ -99,11 +119,21 @@ RUN echo '{"name":"prisma-cli","private":true}' > package.json \
 FROM node:${NODE_VERSION}-alpine AS node-bin
 
 # =============================================================================
-# Caddy binary, copied out of the official image so the ALL_IN_ONE variant can
-# proxy without needing a fourth service on the host. Caddy's official builds
-# are static (CGO disabled), so the Alpine binary runs on this Debian image.
+# Caddy binary for the ALL_IN_ONE variant, copied out of the official image so
+# it can proxy without needing a fourth service on the host. Caddy's official
+# builds are static (CGO disabled), so the Alpine binary runs on this image.
+#
+# UPX-compressed in a throwaway stage: UPX decompresses straight into RAM on
+# exec, so on-disk ~45 MB → ~15 MB while runtime behaviour stays identical
+# (same binary, same flags). `caddy version` also proves the compressed
+# binary still runs inside the build.
 # =============================================================================
 FROM caddy:2-alpine AS caddy-bin
+
+FROM alpine:3.20 AS caddy-upx
+RUN apk add --no-cache upx
+COPY --from=caddy-bin /usr/bin/caddy /caddy
+RUN upx --best --lzma /caddy && /caddy version
 
 # =============================================================================
 # Stage 3: builder — build the Next.js standalone bundle.
@@ -132,9 +162,10 @@ RUN bun run build
 # Stage 3b: runtime tree — assemble and prune in a throwaway stage.
 #
 # The tree is exactly what Next traced (`.next/standalone`) plus the Prisma
-# CLI. Everything is assembled and pruned HERE so the runner receives one
-# final layer instead of a chain of add-then-delete layers (Docker layers are
-# additive: a `rm` in a later stage never shrinks the image).
+# CLI and the mini-services. Everything is assembled AND pruned HERE so the
+# runner receives one final layer instead of a chain of add-then-delete
+# layers (Docker layers are additive: a `rm` in a later stage never shrinks
+# the image). /app/db (the volume mount point) is also assembled here.
 # =============================================================================
 FROM base AS runtime
 WORKDIR /app
@@ -156,7 +187,12 @@ COPY --from=prisma-cli /cli/node_modules ./node_modules
 #   - @prisma/client wasm engines / query compilers for databases this app
 #     does not use (SQLite is the only provider in prisma/schema.prisma).
 #     Kept: *sqlite*. (~40 MB)
-#   - prisma CLI maps and docs
+#   - *.md / *.map / *.d.ts / *.tsbuildinfo everywhere in node_modules
+#     (ship docs, source maps and type declarations the runtime never reads
+#     — ~25–45 MB across the traced tree + the Prisma CLI + socket.io)
+#   - package-internal test/ suites and __tests__/ dirs
+#   - /app/db mount point pre-created and chowned so the bare image is ready
+#     even before the entrypoint re-runs `chown` on a volume
 RUN rm -rf \
       node_modules/@img/sharp-linux-* \
       node_modules/@img/sharp-libvips-linux-* \
@@ -169,7 +205,15 @@ RUN rm -rf \
       node_modules/@prisma/client/runtime/query_compiler_bg.mysql.* \
       node_modules/@prisma/client/runtime/query_compiler_bg.postgresql.* \
       node_modules/@prisma/client/runtime/query_compiler_bg.sqlserver.* \
-      node_modules/.cache
+      node_modules/.cache \
+ && find node_modules mini-services/*/node_modules \
+      -type d \( -name test -o -name tests -o -name __tests__ \) \
+      -prune -exec rm -rf '{}' + \
+ && find node_modules mini-services/*/node_modules \
+      -type f \( -name '*.md' -o -name '*.map' -o -name '*.d.ts' \
+                 -o -name '*.d.mts' -o -name '*.d.cts' \
+                 -o -name '*.tsbuildinfo' \) -delete \
+ && mkdir -p /app/db && chown -R bun:bun /app/db
 
 # =============================================================================
 # Stage 4: runner — minimal runtime image with everything inside.
@@ -188,35 +232,35 @@ ENV DATABASE_URL=file:/app/db/custom.db
 ENV HOSTNAME=0.0.0.0
 
 # Copy the merged runtime tree (standalone + static + public + mini-services
-# + prisma schema + production-only node_modules) as a single layer.
+# + prisma schema + production-only node_modules + /app/db) as a single layer.
+# The --chown replaces the RUN chmod/mkdir dance: the throwaway runtime stage
+# already ships the tree final, so no extra layers are created here.
 COPY --from=runtime --chown=bun:bun /app ./
 
 # Startup script: initialize the SQLite DB if needed, then exec the
 # standalone Next.js server. If a legacy DB already has tables, db push
 # is a no-op; if the volume is fresh, it creates the schema.
-COPY --chown=bun:bun docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# --chmod=755 sets the exec bit at copy time (no RUN chmod layer).
+COPY --chmod=755 --chown=bun:bun docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# Caddy + its config + the all-in-one launcher, for hosts that can't run the
-# four compose services (see docker/all-in-one.sh, enabled with ALL_IN_ONE=1).
-COPY --from=caddy-bin /usr/bin/caddy /usr/local/bin/caddy
+# Caddy (UPX-compressed) + its config + the all-in-one launcher, for hosts
+# that can't run the four compose services (see docker/all-in-one.sh,
+# enabled with ALL_IN_ONE=1).
+COPY --from=caddy-upx /caddy /usr/local/bin/caddy
 COPY --chown=bun:bun Caddyfile /etc/caddy/Caddyfile
-COPY --chown=bun:bun docker/all-in-one.sh /usr/local/bin/all-in-one.sh
-RUN chmod +x /usr/local/bin/all-in-one.sh
-
-# Persistent SQLite directory — a Docker/Railway volume mounts here.
-RUN mkdir -p /app/db && chown -R bun:bun /app/db
+COPY --chmod=755 --chown=bun:bun docker/all-in-one.sh /usr/local/bin/all-in-one.sh
 
 # NOTE: deliberately NO `USER bun`. A mounted volume is owned by root, so the
 # entrypoint (which starts as root) chowns /app/db and then re-execs itself as
-# `bun`. Without that, `prisma db push` dies with "unable to open database
-# file" because the app user cannot write to the root-owned mount.
+# `bun` via su-exec. Without that, `prisma db push` dies with "unable to open
+# database file" because the app user cannot write to the root-owned mount.
 
 EXPOSE 8000 3004 3005
 
 # Note: the `app` service overrides the healthcheck in docker-compose.yml
 # (it targets the dashboard root); the mini-services override it too.
 # This default just probes the app port so a bare `docker run` is sane.
+# BusyBox wget (applet in the Alpine base) supports -q/--spider.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget --quiet --spider http://127.0.0.1:${PORT:-8000}/ || exit 1
 
