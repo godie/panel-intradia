@@ -192,7 +192,7 @@ export type BacktestResult = {
 const WARMUP = 200; // EMA200 + Ichimoku(52) need ~200 candles before all indicators are valid.
 
 /** Per-candle snapshot. The full AnalysisResponse is built once per candle. */
-type CandleSnapshot = {
+export type CandleSnapshot = {
   index: number;
   time: number;
   close: number;
@@ -518,66 +518,38 @@ export function computeTradePnl(input: {
   return { grossPnl, netPnl, netPnlPct, feesPaid };
 }
 
-export async function runBacktest(params: BacktestParams): Promise<BacktestResult> {
+/**
+ * Trade execution shared by the full-history backtest and the walk-forward
+ * windows, so both run the exact same engine (one place to change exit
+ * checks, fees or sizing — no divergent copies).
+ *
+ * `warmupIndex` is the first candle allowed to OPEN a position:
+ * - runBacktest passes `min(WARMUP, len - 1)` — the fetched kline history is
+ *   too short for warm indicators before that;
+ * - walk-forward passes 0, because its windows are slices of ONE snapshot
+ *   series computed over the whole fetched history: every candle already
+ *   carries the full-history indicator context live trading would have.
+ */
+function simulateTrades(
+  snapshots: CandleSnapshot[],
+  params: TradeSimParams,
+  warmupIndex: number,
+  provider: ProviderId,
+): BacktestResult {
   const {
     symbol,
     interval,
-    limit,
     strategy,
     action,
-    minConfidence = 60,
-    initialCapital = 10_000,
-    stopLossPct = 5,
-    takeProfitPct = 10,
-    maxHoldCandles = 50,
-    positionSizing = "full",
-    fixedFractionalPct = 25,
-    feeBps = 10,
+    minConfidence,
+    initialCapital,
+    stopLossPct,
+    takeProfitPct,
+    maxHoldCandles,
+    positionSizing,
+    fixedFractionalPct,
+    feeBps,
   } = params;
-
-  // Cap limit to provider max (1000) and ensure we have enough warmup.
-  const safeLimit = Math.max(220, Math.min(1000, Math.floor(limit)));
-
-  let provider: ProviderId = "binance";
-  let klines: Kline[] = [];
-  try {
-    const res = await providerRouter.getKlines(symbol, interval, safeLimit);
-    klines = res.klines;
-    provider = res.provider;
-  } catch {
-    return {
-      symbol,
-      interval,
-      candlesAnalyzed: 0,
-      provider,
-      trades: [],
-      equityCurve: [],
-      stats: emptyStats(initialCapital),
-      durationBuckets: [],
-      strategy: { id: strategy.id, name: strategy.name, action },
-      params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
-      error: "Failed to fetch historical klines from upstream provider.",
-    };
-  }
-
-  if (klines.length < 220) {
-    return {
-      symbol,
-      interval,
-      candlesAnalyzed: klines.length,
-      provider,
-      trades: [],
-      equityCurve: [],
-      stats: emptyStats(initialCapital),
-      durationBuckets: [],
-      strategy: { id: strategy.id, name: strategy.name, action },
-      params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
-      error: `Insufficient historical data (${klines.length} candles; need at least 220 for warmup).`,
-    };
-  }
-
-  const snapshots = buildSnapshots(klines, symbol);
-  const warmupIndex = Math.min(WARMUP, snapshots.length - 1);
 
   // --- Trade simulation ---
   const trades: BacktestTrade[] = [];
@@ -710,6 +682,106 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     strategy: { id: strategy.id, name: strategy.name, action },
     params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
   };
+}
+
+export type TradeSimParams = {
+  symbol: string;
+  interval: BacktestInterval;
+  strategy: Strategy;
+  action: StrategyAction;
+  minConfidence: number;
+  initialCapital: number;
+  stopLossPct: number;
+  takeProfitPct: number;
+  maxHoldCandles: number;
+  positionSizing: PositionSizing;
+  fixedFractionalPct: number;
+  feeBps: number;
+};
+
+
+export async function runBacktest(params: BacktestParams): Promise<BacktestResult> {
+  const {
+    symbol,
+    interval,
+    limit,
+    strategy,
+    action,
+    minConfidence = 60,
+    initialCapital = 10_000,
+    stopLossPct = 5,
+    takeProfitPct = 10,
+    maxHoldCandles = 50,
+    positionSizing = "full",
+    fixedFractionalPct = 25,
+    feeBps = 10,
+  } = params;
+
+  // Cap limit to provider max (1000) and ensure we have enough warmup.
+  const safeLimit = Math.max(220, Math.min(1000, Math.floor(limit)));
+
+  let provider: ProviderId = "binance";
+  let klines: Kline[] = [];
+  try {
+    const res = await providerRouter.getKlines(symbol, interval, safeLimit);
+    klines = res.klines;
+    provider = res.provider;
+  } catch {
+    return {
+      symbol,
+      interval,
+      candlesAnalyzed: 0,
+      provider,
+      trades: [],
+      equityCurve: [],
+      stats: emptyStats(initialCapital),
+      durationBuckets: [],
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      error: "Failed to fetch historical klines from upstream provider.",
+    };
+  }
+
+  if (klines.length < 220) {
+    return {
+      symbol,
+      interval,
+      candlesAnalyzed: klines.length,
+      provider,
+      trades: [],
+      equityCurve: [],
+      stats: emptyStats(initialCapital),
+      durationBuckets: [],
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      error: `Insufficient historical data (${klines.length} candles; need at least 220 for warmup).`,
+    };
+  }
+
+  const snapshots = buildSnapshots(klines, symbol);
+  const warmupIndex = Math.min(WARMUP, snapshots.length - 1);
+
+  // The trade execution lives in simulateTrades() so the walk-forward
+  // windows run the exact same engine byte-for-byte.
+  return simulateTrades(
+    snapshots,
+    {
+      symbol,
+      interval,
+      strategy,
+      action,
+      minConfidence,
+      initialCapital,
+      stopLossPct,
+      takeProfitPct,
+      maxHoldCandles,
+      positionSizing,
+      fixedFractionalPct,
+      feeBps,
+    },
+    Math.min(WARMUP, snapshots.length - 1),
+    provider,
+  );
 }
 
 export function emptyStats(initialCapital: number): BacktestStats {
@@ -1090,5 +1162,385 @@ export async function runMultiSymbolBacktest(
     strategy: { id: strategy.id, name: strategy.name, action },
     params: { minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
     errors,
+  };
+}
+
+// ============================================================
+// WALK-FORWARD OPTIMIZATION
+// ============================================================
+
+/**
+ * Per-window summary. Deliberately small: the API payload grows with
+ * `windows.length`, and the UI consumes only a couple of numbers per window.
+ * Carrying each segment's full `BacktestResult` (equity curve, trades,
+ * duration buckets included) made a 50-window response ~1.4 MB.
+ */
+export type WalkForwardWindowStats = {
+  /** Candles in this IS/OOS segment. */
+  candles: number;
+  /** Total return % over the segment (rounded to 2 decimals). */
+  returnPct: number;
+  /** Closed trades in the segment. */
+  trades: number;
+  wins: number;
+  losses: number;
+  maxDrawdownPct: number;
+  /** Sharpe ratio with NaN collapsed to 0 (JSON-safe). */
+  sharpeRatio: number;
+};
+
+/**
+ * WalkForwardWindow — one IS/OOS slice of the historical series.
+ *
+ * Windows slide by `stepSize` (default = OOS size): consecutive windows
+ * contribute CONTIGUOUS, NON-overlapping OOS data, while their IS portions
+ * do overlap. Both segments are simulated over a snapshot series built ONCE
+ * from the full fetched history, so every candle inside a window carries the
+ * same warm-indicator context live trading would — OOS results are never
+ * handicapped by a cold indicator series re-computed from its own slice.
+ */
+export type WalkForwardWindow = {
+  /** Sequential window index (1-based for display). */
+  index: number;
+  /** Inclusive start index of the window inside the snapshot series. */
+  startIndex: number;
+  /** Exclusive end index of the window inside the snapshot series. */
+  endIndex: number;
+  inSample: WalkForwardWindowStats;
+  outOfSample: WalkForwardWindowStats;
+};
+
+/**
+ * Aggregated robustness metrics across all walk-forward windows.
+ *
+ * - `avgOosReturnPct` / `avgIsReturnPct` — mean of the per-window segment
+ *   returns. A robust strategy has OOS returns close to IS returns.
+ * - `efficiency` — avgOos / avgIs (see `computeEfficiency`; `null` when the
+ *   IS mean is 0 and the OOS mean is not — JSON cannot carry Infinity).
+ * - `positiveOosRate` — percentage of windows whose OOS return > 0.
+ * - `robustnessRate` — percentage of windows whose positive IS return
+ *   kept at least half of itself out-of-sample (per-window OOS >= IS/2).
+ * - `avgOosSharpe` / `avgOosMaxDD` — mean Sharpe / max drawdown across OOS
+ *   segments (NaN Sharpe treated as 0).
+ * - `totalOosTrades` — sum of OOS trade counts.
+ */
+export type WalkForwardRobustness = {
+  avgOosReturnPct: number;
+  avgIsReturnPct: number;
+  efficiency: number | null;
+  positiveOosRate: number;
+  robustnessRate: number;
+  avgOosSharpe: number;
+  avgOosMaxDD: number;
+  totalOosTrades: number;
+};
+
+export type WalkForwardResult = {
+  symbol: string;
+  interval: string;
+  windows: WalkForwardWindow[];
+  robustness: WalkForwardRobustness;
+  strategy: { id: string; name: string; action: string };
+  params: {
+    windowSize: number;
+    inSampleRatio: number;
+    minConfidence: number;
+    initialCapital: number;
+    stopLossPct: number;
+    takeProfitPct: number;
+    maxHoldCandles: number;
+    positionSizing: PositionSizing;
+    fixedFractionalPct: number;
+    feeBps: number;
+  };
+  error?: string;
+};
+
+/** Verdict used by the UI's Robusto / Moderado / Sobreajuste chip. */
+export type RobustnessVerdict = "good" | "medium" | "poor" | "none";
+
+/**
+ * OOS/IS efficiency ratio. Returns `null` ("not computable") when the IS
+ * return is 0 and OOS is not — the ratio is undefined there, and JSON has no
+ * representation for ±Infinity. A 0/0 pair stays 0 (nothing to degrade).
+ */
+export function computeEfficiency(
+  isReturnPct: number,
+  oosReturnPct: number,
+): number | null {
+  if (!Number.isFinite(isReturnPct) || !Number.isFinite(oosReturnPct)) {
+    return null;
+  }
+  if (isReturnPct === 0) return oosReturnPct === 0 ? 0 : null;
+  const eff = oosReturnPct / isReturnPct;
+  return Number.isFinite(eff) ? eff : null;
+}
+
+/** efficiency >= 0.5 → robust, >= 0.3 → moderate, else overfit. */
+export function classifyEfficiency(efficiency: number | null): RobustnessVerdict {
+  if (efficiency == null || !Number.isFinite(efficiency)) return "none";
+  if (efficiency >= 0.5) return "good";
+  if (efficiency >= 0.3) return "medium";
+  return "poor";
+}
+
+/** Empty robustness object (used when no windows could be built). Exported so
+ * the API route's catch path returns the exact same zero object instead of
+ * duplicating the literal. */
+export function emptyRobustness(): WalkForwardRobustness {
+  return {
+    avgOosReturnPct: 0,
+    avgIsReturnPct: 0,
+    efficiency: 0,
+    positiveOosRate: 0,
+    robustnessRate: 0,
+    avgOosSharpe: 0,
+    avgOosMaxDD: 0,
+    totalOosTrades: 0,
+  };
+}
+
+/**
+ * Aggregate OOS performance across all walk-forward windows into the
+ * robustness metrics.
+ */
+export function computeRobustness(
+  windows: WalkForwardWindow[],
+): WalkForwardRobustness {
+  if (windows.length === 0) return emptyRobustness();
+  const n = windows.length;
+  let sumIsReturn = 0;
+  let sumOosReturn = 0;
+  let positiveOosCount = 0;
+  let robustCount = 0;
+  let sumOosSharpe = 0;
+  let sumOosMaxDD = 0;
+  let totalOosTrades = 0;
+  for (const w of windows) {
+    const isRet = w.inSample.returnPct;
+    const oosRet = w.outOfSample.returnPct;
+    sumIsReturn += isRet;
+    sumOosReturn += oosRet;
+    if (oosRet > 0) positiveOosCount++;
+    // Per-window robustness: OOS kept at least half of a positive IS return.
+    if (isRet > 0 && oosRet >= isRet * 0.5) robustCount++;
+    sumOosSharpe += w.outOfSample.sharpeRatio;
+    sumOosMaxDD += w.outOfSample.maxDrawdownPct;
+    totalOosTrades += w.outOfSample.trades;
+  }
+  const avgIs = sumIsReturn / n;
+  const avgOos = sumOosReturn / n;
+  return {
+    avgOosReturnPct: Math.round(avgOos * 100) / 100,
+    avgIsReturnPct: Math.round(avgIs * 100) / 100,
+    efficiency: computeEfficiency(avgIs, avgOos),
+    positiveOosRate: Math.round((positiveOosCount / n) * 1000) / 10,
+    robustnessRate: Math.round((robustCount / n) * 1000) / 10,
+    avgOosSharpe: Math.round((sumOosSharpe / n) * 100) / 100,
+    avgOosMaxDD: Math.round((sumOosMaxDD / n) * 100) / 100,
+    totalOosTrades,
+  };
+}
+
+/** Concrete walk-forward window plan derived from the user inputs. */
+export type WalkForwardPlan = {
+  isSize: number;
+  oosSize: number;
+  effectiveWindow: number;
+  effectiveStep: number;
+  /** Windows that actually fit in the history (capped at 50). */
+  windowCount: number;
+  /** Clamped inputs, echoed back in WalkForwardResult.params. */
+  windowSize: number;
+  inSampleRatio: number;
+};
+
+/**
+ * Derive the walk-forward plan from user inputs (pure; no I/O).
+ *
+ * - windowSize clamped to 100-1000 candles, inSampleRatio to 0.3-0.9.
+ * - OOS has at least 20 candles; IS at least 30, so a window can still trade
+ *   even at extreme ratios.
+ * - Step defaults to the OOS size (contiguous OOS data across windows) and a
+ *   caller-supplied step is clamped UP to >= oosSize: a step below the OOS
+ *   size would sample the same OOS candles in several windows and
+ *   double-count them in the positive/robustness rates.
+ * - Max 50 windows so a small step cannot blow up the response payload.
+ */
+export function planWalkForwardWindows(
+  snapshotCount: number,
+  windowSize: number,
+  inSampleRatio = 0.7,
+  stepSize?: number,
+): WalkForwardPlan {
+  const safeWindowSize = Math.max(100, Math.min(1000, Math.floor(windowSize)));
+  const safeRatio = Math.max(0.3, Math.min(0.9, inSampleRatio));
+  // + 1e-9 guards float dust: 1 - 0.2 = 0.19999999999999998 would floor a
+  // 100-candle OOS to 99 without it.
+  const oosSize = Math.max(20, Math.floor(safeWindowSize * (1 - safeRatio) + 1e-9));
+  const isSize = Math.max(30, safeWindowSize - oosSize);
+  const effectiveWindow = isSize + oosSize;
+  const requestedStep =
+    stepSize != null && Number.isFinite(stepSize) ? Math.floor(stepSize) : oosSize;
+  const effectiveStep = Math.max(oosSize, requestedStep);
+  const windowCount =
+    snapshotCount >= effectiveWindow
+      ? Math.min(
+          50,
+          Math.floor((snapshotCount - effectiveWindow) / effectiveStep) + 1,
+        )
+      : 0;
+  return {
+    isSize,
+    oosSize,
+    effectiveWindow,
+    effectiveStep,
+    windowCount,
+    windowSize: safeWindowSize,
+    inSampleRatio: safeRatio,
+  };
+}
+
+/** Collapse a full BacktestResult into its JSON-safe per-window summary. */
+function toWindowStats(
+  result: BacktestResult,
+  candles: number,
+): WalkForwardWindowStats {
+  const s = result.stats;
+  return {
+    candles,
+    returnPct: Math.round(s.totalReturnPct * 100) / 100,
+    trades: s.totalTrades,
+    wins: s.wins,
+    losses: s.losses,
+    maxDrawdownPct: Math.round(s.maxDrawdownPct * 100) / 100,
+    sharpeRatio: Number.isFinite(s.sharpeRatio) ? Math.round(s.sharpeRatio * 100) / 100 : 0,
+  };
+}
+
+/**
+ * Build and simulate the walk-forward windows over a pre-built snapshot
+ * series. Pure: no fetching, no I/O (see runWalkForward for the live call).
+ *
+ * Both segments run `simulateTrades` with warmupIndex 0: the snapshot series
+ * was built over the WHOLE fetched history, so the indicators at every
+ * candle inside a window already have their full-history context — including
+ * the EMA55/EMA200 cross, which a 150-candle OOS slice re-computed from
+ * scratch could never produce.
+ */
+export function buildWalkForwardWindows(
+  snapshots: CandleSnapshot[],
+  plan: WalkForwardPlan,
+  simParams: TradeSimParams,
+  provider: ProviderId = "binance",
+): WalkForwardWindow[] {
+  const windows: WalkForwardWindow[] = [];
+  for (let w = 0; w < plan.windowCount; w++) {
+    const start = w * plan.effectiveStep;
+    if (start + plan.effectiveWindow > snapshots.length) break;
+    const inSampleSnapshots = snapshots.slice(start, start + plan.isSize);
+    const oosSnapshots = snapshots.slice(start + plan.isSize, start + plan.effectiveWindow);
+    windows.push({
+      index: w + 1,
+      startIndex: start,
+      endIndex: start + plan.effectiveWindow,
+      inSample: toWindowStats(
+        simulateTrades(inSampleSnapshots, simParams, 0, provider),
+        plan.isSize,
+      ),
+      outOfSample: toWindowStats(
+        simulateTrades(oosSnapshots, simParams, 0, provider),
+        plan.oosSize,
+      ),
+    });
+  }
+  return windows;
+}
+
+/**
+ * Run a walk-forward optimization: fetch a long history, split it into
+ * sliding IS+OOS windows, run the strategy on each segment over a single
+ * pre-warmed indicator series, and aggregate OOS performance into
+ * robustness metrics.
+ */
+export async function runWalkForward(
+  params: BacktestParams & { windowSize: number; inSampleRatio?: number; stepSize?: number },
+): Promise<WalkForwardResult> {
+  const {
+    symbol,
+    interval,
+    strategy,
+    action,
+    minConfidence = 60,
+    initialCapital = 10_000,
+    stopLossPct = 5,
+    takeProfitPct = 10,
+    maxHoldCandles = 50,
+    positionSizing = "full",
+    fixedFractionalPct = 25,
+    feeBps = 10,
+    windowSize,
+    inSampleRatio,
+    stepSize,
+  } = params;
+
+  const simParams: TradeSimParams = {
+    symbol,
+    interval,
+    strategy,
+    action,
+    minConfidence,
+    initialCapital,
+    stopLossPct,
+    takeProfitPct,
+    maxHoldCandles,
+    positionSizing,
+    fixedFractionalPct,
+    feeBps,
+  };
+
+  let provider: ProviderId = "binance";
+  let klines: Kline[] = [];
+  try {
+    const res = await providerRouter.getKlines(symbol, interval, 1000);
+    klines = res.klines;
+    provider = res.provider;
+  } catch {
+    return {
+      symbol,
+      interval,
+      windows: [],
+      robustness: emptyRobustness(),
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { windowSize: Math.floor(windowSize) || 0, inSampleRatio: inSampleRatio ?? 0.7, minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      error: "Failed to fetch historical klines from upstream provider.",
+    };
+  }
+
+  const snapshots = buildSnapshots(klines, symbol);
+  const plan = planWalkForwardWindows(snapshots.length, windowSize, inSampleRatio, stepSize);
+
+  if (plan.windowCount === 0) {
+    return {
+      symbol,
+      interval,
+      windows: [],
+      robustness: emptyRobustness(),
+      strategy: { id: strategy.id, name: strategy.name, action },
+      params: { windowSize: plan.windowSize, inSampleRatio: plan.inSampleRatio, minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
+      error: `Insufficient historical data (${klines.length} candles; need at least ${plan.effectiveWindow} for one ${plan.isSize}/${plan.oosSize} IS/OOS window).`,
+    };
+  }
+
+  const windows = buildWalkForwardWindows(snapshots, plan, simParams, provider);
+  const robustness = computeRobustness(windows);
+
+  return {
+    symbol,
+    interval,
+    windows,
+    robustness,
+    strategy: { id: strategy.id, name: strategy.name, action },
+    params: { windowSize: plan.windowSize, inSampleRatio: plan.inSampleRatio, minConfidence, initialCapital, stopLossPct, takeProfitPct, maxHoldCandles, positionSizing, fixedFractionalPct, feeBps },
   };
 }
