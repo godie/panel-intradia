@@ -95,6 +95,7 @@ RUN echo '{"name":"prisma-cli","private":true}' > package.json \
  && bun add "prisma@${PRISMA_VERSION}" \
  && rm -rf /cli/node_modules/.cache /cli/bun.lock \
  && rm -f /cli/node_modules/@prisma/engines/query-engine-* \
+           /cli/node_modules/@prisma/engines/libquery_engine* \
            /cli/node_modules/@prisma/engines/prisma-fmt-*
 
 # Runtime-tree pruning list shared by the CLI-merge and the standalone tree:
@@ -205,9 +206,11 @@ RUN rm -rf \
       node_modules/@prisma/client/runtime/query_compiler_bg.mysql.* \
       node_modules/@prisma/client/runtime/query_compiler_bg.postgresql.* \
       node_modules/@prisma/client/runtime/query_compiler_bg.sqlserver.* \
+      node_modules/@prisma/engines/libquery_engine-* \
+      node_modules/@prisma/engines/query-engine-* \
       node_modules/.cache \
  && find node_modules mini-services/*/node_modules \
-      -type d \( -name test -o -name tests -o -name __tests__ \) \
+      -type d \( -name test -o -name tests -o -name docs -o -name __tests__ \) \
       -prune -exec rm -rf '{}' + \
  && find node_modules mini-services/*/node_modules \
       -type f \( -name '*.md' -o -name '*.map' -o -name '*.d.ts' \
