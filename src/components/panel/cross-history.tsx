@@ -126,6 +126,13 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
   const stats = data?.stats ?? {};
   const totalAll = Object.values(stats).reduce((s, v) => s + v.total, 0);
 
+  // Header sin falso vacío: las stats solo cubren 7 días; si son 0 pero hay
+  // eventos históricos en el fetch, mostrar el histórico real con la fecha
+  // del último cruce en vez del fallback que parece "sin datos".
+  const eventCount = allEvents.length;
+  const lastEvent = allEvents[0] ?? null; // newest-first
+  const lastRelative = lastEvent ? fmtRelative(lastEvent.detectedAt) : null;
+
   // Apply filters.
   const events = allEvents.filter((ev) => {
     if (typeFilter !== "all" && ev.type !== typeFilter) return false;
@@ -153,7 +160,9 @@ export function CrossHistory({ pollMs = 60_000 }: { pollMs?: number }) {
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {totalAll > 0
                 ? `${totalAll} ${t("crossHistory.recent")} · ${events.length} ${t("crossHistory.recents")}`
-                : "EMA · MACD · momentum flips persistidos en SQLite"}
+                : eventCount > 0
+                  ? `${eventCount} ${t("crossHistory.historic")} · ${t("crossHistory.lastEvent").replace("{when}", lastRelative ?? "")}`
+                  : "EMA · MACD · momentum flips persistidos en SQLite"}
             </p>
           </div>
         </div>
