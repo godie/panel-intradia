@@ -18,10 +18,11 @@ set -euo pipefail
 if [ "$(id -u)" = "0" ]; then
   mkdir -p /app/db
   chown -R bun:bun /app/db 2>/dev/null || true
-  # `setpriv` (not `runuser`, which forks) so the app stays PID 1 and keeps
-  # receiving SIGTERM from the orchestrator.
-  exec setpriv --reuid="$(id -u bun)" --regid="$(id -g bun)" --init-groups \
-    "$0" "$@"
+  # `su-exec` (not `runuser`, which forks) so the app stays PID 1 and keeps
+  # receiving SIGTERM from the orchestrator. It drops supplementary groups and
+  # re-initialises them for bun — same semantics setpriv --init-groups had,
+  # ~150 KB instead of util-linux's full binary suite.
+  exec su-exec bun:bun "$0" "$@"
 fi
 
 # Skip DB init for services that don't use the database (mini-services),
