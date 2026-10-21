@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Sparkline } from "./sparkline";
 import { getSymbolMeta, type AnalysisResponse } from "@/lib/types";
 import { TIMEFRAME_LABEL_KEY, type Timeframe } from "@/lib/timeframes";
+import type { CrossEventType, CrossDirection } from "@/lib/cross-history";
 import { useLanguage } from "@/hooks/use-language";
 import {
   X,
@@ -16,6 +17,10 @@ import {
   Loader2,
   History,
   Radio,
+  Gauge,
+  Target,
+  Percent,
+  Minus,
 } from "lucide-react";
 
 type Props = {
@@ -28,9 +33,6 @@ type Props = {
   open: boolean;
   onClose: () => void;
 };
-
-type CrossEventType = "ema" | "macd" | "momentum";
-type CrossDirection = "bullish" | "bearish";
 
 type CrossEvent = {
   id: string;
@@ -53,7 +55,18 @@ const TYPE_META: Record<
   ema: { short: "EMA", color: "#4fa8d8", icon: Activity },
   macd: { short: "MACD", color: "#e8b04b", icon: Zap },
   momentum: { short: "MOM", color: "#b48cff", icon: TrendingUp },
+  squeeze: { short: "SQZ", color: "#8b96a5", icon: Gauge },
+  squeeze_breakout: { short: "SQZ↑", color: "#e2604f", icon: Target },
+  stoch_cross: { short: "STO", color: "#5fbf8f", icon: Percent },
 };
+
+// Defensa anti-crash (mismo síntoma que CrossHistory: "reading 'icon'")
+// para tipos que un bundle en cache viejo no reconozca.
+const UNKNOWN_META = {
+  short: "?",
+  color: "#8b96a5",
+  icon: Activity,
+} as const;
 
 function fmtPrice(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -479,11 +492,20 @@ export function TickerDetailModal({ symbol, data, timeframe, open, onClose }: Pr
                 {!crossesLoading && !crossesError && crosses.length > 0 && (
                   <ul className="space-y-1.5">
                     {crosses.map((ev) => {
-                      const tm = TYPE_META[ev.type];
+                      const tm = TYPE_META[ev.type] ?? UNKNOWN_META;
                       const Icon = tm.icon;
                       const bullish = ev.direction === "bullish";
-                      const dirColor = bullish ? "#5fbf8f" : "#e2604f";
-                      const DirIcon = bullish ? TrendingUp : TrendingDown;
+                      const isNeutral = ev.direction === "neutral";
+                      const dirColor = bullish
+                        ? "#5fbf8f"
+                        : isNeutral
+                          ? "#8b96a5"
+                          : "#e2604f";
+                      const DirIcon = bullish
+                        ? TrendingUp
+                        : isNeutral
+                          ? Minus
+                          : TrendingDown;
                       return (
                         <li
                           key={ev.id}
@@ -502,7 +524,11 @@ export function TickerDetailModal({ symbol, data, timeframe, open, onClose }: Pr
                               </span>
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium uppercase tracking-wider" style={{ color: dirColor }}>
                                 <DirIcon className="h-3 w-3" aria-hidden />
-                                {bullish ? t("market.bullish") : t("market.bearish")}
+                                {isNeutral
+                                  ? t("market.neutral")
+                                  : bullish
+                                    ? t("market.bullish")
+                                    : t("market.bearish")}
                               </span>
                             </div>
                             <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/70">

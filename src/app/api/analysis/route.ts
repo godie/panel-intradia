@@ -27,6 +27,7 @@ import {
   type Timeframe,
 } from "@/lib/timeframes";
 import type { AnalysisResponse } from "@/lib/types";
+import { collectCrossCandidates, recordCrossIfNew } from "@/lib/cross-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -402,6 +403,13 @@ export async function GET(req: NextRequest) {
       timeframe,
     );
     setCached(cacheKey, payload, CACHE_TTL_MS);
+
+    // Restaura (el commit 0a2c7f8 del PR #4 la había quitado sin querer):
+    // registra los cruces fresh en SQLite. Fire-and-forget: recordCrossIfNew
+    // ya traga errores de DB, y nunca debe bloquear ni fallar la respuesta.
+    for (const candidate of collectCrossCandidates(payload)) {
+      void recordCrossIfNew(candidate);
+    }
 
     return NextResponse.json(payload, {
       headers: { "x-cache": "MISS", "x-source": klinesRes.provider, "cache-control": "no-store" },

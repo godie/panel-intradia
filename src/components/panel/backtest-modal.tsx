@@ -451,7 +451,7 @@ export function BacktestModal({ strategy, predefined, defaultSymbol, open, onClo
       aria-label={t("backtest.title")}
     >
       <div
-        className="relative w-full max-w-4xl max-h-[94vh] overflow-hidden rounded-xl border border-white/10 bg-card shadow-2xl flex flex-col"
+        className="relative w-full max-w-6xl max-h-[94vh] overflow-hidden rounded-xl border border-white/10 bg-card shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

@@ -205,7 +205,7 @@ export function WalkForwardModal({
       aria-label={t("backtest.walkForward")}
     >
       <div
-        className="relative w-full max-w-4xl max-h-[94vh] overflow-hidden rounded-xl border border-[#b48cff]/20 bg-card shadow-2xl flex flex-col"
+        className="relative w-full max-w-6xl max-h-[94vh] overflow-hidden rounded-xl border border-[#b48cff]/20 bg-card shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header (purple accent) */}
